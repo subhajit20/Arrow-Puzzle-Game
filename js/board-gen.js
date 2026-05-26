@@ -699,20 +699,30 @@ function runUnjammingSolvabilityTweak(paths, rows, cols, gridOwnership) {
         for (let p of paths) {
             if (!activeIds.has(p.id)) continue;
             let origHeading = p.heading;
-            let oppHeading = origHeading === "UP" ? "DOWN" : origHeading === "DOWN" ? "UP" : origHeading === "LEFT" ? "RIGHT" : "LEFT";
 
-            p.heading = oppHeading;
+            // Temporarily reverse points and compute the true new heading
             p.points.reverse();
-            p.originalPoints = JSON.parse(JSON.stringify(p.points));
+            let newLast = p.points[p.points.length - 1];
+            let newPrev = p.points[p.points.length - 2];
+            let newHeading = getHeadingFromDiff(newLast.r - newPrev.r, newLast.c - newPrev.c);
+            p.heading = newHeading;
 
-            if (canEscapeOccupancy(p, occupancy, rows, cols)) {
+            // Evaluate endpoint self-intersection after reverse
+            let dir = { r: newLast.r - newPrev.r, c: newLast.c - newPrev.c };
+            let body = p.points.slice(0, p.points.length - 1);
+            let evalResult = evaluateEndpoint(newLast, dir, body, rows, cols);
+
+            // Check if this path can now escape and does NOT point towards its own body
+            if (!evalResult.selfIntersect && canEscapeOccupancy(p, occupancy, rows, cols)) {
+                // Free its cells and mark cleared
+                p.originalPoints = JSON.parse(JSON.stringify(p.points));
                 p.points.forEach(pt => { occupancy[pt.r][pt.c] = -1; });
                 activeIds.delete(p.id);
                 anyFlipped = true;
             } else {
+                // Revert the flip
                 p.heading = origHeading;
                 p.points.reverse();
-                p.originalPoints = JSON.parse(JSON.stringify(p.points));
             }
         }
 
@@ -735,6 +745,53 @@ function hasAnyDoubleSelfCollidingPath(paths, rows, cols) {
         let evalB = evaluateEndpoint(ptB, dirB, p.points.slice(0, len - 1), rows, cols);
         return evalA.selfIntersect && evalB.selfIntersect;
     });
+}
+
+// After the unjammer may have flipped headings for solvability, restore visual clarity:
+// if the arrowhead immediately faces its own body (dist=1), try flipping to the other
+// endpoint — but only if that direction can still escape other paths.
+function fixVisualSelfIntersections(paths, rows, cols) {
+    let occupancy = Array(rows).fill().map(() => Array(cols).fill(-1));
+    paths.forEach(p => {
+        p.points.forEach(pt => { occupancy[pt.r][pt.c] = p.id; });
+    });
+
+    for (let p of paths) {
+        let len = p.points.length;
+        if (len < 2) continue;
+
+        let head = p.points[len - 1];
+        let prev = p.points[len - 2];
+        let fwdR = head.r + (head.r - prev.r);
+        let fwdC = head.c + (head.c - prev.c);
+        let bodyPoints = p.points.slice(0, len - 1);
+        let bodyImmediatelyAhead = bodyPoints.some(pt => pt.r === fwdR && pt.c === fwdC);
+        if (!bodyImmediatelyAhead) continue;
+
+        // Arrowhead points directly into own body — try flipping
+        let origHeading = p.heading;
+        let oppHeading = origHeading === "UP" ? "DOWN" : origHeading === "DOWN" ? "UP"
+                       : origHeading === "LEFT" ? "RIGHT" : "LEFT";
+        p.heading = oppHeading;
+        p.points.reverse();
+
+        let newHead = p.points[p.points.length - 1];
+        let newPrev = p.points[p.points.length - 2];
+        let newFwdR = newHead.r + (newHead.r - newPrev.r);
+        let newFwdC = newHead.c + (newHead.c - newPrev.c);
+        let newBodyPoints = p.points.slice(0, p.points.length - 1);
+        let newBodyAhead = newBodyPoints.some(pt => pt.r === newFwdR && pt.c === newFwdC);
+
+        if (!newBodyAhead && canEscapeOccupancy(p, occupancy, rows, cols)) {
+            // Flipped heading is visually clean and solvable — keep it
+            p.originalPoints = JSON.parse(JSON.stringify(p.points));
+        } else {
+            // Revert — both directions are bad or flip is blocked by other paths
+            p.heading = origHeading;
+            p.points.reverse();
+            p.originalPoints = JSON.parse(JSON.stringify(p.points));
+        }
+    }
 }
 
 function build100PackedLevel(forceNewGeneration = false) {
@@ -762,6 +819,7 @@ function build100PackedLevel(forceNewGeneration = false) {
         result = tryGenerateBoard();
         if (result && result.paths && result.paths.length > 0) {
             runUnjammingSolvabilityTweak(result.paths, State.gridRows, State.gridCols, result.gridOwnership);
+            fixVisualSelfIntersections(result.paths, State.gridRows, State.gridCols);
             if (!hasAnyDoubleSelfCollidingPath(result.paths, State.gridRows, State.gridCols) &&
                 isBoardFullySolvable(result.paths, State.gridRows, State.gridCols)) {
                 break;
@@ -782,6 +840,7 @@ function build100PackedLevel(forceNewGeneration = false) {
         let fb = tryGenerateBoard();
         if (fb && fb.paths && isBoardFullySolvable(fb.paths, 8, 8)) {
             runUnjammingSolvabilityTweak(fb.paths, 8, 8, fb.gridOwnership);
+            fixVisualSelfIntersections(fb.paths, 8, 8);
             State.paths = fb.paths;
         } else {
             State.paths = [];

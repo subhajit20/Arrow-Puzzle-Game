@@ -1489,16 +1489,23 @@
                     if (!activeIds.has(p.id)) continue;
 
                     let origHeading = p.heading;
-                    let oppHeading = origHeading === "UP" ? "DOWN" : origHeading === "DOWN" ? "UP" : origHeading === "LEFT" ? "RIGHT" : "LEFT";
 
-                    // Temporarily flip
-                    p.heading = oppHeading;
+                    // Temporarily reverse points and compute the true new heading
                     p.points.reverse();
-                    p.originalPoints = JSON.parse(JSON.stringify(p.points));
+                    let newLast = p.points[p.points.length - 1];
+                    let newPrev = p.points[p.points.length - 2];
+                    let newHeading = getHeadingFromDiff(newLast.r - newPrev.r, newLast.c - newPrev.c);
+                    p.heading = newHeading;
 
-                    // Check if this path can now escape
-                    if (canEscapeOccupancy(p, occupancy, rows, cols)) {
+                    // Evaluate endpoint self-intersection after reverse
+                    let dir = { r: newLast.r - newPrev.r, c: newLast.c - newPrev.c };
+                    let body = p.points.slice(0, p.points.length - 1);
+                    let evalResult = evaluateEndpoint(newLast, dir, body, rows, cols);
+
+                    // Check if this path can now escape and does NOT point towards its own body
+                    if (!evalResult.selfIntersect && canEscapeOccupancy(p, occupancy, rows, cols)) {
                         // Free its cells and mark cleared
+                        p.originalPoints = JSON.parse(JSON.stringify(p.points));
                         p.points.forEach(pt => { occupancy[pt.r][pt.c] = -1; });
                         activeIds.delete(p.id);
                         anyFlipped = true;
@@ -1506,7 +1513,6 @@
                         // Revert the flip
                         p.heading = origHeading;
                         p.points.reverse();
-                        p.originalPoints = JSON.parse(JSON.stringify(p.points));
                     }
                 }
 
