@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en" style="height: -webkit-fill-available;">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>VECTO: Colossal Mosaic Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+            touch-action: none;
+            height: 100svh !important;
+            min-height: -webkit-fill-available;
+            padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+            padding-left: max(0.75rem, env(safe-area-inset-left));
+            padding-right: max(0.75rem, env(safe-area-inset-right));
+        }
+
+        /* ── Mobile: board fills entire screen, bars float on top ── */
+        @media (max-width: 767px) {
+            body {
+                padding: 0 !important;
+                display: block !important;
+            }
+
+            #board-container {
+                position: fixed !important;
+                inset: 0 !important;
+                width: 100vw !important;
+                height: 100svh !important;
+                max-width: none !important;
+                margin: 0 !important;
+                border-radius: 0 !important;
+                border-width: 0 !important;
+                box-shadow: none !important;
+                aspect-ratio: auto !important;
+                z-index: 0 !important;
+            }
+
+            #game-header {
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                z-index: 20 !important;
+                max-width: none !important;
+                border-radius: 0 !important;
+                border-left: none !important;
+                border-right: none !important;
+                border-top: none !important;
+                background: rgba(255, 255, 255, 0.82) !important;
+                backdrop-filter: blur(14px) !important;
+                -webkit-backdrop-filter: blur(14px) !important;
+                box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06) !important;
+                padding-top: max(0.75rem, env(safe-area-inset-top)) !important;
+                padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
+                padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
+            }
+
+            #game-controls {
+                position: fixed !important;
+                bottom: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                z-index: 20 !important;
+                max-width: none !important;
+                border-radius: 0 !important;
+                border-left: none !important;
+                border-right: none !important;
+                border-bottom: none !important;
+                background: rgba(255, 255, 255, 0.82) !important;
+                backdrop-filter: blur(14px) !important;
+                -webkit-backdrop-filter: blur(14px) !important;
+                box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.06) !important;
+                padding-bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+                padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
+                padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
+            }
+        }
+
+        /* ── Desktop: square board constrained by both viewport width and height ── */
+        @media (min-width: 768px) {
+            #board-container {
+                width: min(calc(100vw - 48px), calc(100svh - 185px), 28rem) !important;
+            }
+        }
+
+        /* ── Landscape phones: compact bars ── */
+        @media (max-width: 767px) and (orientation: landscape) {
+            #game-header {
+                padding-top: max(0.4rem, env(safe-area-inset-top)) !important;
+                padding-bottom: 0.4rem !important;
+            }
+
+            #game-controls {
+                padding-top: 0.4rem !important;
+                padding-bottom: max(0.4rem, env(safe-area-inset-bottom)) !important;
+            }
+
+            #level-display {
+                font-size: 1rem !important;
+                line-height: 1.2 !important;
+            }
+
+            #score-display {
+                font-size: 1rem !important;
+            }
+
+            #tier-badge {
+                display: none !important;
+            }
+
+            .hint-label {
+                display: none;
+            }
+        }
+
+        /* Splash: scrollable on very short or zoomed-in screens */
+        #daily-splash {
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* Canvas GPU layer — CSS transform zoom is composited on GPU, no redraw needed */
+        #gameCanvas {
+            will-change: transform;
+            transform-origin: 0 0;
+        }
+
+        .premium-shadow {
+            box-shadow: 0 12px 30px -10px rgba(15, 23, 42, 0.08), 0 4px 12px -5px rgba(15, 23, 42, 0.03);
+        }
+
+        .board-shadow {
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.01), 0 20px 45px -15px rgba(15, 23, 42, 0.12);
+        }
+
+        .shake {
+            animation: shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
+        }
+
+        @keyframes shake {
+
+            10%,
+            90% {
+                transform: translate3d(-2px, 0, 0);
+            }
+
+            20%,
+            80% {
+                transform: translate3d(4px, 0, 0);
+            }
+
+            30%,
+            50%,
+            70% {
+                transform: translate3d(-5px, 0, 0);
+            }
+
+            40%,
+            60% {
+                transform: translate3d(5px, 0, 0);
+            }
+        }
+
+        .glow-btn:active {
+            transform: scale(0.96);
+        }
+    </style>
+</head>
+
+<body class="w-screen flex flex-col justify-between items-center p-3 bg-slate-50">
+
+    <!-- Daily Puzzle Splash Screen -->
+    <div id="daily-splash"
+        class="hidden fixed inset-0 z-50 bg-slate-100 flex flex-col justify-center items-center gap-3 md:gap-4"
+        style="padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));">
+        <!-- Logo -->
+        <div class="text-center">
+            <div class="text-2xl md:text-3xl font-extrabold text-[#112540] tracking-tight">VECTO</div>
+            <div class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Colossal
+                Mosaic Edition</div>
+        </div>
+
+        <!-- Daily Puzzle Card — Amber/Yellow gradient -->
+        <div class="w-full max-w-sm rounded-2xl p-4 md:p-5 shadow-xl"
+            style="background: linear-gradient(135deg, #fde68a 0%, #fbbf24 45%, #f59e0b 100%);">
+            <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[9px] font-extrabold text-amber-900/60 uppercase tracking-widest">Daily Puzzle</span>
+                <span class="text-sm">☀️</span>
+            </div>
+            <div id="daily-date-display" class="text-sm font-extrabold text-amber-900 tracking-tight leading-snug">
+            </div>
+            <div id="daily-best-display" class="text-xs text-amber-800/70 font-medium mt-0.5"></div>
+            <button id="daily-play-btn" onclick="startDailyPuzzle()"
+                class="mt-3 w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn"
+                style="background: rgba(120,53,15,0.75); color: #fef3c7;">
+                Play Today's Puzzle →
+            </button>
+        </div>
+
+        <!-- Level Play Card — Blue/Indigo gradient -->
+        <div class="w-full max-w-sm rounded-2xl p-4 md:p-5 shadow-xl"
+            style="background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 45%, #4338ca 100%);">
+            <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[9px] font-extrabold text-blue-100/70 uppercase tracking-widest">Level Play</span>
+                <span class="text-sm">⚡</span>
+            </div>
+            <div id="level-play-status" class="text-sm font-extrabold text-white tracking-tight leading-snug"></div>
+            <div id="level-play-score" class="text-xs font-medium mt-0.5" style="color: rgba(219,234,254,0.75);"></div>
+            <button onclick="startNormalGame()"
+                class="mt-3 w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn border"
+                style="background: rgba(255,255,255,0.18); color: #fff; border-color: rgba(255,255,255,0.28);">
+                Continue Playing →
+            </button>
+        </div>
+    </div>
+
+    <!-- Daily Puzzle Result Overlay -->
+    <div id="daily-result-overlay"
+        class="hidden fixed inset-0 z-50 bg-white/95 backdrop-blur-md flex flex-col justify-center items-center gap-4 p-5"
+        style="padding-bottom: max(20px, env(safe-area-inset-bottom));">
+        <div
+            class="w-16 h-16 bg-indigo-50 rounded-full flex justify-center items-center border border-indigo-100 shadow-sm">
+            <svg class="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" stroke-width="2.5"
+                viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+        </div>
+        <h3 class="text-2xl font-extrabold text-slate-800 tracking-tight">Puzzle Solved!</h3>
+        <div id="daily-result-date" class="text-xs text-slate-400 font-medium uppercase tracking-widest"></div>
+        <div class="w-full max-w-xs bg-slate-50 rounded-2xl p-5 border border-slate-100 text-center">
+            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Points Earned</div>
+            <div id="daily-result-earned" class="text-4xl font-extrabold text-emerald-500 tracking-tight">+0</div>
+            <div id="daily-result-best" class="text-xs text-slate-400 font-medium mt-2"></div>
+        </div>
+        <div class="flex flex-col items-center gap-2 w-full max-w-xs">
+            <button onclick="exitDailyPuzzle()"
+                class="w-full px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl tracking-wide shadow-md transition-all duration-200 glow-btn">
+                Continue Normal Game
+            </button>
+            <button onclick="showSplashScreen()"
+                class="text-xs text-slate-400 hover:text-slate-600 font-semibold transition-colors duration-200">
+                Back to Mode Select
+            </button>
+        </div>
+    </div>
+
+    <!-- Top Navigation HUD -->
+    <div id="game-header"
+        class="w-full max-w-md bg-white rounded-2xl p-3 md:p-4 flex justify-between items-center border border-slate-200/80 premium-shadow transition-all duration-300">
+        <!-- Level & Difficulty Status -->
+        <div class="flex flex-col">
+            <span id="level-display" class="text-xl md:text-2xl font-extrabold text-[#112540] tracking-tight">Level
+                1</span>
+            <span id="tier-badge"
+                class="text-[10px] font-extrabold text-indigo-600 uppercase tracking-widest mt-0.5">NORMAL</span>
+        </div>
+
+        <!-- Score Points Display -->
+        <div class="flex flex-col items-center">
+            <span class="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Points</span>
+            <span id="score-display" class="text-xl md:text-2xl font-extrabold text-slate-800 tracking-tight">0</span>
+        </div>
+
+        <!-- Health / Hearts Container -->
+        <div class="flex items-center gap-1 bg-slate-50 px-2 py-1.5 rounded-xl border border-slate-100">
+            <div id="heart-1" class="text-rose-500 transition-all duration-300 transform scale-100">❤️</div>
+            <div id="heart-2" class="text-rose-500 transition-all duration-300 transform scale-100">❤️</div>
+            <div id="heart-3" class="text-rose-500 transition-all duration-300 transform scale-100">❤️</div>
+        </div>
+    </div>
+
+    <!-- Main Pure White Board Container -->
+    <div id="board-container"
+        class="relative w-full max-w-md aspect-square bg-white md:rounded-3xl md:border md:border-slate-200/80 flex justify-center items-center overflow-hidden md:board-shadow md:my-3 transition-all duration-300">
+        <!-- Main Game Canvas -->
+        <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+        <!-- Win Success Overlay -->
+        <div id="win-overlay"
+            class="absolute inset-0 bg-white/95 backdrop-blur-md flex flex-col justify-center items-center gap-4 opacity-0 pointer-events-none transition-all duration-500 z-20 scale-105">
+            <div
+                class="w-16 h-16 bg-emerald-50 rounded-full flex justify-center items-center border border-emerald-100 shadow-sm animate-bounce">
+                <svg class="w-8 h-8 text-emerald-500" fill="none" stroke="currentColor" stroke-width="3"
+                    viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+                </svg>
+            </div>
+            <h3 class="text-2xl font-extrabold text-slate-800 tracking-tight">Level Unraveled!</h3>
+            <p id="win-quote" class="text-xs text-slate-500 px-10 text-center font-medium italic">"The long vectors
+                slide free seamlessly."</p>
+            <p id="win-points" class="text-sm font-bold text-emerald-600">+100 Level Bonus awarded!</p>
+            <button onclick="actions.triggerNextLevel()"
+                class="mt-2 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl tracking-wide shadow-md transition-all duration-200 glow-btn">
+                Next Puzzle
+            </button>
+        </div>
+
+        <!-- Fail Game Over Overlay -->
+        <div id="fail-overlay"
+            class="absolute inset-0 bg-slate-50/95 backdrop-blur-md flex flex-col justify-center items-center gap-4 opacity-0 pointer-events-none transition-all duration-500 z-20 scale-105">
+            <div class="w-16 h-16 bg-rose-50 rounded-full flex justify-center items-center border border-rose-100">
+                <svg class="w-8 h-8 text-rose-500" fill="none" stroke="currentColor" stroke-width="3"
+                    viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </div>
+            <h3 class="text-2xl font-extrabold text-rose-600 tracking-tight">Board Jammed!</h3>
+            <p class="text-xs text-slate-500 px-8 text-center font-medium">You triggered a collision loop. Let's trace
+                carefully.</p>
+            <button onclick="actions.retryCurrentLevel()"
+                class="mt-2 px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm rounded-xl tracking-wide shadow-md transition-all duration-200 glow-btn">
+                Retry Level
+            </button>
+        </div>
+    </div>
+
+    <!-- Bottom Controls & Navigation -->
+    <div id="game-controls"
+        class="w-full max-w-md bg-white rounded-2xl p-3 md:p-4 flex justify-between items-center border border-slate-200/80 premium-shadow gap-2 md:gap-3 font-semibold text-xs text-slate-600">
+        <!-- Mode Switch Button -->
+        <button onclick="showSplashScreen()" title="Switch Mode"
+            class="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600 transition-all duration-200 glow-btn">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6">
+                </path>
+            </svg>
+        </button>
+
+        <!-- Auto Solver Button -->
+        <button id="hint-btn" onclick="actions.useHint()"
+            class="flex-1 py-3 px-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl font-bold tracking-wider uppercase flex justify-center items-center gap-2 transition-all duration-200 glow-btn">
+            <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
+                </path>
+            </svg>
+            <span class="hint-label">Auto Solver</span>
+        </button>
+    </div>
+
+    <script src="js/audio.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/topologies.js"></script>
+    <script src="js/persistence.js"></script>
+    <script src="js/camera.js"></script>
+    <script src="js/board-gen.js"></script>
+    <script src="js/game-logic.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/input.js"></script>
+    <script src="js/daily.js"></script>
+    <script>
+        window.onload = () => {
+            resizeCanvas();
+            animationUpdateTick();
+            initDailySplash();
+        };
+    </script>
+</body>
+
+</html>
