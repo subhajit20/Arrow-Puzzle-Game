@@ -799,6 +799,7 @@
             let cr = headCell.r + dr;
             let cc = headCell.c + dc;
             let selfIntersect = false;
+            let selfIntersectDist = Infinity; // steps until first body hit (Infinity = never hits)
             let boardBlocks = 0;
             let adjacentBodyCount = 0;
             // Perpendicular axes to heading — body cells flanking the escape ray look confusing
@@ -806,21 +807,18 @@
             let perpC = dr;
 
             while (cr >= 0 && cr < rows && cc >= 0 && cc < cols) {
+                boardBlocks++;
                 if (bodyPoints.some(pt => pt.r === cr && pt.c === cc)) {
+                    if (!selfIntersect) selfIntersectDist = boardBlocks; // record distance of first hit
                     selfIntersect = true;
                 }
                 if (bodyPoints.some(pt => pt.r === cr + perpR && pt.c === cc + perpC)) adjacentBodyCount++;
                 if (bodyPoints.some(pt => pt.r === cr - perpR && pt.c === cc - perpC)) adjacentBodyCount++;
-                boardBlocks++;
                 cr += dr;
                 cc += dc;
             }
 
-            return {
-                selfIntersect: selfIntersect,
-                boardBlocks: boardBlocks,
-                adjacentBodyCount: adjacentBodyCount
-            };
+            return { selfIntersect, selfIntersectDist, boardBlocks, adjacentBodyCount };
         }
 
         // Applies the No-Self-Collision Arrowhead Selection Rules
@@ -879,14 +877,30 @@
                     chooseA = false; // B is safe, choose B
                 } else if (!evalA.selfIntersect && evalB.selfIntersect) {
                     chooseA = true;  // A is safe, choose A
+                } else if (evalA.selfIntersect && evalB.selfIntersect) {
+                    // Both trapped — the gap-fill boxed in both ends.
+                    // Primary: prefer the endpoint whose body collision is farther away
+                    // (arrow travels more cells before appearing to crash into its own path).
+                    if (evalA.selfIntersectDist !== evalB.selfIntersectDist) {
+                        chooseA = evalA.selfIntersectDist > evalB.selfIntersectDist;
+                    } else if (!aHeadsTowardTail && bHeadsTowardTail) {
+                        chooseA = true;
+                    } else if (aHeadsTowardTail && !bHeadsTowardTail) {
+                        chooseA = false;
+                    } else if (straightA !== straightB) {
+                        chooseA = straightA;
+                    } else if (runInA !== runInB) {
+                        chooseA = runInA > runInB;
+                    } else {
+                        chooseA = evalA.adjacentBodyCount < evalB.adjacentBodyCount;
+                    }
                 } else {
-                    // Both safe (or both self-intersecting): break ties by clarity.
-                    // 0. Prefer heading that points AWAY from the opposite endpoint — avoids
-                    //    near-closed-loop visual confusion (Fix B).
+                    // Both safe — break ties by visual clarity.
+                    // 0. Prefer heading that points AWAY from the opposite endpoint (Fix B).
                     // 1. Prefer straight run-in (no corner at the head).
                     // 2. Prefer longer consecutive straight run-in (Fix A).
-                    // 3. Fewer body cells flanking the escape ray (less visual clutter).
-                    // 4. Fewer board cells blocking the escape vector (more open space ahead).
+                    // 3. Fewer body cells flanking the escape ray.
+                    // 4. Fewer board cells blocking the escape vector.
                     if (!aHeadsTowardTail && bHeadsTowardTail) {
                         chooseA = true;
                     } else if (aHeadsTowardTail && !bHeadsTowardTail) {
@@ -1190,41 +1204,52 @@
                 }
             }
 
+            // Fill leftover holes — prefer attaching to endpoints whose new escape ray stays clear
+            // of the path body (avoids creating both-endpoints-self-intersecting trapped paths).
             let progress = true;
             while (progress && unassigned.length > 0) {
                 progress = false;
                 for (let i = unassigned.length - 1; i >= 0; i--) {
                     let { r, c } = unassigned[i];
-                    let attached = false;
+                    let cleanOption = null;  // endpoint attachment that stays self-intersection-free
+                    let dirtyOption = null;  // fallback if every option is self-intersecting
+                    let seenPaths = new Set();
+
                     for (let d of dMoves) {
                         let nr = r + d[0];
                         let nc = c + d[1];
                         if (nr >= 0 && nr < State.gridRows && nc >= 0 && nc < State.gridCols) {
                             let neighborId = gridOwnership[nr][nc];
-                            if (neighborId >= 1) {
+                            if (neighborId >= 1 && !seenPaths.has(neighborId)) {
+                                seenPaths.add(neighborId);
                                 let path = paths[neighborId - 1];
                                 if (path) {
                                     let head = path.points[path.points.length - 1];
                                     let tail = path.points[0];
 
                                     if (Math.abs(head.r - r) + Math.abs(head.c - c) === 1) {
-                                        path.points.push({ r, c });
-                                        gridOwnership[r][c] = neighborId;
-                                        unassigned.splice(i, 1);
-                                        attached = true;
-                                        progress = true;
-                                        break;
+                                        let newDir = { r: r - head.r, c: c - head.c };
+                                        let ev = evaluateEndpoint({ r, c }, newDir, path.points, State.gridRows, State.gridCols);
+                                        if (!ev.selfIntersect && !cleanOption) cleanOption = { type: 'head', path, neighborId };
+                                        else if (ev.selfIntersect && !dirtyOption) dirtyOption = { type: 'head', path, neighborId };
                                     } else if (Math.abs(tail.r - r) + Math.abs(tail.c - c) === 1) {
-                                        path.points.unshift({ r, c });
-                                        gridOwnership[r][c] = neighborId;
-                                        unassigned.splice(i, 1);
-                                        attached = true;
-                                        progress = true;
-                                        break;
+                                        let newDir = { r: r - tail.r, c: c - tail.c };
+                                        let ev = evaluateEndpoint({ r, c }, newDir, path.points, State.gridRows, State.gridCols);
+                                        if (!ev.selfIntersect && !cleanOption) cleanOption = { type: 'tail', path, neighborId };
+                                        else if (ev.selfIntersect && !dirtyOption) dirtyOption = { type: 'tail', path, neighborId };
                                     }
                                 }
                             }
                         }
+                    }
+
+                    let chosen = cleanOption || dirtyOption;
+                    if (chosen) {
+                        if (chosen.type === 'head') chosen.path.points.push({ r, c });
+                        else chosen.path.points.unshift({ r, c });
+                        gridOwnership[r][c] = chosen.neighborId;
+                        unassigned.splice(i, 1);
+                        progress = true;
                     }
                 }
             }
