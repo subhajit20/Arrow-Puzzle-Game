@@ -12,7 +12,9 @@ const Persistence = {
                 gridMask: State.gridMask,
                 shapeName: State.shapeName,
                 gridSizePreset: State.gridSizePreset,
-                paths: State.paths
+                paths: State.paths,
+                boardDifficulty: State.boardDifficulty,
+                recentDifficulties: State.recentDifficulties
             };
             localStorage.setItem('vecto_colossal_mosaic_save_v2', JSON.stringify(dataToSave));
         } catch (e) {
@@ -38,6 +40,8 @@ const Persistence = {
             State.shapeName = saved.shapeName || "Square Matrix";
             State.gridSizePreset = saved.gridSizePreset || "Auto";
             State.paths = saved.paths || [];
+            State.boardDifficulty = saved.boardDifficulty || "NORMAL";
+            State.recentDifficulties = saved.recentDifficulties || [];
             return true;
         } catch (e) {
             console.error("Failed to rehydrate data store:", e);

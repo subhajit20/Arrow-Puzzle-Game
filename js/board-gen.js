@@ -836,8 +836,13 @@ function build100PackedLevel(forceNewGeneration = false) {
     resetCamera();
     resizeCanvas();
 
-    // Only accept a board that passes all validation — never fall through to a failed attempt.
+    // Determine target difficulty based on level and sliding pacing history
+    const targetTier = selectTargetDifficulty(State.level, State.recentDifficulties || []);
+    
     let validResult = null;
+    let chosenDifficulty = "NORMAL";
+    const candidatesByTier = {};
+
     for (let attempt = 0; attempt < 20; attempt++) {
         let candidate = tryGenerateBoard();
         if (candidate && candidate.paths && candidate.paths.length > 0) {
@@ -845,7 +850,34 @@ function build100PackedLevel(forceNewGeneration = false) {
             fixVisualSelfIntersections(candidate.paths, State.gridRows, State.gridCols);
             if (!hasAnyDoubleSelfCollidingPath(candidate.paths, State.gridRows, State.gridCols) &&
                 isBoardFullySolvable(candidate.paths, State.gridRows, State.gridCols)) {
-                validResult = candidate;
+                
+                // Evaluate puzzle complexity
+                const complexity = evaluateBoardComplexity(candidate.paths, State.gridRows, State.gridCols);
+                let tier = "NORMAL";
+                if (complexity.score < 6) tier = "EASY";
+                else if (complexity.score < 13) tier = "NORMAL";
+                else if (complexity.score < 22) tier = "HARD";
+                else if (complexity.score < 29) tier = "EXPERT";
+                else tier = "TITAN";
+
+                candidatesByTier[tier] = candidate;
+
+                if (tier === targetTier) {
+                    validResult = candidate;
+                    chosenDifficulty = tier;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Fallback tier selection if exact match was not found
+    if (!validResult) {
+        const preferenceOrder = [targetTier, "HARD", "EXPERT", "TITAN", "NORMAL", "EASY"];
+        for (let t of preferenceOrder) {
+            if (candidatesByTier[t]) {
+                validResult = candidatesByTier[t];
+                chosenDifficulty = t;
                 break;
             }
         }
@@ -853,6 +885,7 @@ function build100PackedLevel(forceNewGeneration = false) {
 
     if (validResult) {
         State.paths = validResult.paths;
+        State.boardDifficulty = chosenDifficulty;
     } else {
         // All 20 attempts failed — fall back to a simple, guaranteed-solvable
         // portrait board.  15×8 gives enough cells for interesting play while
@@ -866,6 +899,8 @@ function build100PackedLevel(forceNewGeneration = false) {
         resetCamera();
         resizeCanvas();
         let fallback = null;
+        let fbDifficulty = "NORMAL";
+
         for (let attempt = 0; attempt < 10; attempt++) {
             let fb = tryGenerateBoard();
             if (fb && fb.paths && fb.paths.length > 0) {
@@ -873,12 +908,28 @@ function build100PackedLevel(forceNewGeneration = false) {
                 fixVisualSelfIntersections(fb.paths, FB_ROWS, FB_COLS);
                 if (!hasAnyDoubleSelfCollidingPath(fb.paths, FB_ROWS, FB_COLS) &&
                     isBoardFullySolvable(fb.paths, FB_ROWS, FB_COLS)) {
+                    
+                    const complexity = evaluateBoardComplexity(fb.paths, FB_ROWS, FB_COLS);
+                    if (complexity.score < 6) fbDifficulty = "EASY";
+                    else if (complexity.score < 13) fbDifficulty = "NORMAL";
+                    else if (complexity.score < 22) fbDifficulty = "HARD";
+                    else if (complexity.score < 29) fbDifficulty = "EXPERT";
+                    else fbDifficulty = "TITAN";
+
                     fallback = fb;
                     break;
                 }
             }
         }
         State.paths = fallback ? fallback.paths : [];
+        State.boardDifficulty = fallback ? fbDifficulty : "NORMAL";
+    }
+
+    // Record selected difficulty in pacing sliding history
+    if (!State.recentDifficulties) State.recentDifficulties = [];
+    State.recentDifficulties.push(State.boardDifficulty);
+    if (State.recentDifficulties.length > 5) {
+        State.recentDifficulties.shift();
     }
 
     State.levelStartScore = State.score;
@@ -886,4 +937,151 @@ function build100PackedLevel(forceNewGeneration = false) {
     Persistence.saveState();
     updateDomUI();
     startPathRevealAnimation();
+}
+
+// ---------------------------------------------------------------------------
+// evaluateBoardComplexity
+//
+// Build the directed dependency graph (DAG) of direct path blockers, recursively
+// compute the maximum dependency depth, and return a comprehensive complexity score.
+// ---------------------------------------------------------------------------
+function evaluateBoardComplexity(paths, rows, cols) {
+    let occupancy = Array(rows).fill().map(() => Array(cols).fill(-1));
+    paths.forEach(p => {
+        p.points.forEach(pt => { occupancy[pt.r][pt.c] = p.id; });
+    });
+
+    // 1. Build directed blocker graph
+    let G = {};
+    paths.forEach(p => {
+        G[p.id] = { id: p.id, blockers: new Set() };
+    });
+
+    const dMoves = {
+        "UP": [-1, 0],
+        "DOWN": [1, 0],
+        "LEFT": [0, -1],
+        "RIGHT": [0, 1]
+    };
+
+    paths.forEach(p => {
+        let head = p.points[p.points.length - 1];
+        let move = dMoves[p.heading];
+        if (!move) return;
+
+        let cr = head.r + move[0];
+        let cc = head.c + move[1];
+
+        while (cr >= 0 && cr < rows && cc >= 0 && cc < cols) {
+            if (State.gridMask[cr]?.[cc] === -1) break;
+            let occupiedId = occupancy[cr][cc];
+            if (occupiedId !== -1 && occupiedId !== p.id) {
+                G[p.id].blockers.add(occupiedId);
+            }
+            cr += move[0];
+            cc += move[1];
+        }
+    });
+
+    // 2. Compute recursion depths
+    let depths = {};
+    let visited = new Set();
+
+    function getDepth(id) {
+        if (depths[id] !== undefined) return depths[id];
+        if (visited.has(id)) return 0;
+        visited.add(id);
+
+        let node = G[id];
+        if (!node || node.blockers.size === 0) {
+            depths[id] = 0;
+        } else {
+            let maxB = 0;
+            node.blockers.forEach(bid => {
+                maxB = Math.max(maxB, getDepth(bid));
+            });
+            depths[id] = 1 + maxB;
+        }
+        visited.delete(id);
+        return depths[id];
+    }
+
+    paths.forEach(p => getDepth(p.id));
+
+    let maxDepth = 0;
+    let totalBlockers = 0;
+    let initialEscapes = 0;
+
+    paths.forEach(p => {
+        let d = depths[p.id] || 0;
+        maxDepth = Math.max(maxDepth, d);
+        if (d === 0) initialEscapes++;
+        let node = G[p.id];
+        if (node) totalBlockers += node.blockers.size;
+    });
+
+    let numPaths = paths.length || 1;
+    let blockerRatio = totalBlockers / numPaths;
+
+    // Penalize when initial escapes are extremely low (<2) or high (>6)
+    // to target a balanced start (3-6 starting choices).
+    let initialEscapePen = 0;
+    if (initialEscapes < 2) {
+        initialEscapePen = 2.0;
+    } else if (initialEscapes > 6) {
+        initialEscapePen = (initialEscapes - 6) * 1.5;
+    }
+
+    let score = maxDepth * 3 + blockerRatio * 5.5 - initialEscapePen;
+    return {
+        score: Math.max(0, score),
+        maxDepth,
+        blockerRatio,
+        initialEscapes
+    };
+}
+
+// ---------------------------------------------------------------------------
+// selectTargetDifficulty
+//
+// Resolve weighted probabilities based on level ranges, overriding targets
+// using history pacing rules (prevent streaks, inject Easy/Normal relief).
+// ---------------------------------------------------------------------------
+function selectTargetDifficulty(level, history) {
+    let probs = { EASY: 0.60, NORMAL: 0.30, HARD: 0.09, EXPERT: 0.01 };
+    
+    if (level > 40) {
+        probs = { EASY: 0.05, NORMAL: 0.15, HARD: 0.50, EXPERT: 0.30 };
+    } else if (level > 20) {
+        probs = { EASY: 0.10, NORMAL: 0.20, HARD: 0.50, EXPERT: 0.20 };
+    } else if (level > 10) {
+        probs = { EASY: 0.20, NORMAL: 0.45, HARD: 0.30, EXPERT: 0.05 };
+    }
+
+    const last1 = history[history.length - 1];
+    const last2 = history[history.length - 2];
+
+    // Pacing Override Rules
+    if (last1 === "EXPERT" && last2 === "EXPERT") {
+        probs.EXPERT = 0.0;
+        probs.NORMAL = 0.8;
+    }
+    if (last1 === "EASY" && last2 === "EASY") {
+        probs.EASY = 0.0;
+        probs.HARD = 0.6;
+    }
+    if ((last1 === "EXPERT" || last1 === "HARD") && (last2 === "EXPERT" || last2 === "HARD")) {
+        probs.EASY = 0.4;
+        probs.NORMAL = 0.6;
+        probs.HARD = 0.0;
+        probs.EXPERT = 0.0;
+    }
+
+    const roll = Math.random();
+    let sum = 0;
+    for (let tier in probs) {
+        sum += probs[tier];
+        if (roll <= sum) return tier;
+    }
+    return "NORMAL";
 }

@@ -71,7 +71,7 @@ VECTO features a fully responsive, hardware-accelerated **cinematic camera syste
 ```
 
 - **Level** — which puzzle you are on. Boards grow larger as levels increase.
-- **Difficulty badge** — NORMAL / HARD / EXPERT / GRAND / TITAN, based on the current board size.
+- **Difficulty badge** — EASY / NORMAL / HARD / EXPERT / TITAN, dynamically evaluated using a directed blocker-dependency graph (DAG) measuring strategic depth, nested moves, and initial escape options.
 - **Points** — your running score across all levels.
 - **Hearts** — your remaining lives on this level (starts at 3).
 
@@ -117,6 +117,9 @@ Boards are portrait-oriented and utilize a **dynamic grid proportion-balancing g
 | 19+ | 35 – 50 | 14 – 20 |
 
 After Level 10, boards are always at least 15 rows tall and 6 columns wide. All generated matrices strictly respect these difficulty scaling preset boundaries while mathematically locking in comfortable portrait proportions.
+
+Additionally, starting from Level 10 and scaling up through higher levels, the procedural difficulty system targets deeply nested strategic blocker dependencies rather than just large dimension sizes. Puzzles are evaluated dynamically to target specific blocker-dependency depth chains, ensuring you face genuinely clever puzzles requiring strategic move ordering and chain-reaction unlocks. An adaptive pacing algorithm tracks your recent boards to prevent burnout by automatically interjecting relief boards when consecutive hard levels are generated.
+
 
 ### ☀️ Daily Puzzle
 

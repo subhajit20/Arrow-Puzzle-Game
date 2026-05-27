@@ -99,6 +99,8 @@ Defined in `state.js`. Single global mutable object. No encapsulation.
 | `cssZoom` | number | Current camera zoom level. Range `1.0–6.0`. |
 | `matE` | number | CSS matrix translate X (pan offset in pixels). |
 | `matF` | number | CSS matrix translate Y (pan offset in pixels). |
+| `boardDifficulty` | string | Current evaluated difficulty tier of the generated board (`"EASY"`, `"NORMAL"`, `"HARD"`, `"EXPERT"`, `"TITAN"`). |
+| `recentDifficulties` | string[] | A sliding log history (max length 5) of recent board difficulties used for pacing overrides. |
 
 ---
 
@@ -441,7 +443,7 @@ Resets scale and translations to default values (`cssZoom = 1.0`, `matE = 0`, `m
 
 Key: `vecto_colossal_mosaic_save_v2`
 
-**Saved fields:** `level`, `score`, `lives`, `gridRows`, `gridCols`, `gridSize`, `gridMask`, `shapeName`, `gridSizePreset`, `paths`
+**Saved fields:** `level`, `score`, `lives`, `gridRows`, `gridCols`, `gridSize`, `gridMask`, `shapeName`, `gridSizePreset`, `paths`, `boardDifficulty`, `recentDifficulties`
 
 **NOT saved:** `dailyScore`, `hintPathId`, `selectedPath`, `isWinState`, `isFailState`, `cssZoom`, `matE`, `matF`, `animatingCount`, `particles`
 
@@ -562,16 +564,36 @@ Auto mode scales rows and cols independently with level:
 
 **Level 10+ floor (Auto only):** rows ≥ 15, cols ≥ 6 — enforced via `Math.max` on the lower bounds inside `generateRandomGridDimensions`.
 
-Difficulty label shown in HUD badge (Auto mode only).
-`getDifficultyLabel` uses `Math.max(gridRows, gridCols)` = `gridRows` with portrait orientation:
+### Adaptive Complexity & Difficulty System (Auto Mode Only)
+Instead of determining difficulty purely by board sizing, the system evaluates strategic and topological complexity using a **directed blocker dependency graph (DAG)**. Puzzles are analyzed recursively during generation to select target tiers with specific adaptive pacing.
 
-| Row count | Label |
-|---|---|
-| ≤ 8 | NORMAL |
-| ≤ 12 | HARD |
-| ≤ 20 | EXPERT |
-| ≤ 30 | GRAND |
-| > 30 | TITAN |
+#### 1. Blocker Dependency Graph Evaluation
+Before accepting a generated board candidate, `evaluateBoardComplexity(paths, rows, cols)` is executed:
+- **Direct Blockers**: Traces ray escape paths for each path in its heading direction. Any intersection with another path adds a directed blocker dependency.
+- **Maximum Dependency Depth (`maxDepth`)**: Recursively computes the maximum chain of nested block dependencies required to unlock the board.
+- **Blocker Ratio**: Calculates the ratio of total block dependencies to path count.
+- **Initial Escape Options**: Counts paths with `0` blocker dependencies (can escape immediately). High difficulty matches target **3 to 6 initial safe choices**; extremely low (< 2) or high (> 6) initial escape counts are penalized to ensure interesting, non-trivial, yet readable starting play.
+- **Complexity Score formula**:
+  `score = maxDepth * 3 + blockerRatio * 5.5 - initialEscapePen`
+  
+The resulting score classifies boards into five difficulty tiers (with their corresponding HUD colors):
+- **EASY**: Score `< 6` (Emerald Green HUD: `#10b981`)
+- **NORMAL**: Score `6–12.99` (Blue HUD: `#3b82f6`)
+- **HARD**: Score `13–21.99` (Orange HUD: `#f97316`)
+- **EXPERT**: Score `22–28.99` (Purple HUD: `#a855f7`)
+- **TITAN**: Score `≥ 29` (Pink HUD: `#ec4899`)
+
+#### 2. Weighted Level Progressions
+Base target difficulty probabilities scale dynamically by level:
+- **Levels 1–10**: EASY (60%), NORMAL (30%), HARD (9%), EXPERT (1%)
+- **Levels 11–20**: EASY (20%), NORMAL (45%), HARD (30%), EXPERT (5%)
+- **Levels 21–40**: EASY (10%), NORMAL (20%), HARD (50%), EXPERT (20%)
+- **Levels 41+**: EASY (5%), NORMAL (15%), HARD (50%), EXPERT (30%)
+
+#### 3. Intelligent Difficulty Pacing & Relief Boards
+To maintain a comfortable flow and prevent cognitive fatigue, a 5-level sliding log history (`State.recentDifficulties`) enforces pacing override rules:
+- **Anti-Streak Guard**: Restricts generating more than 2 consecutive `EXPERT` or `EASY` boards.
+- **Relief Interjections**: If two consecutive high-difficulty (`HARD` or `EXPERT`) boards are played, the system temporarily reduces difficulty of the next board to `EASY` (40%) or `NORMAL` (60%) for player relief.
 
 ---
 
@@ -647,6 +669,7 @@ Collision detected during MOVING
 | F13 | Canvas briefly jumps/zooms-out before zoom-in animation starts | `camera.js` | Forcibly re-applied starting fitZoom to canvas transform immediately after target recalculations |
 | F14 | Board snaps and sticks to left edge when manually zoomed in | `camera.js` | Migrated horizontal/vertical bounds clamping and centering calculations to use scaled board dimensions instead of canvas dimensions |
 | F15 | Overly stretched vertical boards feel visually narrow and cramped | `topologies.js` | Introduced ratio-driven procedural generation with 95% balanced portrait aspect ratios (1.35x-1.65x) and strict preset bounds clamping |
+| F16 | Board difficulty was determined purely by dimension sizes | `js/board-gen.js`, `js/topologies.js` | Replaced with evaluated blocker-dependency graph DAG complexity, adaptive weighted probability, and relief pacing controls |
 
 ---
 

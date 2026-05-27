@@ -29,7 +29,9 @@ const State = {
     canvasH: 0,
     minZoom: 0.15,  // updated dynamically by startCameraEntranceAnimation
     revealActive: false,
-    revealProgress: 0.0
+    revealProgress: 0.0,
+    boardDifficulty: "NORMAL",
+    recentDifficulties: []
 };
 
 const canvas = document.getElementById('gameCanvas');
