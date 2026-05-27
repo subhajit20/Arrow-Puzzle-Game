@@ -1469,6 +1469,19 @@ function build100PackedLevel(forceNewGeneration = false) {
                 // interaction density, dependency chains, and choke points.
                 densityOptimizerPass(candidate.paths, State.level);
 
+                // Phase 3 DAG construction: flip headings of freely-tappable
+                // paths to point them at other paths' bodies.  This converts
+                // accidental interactions into deliberate dependency chains —
+                // the core technique used by professional puzzle games to
+                // ensure every tap feels logically forced.
+                buildDAGHeadings(candidate.paths, State.gridRows, State.gridCols);
+
+                // Re-run unjammer after DAG flips to resolve any new deadlocks
+                // introduced by the heading changes (unjammer will flip back any
+                // that created irresolvable cycles).
+                runUnjammingSolvabilityTweak(candidate.paths, State.gridRows, State.gridCols, null);
+                fixVisualSelfIntersections(candidate.paths, State.gridRows, State.gridCols);
+
                 // Evaluate puzzle complexity (reflects the optimized board)
                 const complexity = evaluateBoardComplexity(candidate.paths, State.gridRows, State.gridCols);
                 let tier = "NORMAL";
@@ -1527,8 +1540,11 @@ function build100PackedLevel(forceNewGeneration = false) {
                 if (!hasAnyDoubleSelfCollidingPath(fb.paths, FB_ROWS, FB_COLS) &&
                     isBoardFullySolvable(fb.paths, FB_ROWS, FB_COLS)) {
 
-                    // Apply density optimizer on fallback board too
+                    // Apply density optimizer + DAG builder on fallback too
                     densityOptimizerPass(fb.paths, State.level);
+                    buildDAGHeadings(fb.paths, FB_ROWS, FB_COLS);
+                    runUnjammingSolvabilityTweak(fb.paths, FB_ROWS, FB_COLS, null);
+                    fixVisualSelfIntersections(fb.paths, FB_ROWS, FB_COLS);
 
                     const complexity = evaluateBoardComplexity(fb.paths, FB_ROWS, FB_COLS);
                     if (complexity.score < 6) fbDifficulty = "EASY";
@@ -1558,6 +1574,123 @@ function build100PackedLevel(forceNewGeneration = false) {
     Persistence.saveState();
     updateDomUI();
     startPathRevealAnimation();
+}
+
+// ---------------------------------------------------------------------------
+// buildDAGHeadings
+//
+// DAG-first dependency construction pass.
+//
+// After Hamiltonian generation + density splitting, many paths can escape
+// freely (their heading corridor contains no other path).  A player can tap
+// those in any order — the puzzle feels trivial.
+//
+// This function flips the heading of "free" paths to point them into the body
+// of another path, deliberately creating a blocking dependency:
+//   "You cannot clear me until you clear the path I am pointing at."
+//
+// Each flip is safety-checked with a fast DFS cycle guard before applying —
+// if the target path can already reach the source through the current
+// dependency graph, the flip would create a deadlock cycle and is skipped.
+// The unjammer that runs after this pass resolves any residual deadlocks.
+//
+// Result: fewer freely-tappable paths, deeper dependency chains, forced
+// solve order — the "I can tap anything" problem is eliminated.
+// ---------------------------------------------------------------------------
+function buildDAGHeadings(paths, rows, cols) {
+    const DIR = { UP:[-1,0], DOWN:[1,0], LEFT:[0,-1], RIGHT:[0,1] };
+
+    for (let pass = 0; pass < 6; pass++) {
+
+        // ── Build fast occupation map (row*cols + col → pathId) ────────────
+        const occ = new Int32Array(rows * cols).fill(-1);
+        paths.forEach(p => p.points.forEach(pt => {
+            occ[pt.r * cols + pt.c] = p.id;
+        }));
+
+        // ── Build dependency graph: dep[B] = set of ids that block B ───────
+        // dep[B] contains A  →  A's body is in B's escape corridor
+        //                    →  A must be cleared before B can move
+        const dep = {};
+        paths.forEach(p => { dep[p.id] = new Set(); });
+
+        paths.forEach(p => {
+            const head = p.points[p.points.length - 1];
+            const mv   = DIR[p.heading];
+            if (!mv) return;
+            let cr = head.r + mv[0], cc = head.c + mv[1];
+            while (cr >= 0 && cr < rows && cc >= 0 && cc < cols) {
+                if (State.gridMask[cr]?.[cc] === -1) break;
+                const tid = occ[cr * cols + cc];
+                if (tid >= 1 && tid !== p.id) { dep[p.id].add(tid); break; }
+                cr += mv[0]; cc += mv[1];
+            }
+        });
+
+        // ── DFS reachability check in dep graph ─────────────────────────────
+        // Returns true if toId is reachable from fromId through dependency edges.
+        // Used to detect would-be cycles before flipping.
+        function canReach(fromId, toId) {
+            const seen = new Set();
+            const stk  = [fromId];
+            while (stk.length > 0) {
+                const cur = stk.pop();
+                if (cur === toId) return true;
+                if (seen.has(cur)) continue;
+                seen.add(cur);
+                dep[cur]?.forEach(nxt => stk.push(nxt));
+            }
+            return false;
+        }
+
+        // ── Find freely-tappable paths (no current blockers) ────────────────
+        const freePaths = paths.filter(p => dep[p.id].size === 0);
+        let flippedAny = false;
+
+        for (const p of freePaths) {
+            // Try reversing this path (flip which end is the arrowhead)
+            const revPts = [...p.points].reverse();
+            const n      = revPts.length;
+            const newHead = revPts[n - 1];
+            const newPrev = revPts[n - 2];
+            const newHdg  = getHeadingFromDiff(
+                newHead.r - newPrev.r, newHead.c - newPrev.c
+            );
+
+            // Self-collision guard — skip if new head fires into own body
+            const dir = { r: newHead.r - newPrev.r, c: newHead.c - newPrev.c };
+            const ev  = evaluateEndpoint(
+                newHead, dir, revPts.slice(0, n - 1), rows, cols
+            );
+            if (ev.selfIntersect) continue;
+
+            // Find first foreign path in the new escape corridor
+            const mv = DIR[newHdg];
+            if (!mv) continue;
+            let blockId = -1;
+            let cr = newHead.r + mv[0], cc = newHead.c + mv[1];
+            while (cr >= 0 && cr < rows && cc >= 0 && cc < cols) {
+                if (State.gridMask[cr]?.[cc] === -1) break;
+                const tid = occ[cr * cols + cc];
+                if (tid >= 1 && tid !== p.id) { blockId = tid; break; }
+                cr += mv[0]; cc += mv[1];
+            }
+            if (blockId < 0) continue; // still freely escapes after flip — skip
+
+            // Cycle guard: if blockId already (transitively) depends on p,
+            // adding p→blockId would create a circular dependency → deadlock.
+            if (canReach(blockId, p.id)) continue;
+
+            // ── Safe to flip ─────────────────────────────────────────────────
+            p.points        = revPts;
+            p.heading       = newHdg;
+            p.originalPoints = JSON.parse(JSON.stringify(revPts));
+            dep[p.id].add(blockId); // keep local graph consistent for this pass
+            flippedAny = true;
+        }
+
+        if (!flippedAny) break; // converged — no more free paths can be constrained
+    }
 }
 
 // ---------------------------------------------------------------------------
