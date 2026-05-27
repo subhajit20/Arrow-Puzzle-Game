@@ -69,6 +69,13 @@ function resizeCanvas() {
     canvas.style.width  = State.canvasW + 'px';
     canvas.style.height = State.canvasH + 'px';
 
+    // CRITICAL: the board-container uses flex + align-items:center.  Without
+    // this override, a canvas taller than the container gets flex-centred, i.e.
+    // its top is shifted up by (containerH - canvasH)/2.  getCanvasCoords in
+    // input.js assumes canvasTop == containerTop, so that offset makes every
+    // tap land on the wrong path and breaks zoom anchoring.
+    canvas.style.alignSelf = 'flex-start';
+
     ctx.scale(dpr, dpr);
     applyBoardTransform();
 }
