@@ -1,85 +1,56 @@
 function generateRandomGridDimensions(preset, level) {
-    // Global hard limits: rows 6–50, cols 2–20.
-    let minR, maxR, minC, maxC;
+    // Premium puzzle philosophy: compact near-square boards (8×8–20×20) deliver
+    // denser strategic interactions than giant stretched boards.
+    // Difficulty comes from path density and dependency depth, NOT matrix size.
+    // Preferred premium sizes: 10×10, 12×12, 14×14, 16×16, 18×18, 18×20, 20×20.
+    // Avoid stretched shapes like 10×50 or 8×40 — they kill interaction density.
+    let minSide, maxSide;
 
     if (preset === "Standard") {
-        minR = 6; maxR = 20;
-        minC = 2; maxC = 10;
+        minSide = 8;  maxSide = 12;
     } else if (preset === "Grand") {
-        minR = 15; maxR = 28;
-        minC = 6; maxC = 13;
+        minSide = 12; maxSide = 16;
     } else if (preset === "Colossal") {
-        minR = 22; maxR = 38;
-        minC = 9; maxC = 16;
+        minSide = 14; maxSide = 18;
     } else if (preset === "Titan") {
-        minR = 32; maxR = 46;
-        minC = 13; maxC = 18;
+        minSide = 16; maxSide = 20;
     } else if (preset === "Cosmic") {
-        minR = 40; maxR = 50;
-        minC = 16; maxC = 20;
+        minSide = 18; maxSide = 20;
     } else {
-        // Auto — rows and cols scale independently with level
-        if (level <= 2) {
-            minR = 6; maxR = 12;
-            minC = 2; maxC = 5;
-        } else if (level <= 5) {
-            minR = 8; maxR = 20;
-            minC = 3; maxC = 8;
-        } else if (level <= 8) {
-            minR = 12; maxR = 30;
-            minC = 4; maxC = 12;
-        } else if (level <= 12) {
-            minR = 18; maxR = 38;
-            minC = 6; maxC = 15;
-        } else if (level <= 18) {
-            minR = 25; maxR = 45;
-            minC = 9; maxC = 17;
-        } else {
-            minR = 35; maxR = 50;
-            minC = 14; maxC = 20;
-        }
-        // After level 10: hard floor of 15 rows × 6 cols
-        if (level > 10) {
-            minR = Math.max(minR, 15);
-            minC = Math.max(minC, 6);
-        }
+        // Auto: slow compact growth with level.
+        // Board size stays tight — density, not dimensions, creates difficulty.
+        if (level <= 3)       { minSide = 8;  maxSide = 10; }
+        else if (level <= 6)  { minSide = 10; maxSide = 12; }
+        else if (level <= 10) { minSide = 12; maxSide = 14; }
+        else if (level <= 15) { minSide = 14; maxSide = 16; }
+        else if (level <= 20) { minSide = 16; maxSide = 18; }
+        else                  { minSide = 18; maxSide = 20; }
     }
 
-    // Determine target ratio (5% chance of vertical challenge, 95% balanced)
-    let targetRatio;
-    if (Math.random() < 0.05) {
-        targetRatio = 2.8 + Math.random() * 1.2; // 2.8 to 4.0 (tall vertical challenge)
-    } else {
-        targetRatio = 1.35 + Math.random() * 0.3; // 1.35 to 1.65 (balanced portrait)
-    }
+    // Roll rows from the compact range
+    let rows = minSide + Math.floor(Math.random() * (maxSide - minSide + 1));
 
-    // 1. Roll rows within the active bounds
-    let rows = minR + Math.floor(Math.random() * (maxR - minR + 1));
+    // Cols: within 0–2 cells of rows — produces near-square or slightly portrait
+    // boards (14×14, 18×18, 18×20, 20×20…). No stretched tall rectangles.
+    let colOffset = Math.floor(Math.random() * 3); // 0, 1, or 2 less than rows
+    let cols = Math.max(minSide - 2, rows - colOffset);
+    cols = Math.min(maxSide, cols);
 
-    // 2. Calculate columns using the target aspect ratio
-    let cols = Math.ceil(rows / targetRatio);
-
-    // 3. Mobile portrait: ensure enough columns so the board spans the full screen width
+    // Mobile portrait: ensure enough columns for comfortable play width
     if (typeof window !== 'undefined' && window.innerWidth) {
         const screenW = window.innerWidth;
         if (screenW < 768 && screenW < (window.innerHeight || 800)) {
             const optimalCols = Math.ceil((screenW - 4) / 34);
-            cols = Math.max(cols, optimalCols);
+            cols = Math.max(cols, Math.min(optimalCols, maxSide));
         }
     }
 
-    // 4. Strictly clamp cols within active preset boundaries
-    cols = Math.max(minC, Math.min(maxC, cols));
+    // Keep rows >= cols for portrait orientation
+    if (cols > rows) { let tmp = rows; rows = cols; cols = tmp; }
 
-    // 5. Keep the originally rolled rows — do NOT recalculate from clamped cols.
-    // Recalculating would snap rows back to near minR whenever cols is capped
-    // (e.g. level 19+: rolled rows=45 → cols clamped to 20 → ceil(20×1.5)=30
-    //  → max(35,30)=35, discarding the rolled 45). Just clamp to preset bounds.
-    rows = Math.max(minR, Math.min(maxR, rows));
-
-    // 6. Global hard safety clamps
-    rows = Math.min(50, Math.max(6, rows));
-    cols = Math.min(20, Math.max(2, cols));
+    // Final safety clamps
+    rows = Math.max(8, Math.min(20, rows));
+    cols = Math.max(6, Math.min(20, cols));
 
     return { rows, cols };
 }
@@ -320,17 +291,17 @@ const TOPOLOGIES = {
 };
 
 function getTopologyForLevel(level, rows, cols) {
-    // Level 15+: always use a full-rectangle topology for maximum puzzle density.
-    // Shape cutouts (diamonds, crosses, donuts, etc.) create dead void regions that
-    // make the board feel sparse regardless of how well paths are packed inside.
-    // Full rectangle = every single cell participates = true 100% density.
-    if (level >= 15) {
-        // 80% VERTICAL_RECT (tall portrait), 20% SQUARE (flexible orientation)
+    // Small boards (shorter side ≤ 10): always full rectangle.
+    // Shape topologies on tiny boards waste too many active cells and destroy
+    // the density that makes compact boards feel premium.
+    // Level 15+: always full rectangle for maximum density regardless of size.
+    if (Math.min(rows, cols) <= 10 || level >= 15) {
+        // 80% VERTICAL_RECT (portrait), 20% SQUARE (flexible orientation)
         return Math.random() < 0.8 ? TOPOLOGIES.VERTICAL_RECT : TOPOLOGIES.SQUARE;
     }
 
-    // Early levels: weighted selection across all topologies.
-    // VERTICAL_RECT still dominates but shapes add visual variety.
+    // Mid-range boards at early levels: topology variety adds visual interest
+    // while boards are large enough to absorb shape cutouts meaningfully.
     const TOPOLOGY_WEIGHTS = {
         VERTICAL_RECT: 5,   // ← most common: tall portrait boards
         SQUARE: 1,   // ← least common: plain full rectangle

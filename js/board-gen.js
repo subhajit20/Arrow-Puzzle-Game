@@ -260,9 +260,14 @@ function tryGenerateBoard() {
             if (_lvl > 25) maxLen = Math.max(3, Math.round(maxLen * 0.70));
             else if (_lvl > 10) maxLen = Math.max(3, Math.round(maxLen * 0.85));
         }
-        // Hard global cap: no crawler path ever exceeds 8 cells.
-        // The gap-fill pass and density optimizer handle the rest.
-        maxLen = Math.min(maxLen, 8);
+        // Adaptive soft cap: scales with the smaller board dimension so compact
+        // boards get naturally tight paths while larger boards allow occasional
+        // longer ones. Replaces the previous rigid 8-cell hard cap to preserve
+        // procedural variety as the user requested.
+        {
+            const _minDim = Math.min(State.gridRows, State.gridCols);
+            maxLen = Math.min(maxLen, Math.max(5, Math.floor(_minDim * 0.70)));
+        }
 
         let consecutiveStraight = 0;
         let spiralDir = Math.random() < 0.5 ? 1 : -1;
@@ -444,8 +449,9 @@ function tryGenerateBoard() {
     // accepting new cells via extension. Remaining unassigned cells fall through
     // to the steal-fallback below, which creates new short paths instead of
     // ballooning existing ones into fat region-dominating monsters.
-    // Hard ceiling: 8 cells (matches the crawler hard cap).
-    const gapFillMaxLen = Math.min(8, getAdaptiveTargetLen(State.level || 1) + 2);
+    // Ceiling: slightly looser than the crawler soft cap to allow a few extra
+    // gap-fill cells, but still prevents any single path from dominating a region.
+    const gapFillMaxLen = Math.min(10, getAdaptiveTargetLen(State.level || 1) + 3);
 
     // Prefer attaching to endpoints whose new escape ray stays self-intersection-free
     let progress = true;
@@ -846,17 +852,17 @@ function buildGridOwnership(paths) {
 // ---------------------------------------------------------------------------
 function getAdaptiveTargetLen(level) {
     const maxDim = Math.max(State.gridRows, State.gridCols);
-    // Base target average path length by board size.
-    // Tuned to match the reference density of ~4–5 cells/path on medium boards.
+    // Base target average path length tuned for compact 8–20 boards.
+    // Smaller boards need shorter paths to achieve the reference density.
+    // At level 14: 10×10→4, 14×14→5, 18×18→6 average cells per path.
+    // At level 26+: all board sizes push toward 4 cells average.
     let base;
-    if (maxDim >= 40) base = 7;
-    else if (maxDim >= 20) base = 9;
-    else base = 11;
-    // Level scaling: higher levels push toward very tight packing.
-    // Level 14 with maxDim~20: max(5, floor(9*0.68)) = 6 cells target avg.
-    // Level 26+ with maxDim~20: max(4, floor(9*0.55)) = 4 cells target avg.
+    if (maxDim >= 18) base = 9;
+    else if (maxDim >= 14) base = 8;
+    else if (maxDim >= 10) base = 7;
+    else base = 6;
     if (level > 25) return Math.max(4, Math.floor(base * 0.55));
-    if (level > 10) return Math.max(5, Math.floor(base * 0.68));
+    if (level > 10) return Math.max(4, Math.floor(base * 0.68));
     return base;
 }
 
@@ -1155,10 +1161,10 @@ function build100PackedLevel(forceNewGeneration = false) {
         State.paths = validResult.paths;
         State.boardDifficulty = chosenDifficulty;
     } else {
-        // All 20 attempts failed — fall back to a simple, guaranteed-solvable
-        // portrait board.  15×8 gives enough cells for interesting play while
-        // being fast to generate and reliably solvable.
-        const FB_ROWS = 15, FB_COLS = 8;
+        // All 20 attempts failed — fall back to a compact square board.
+        // 12×12 matches the new premium-density philosophy while being
+        // simple enough to generate reliably in a few attempts.
+        const FB_ROWS = 12, FB_COLS = 12;
         State.gridRows = FB_ROWS;
         State.gridCols = FB_COLS;
         State.gridSize = FB_ROWS;
@@ -1294,12 +1300,12 @@ function evaluateBoardComplexity(paths, rows, cols) {
     let numPaths = paths.length || 1;
     let blockerRatio = totalBlockers / numPaths;
 
-    // Penalize when initial escapes are extremely low (<2) or high (>6)
-    // to target a balanced start (3-6 starting choices).
+    // Only penalise boards where too many paths can escape freely (too easy).
+    // Removed the <2 penalty: a board with few initial escapes is HARDER
+    // (deep dependency lock), not easier — penalising it was counter-productive
+    // and prevented dense boards from scoring HARD/EXPERT as intended.
     let initialEscapePen = 0;
-    if (initialEscapes < 2) {
-        initialEscapePen = 2.0;
-    } else if (initialEscapes > 6) {
+    if (initialEscapes > 6) {
         initialEscapePen = (initialEscapes - 6) * 1.5;
     }
 
