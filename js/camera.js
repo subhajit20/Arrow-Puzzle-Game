@@ -9,54 +9,43 @@ window.cameraAnimReq = null;
 //   • Zoom is clamped to [State.minZoom, 6.0].
 //   • When the scaled canvas is NARROWER/SHORTER than the container it is
 //     centred automatically (used during fit-view and zoom-out).
-//   • When it is WIDER/TALLER the user can pan freely within bounds.
+//   • When it is WIDER/TALLER the user can pan freely within the board bounds.
 // ---------------------------------------------------------------------------
 function applyBoardTransform() {
     // Clamp zoom
     if (State.cssZoom < State.minZoom) State.cssZoom = State.minZoom;
-    if (State.cssZoom > 6.0) State.cssZoom = 6.0;
+    if (State.cssZoom > 6.0)           State.cssZoom = 6.0;
 
     const container = document.getElementById('board-container');
     if (container && State.canvasW && State.canvasH) {
-        const bcr = container.getBoundingClientRect();
+        const bcr     = container.getBoundingClientRect();
         const scaledW = State.canvasW * State.cssZoom;
         const scaledH = State.canvasH * State.cssZoom;
 
-        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
-        let topBarH = 0;
-        let bottomBarH = 0;
-        if (isMobile) {
-            const header = document.getElementById('game-header');
-            const footer = document.getElementById('game-controls');
-            if (header) topBarH = header.getBoundingClientRect().height;
-            if (footer) bottomBarH = footer.getBoundingClientRect().height;
-        }
-
-        const availW = bcr.width;
-        const availH = bcr.height - topBarH - bottomBarH;
-
         // Horizontal ─────────────────────────────────────────────────────────
-        if (scaledW <= availW) {
-            // Canvas narrower than available: centre it
-            State.matE = (availW - scaledW) / 2;
+        if (scaledW <= bcr.width) {
+            // Canvas narrower than container: centre it (handles zoom-out)
+            State.matE = (bcr.width - scaledW) / 2;
         } else {
-            // Canvas wider: allow panning
-            const ox = State.offsetX || 0;
-            const brdW = (State.gridCols || 0) * (State.cellSize || 0);
-            const maxE = -ox * State.cssZoom;
-            const minE = availW - (ox + brdW) * State.cssZoom;
-            State.matE = Math.min(maxE, Math.max(minE, State.matE));
+            // Canvas wider: allow panning across the full board width.
+            // Bounds are board-edge-based so the player can reach every column:
+            //   maxE  →  board left  edge at container left  edge
+            //   minE  →  board right edge at container right edge
+            const ox    = State.offsetX  || 0;
+            const brdW  = (State.gridCols || 0) * (State.cellSize || 0);
+            const maxE  = -ox * State.cssZoom;
+            const minE  = bcr.width - (ox + brdW) * State.cssZoom;
+            State.matE  = Math.min(maxE, Math.max(minE, State.matE));
         }
 
         // Vertical ───────────────────────────────────────────────────────────
-        if (scaledH <= availH) {
-            // Canvas shorter than available: centre it perfectly between bars
-            State.matF = topBarH + (availH - scaledH) / 2;
+        if (scaledH <= bcr.height) {
+            // Canvas shorter than container: centre it
+            State.matF = (bcr.height - scaledH) / 2;
         } else {
-            // Canvas taller: scroll from just below top bar to just above bottom bar
-            const maxF = topBarH;
-            const minF = topBarH + availH - scaledH;
-            State.matF = Math.min(maxF, Math.max(minF, State.matF));
+            // Canvas taller: scroll from top (matF=0) to bottom (matF=-max)
+            const maxDown = scaledH - bcr.height;
+            State.matF = Math.min(0, Math.max(-maxDown, State.matF));
         }
     }
 
@@ -73,8 +62,8 @@ function resetCamera() {
         window.cameraAnimReq = null;
     }
     State.cssZoom = 1.0;
-    State.matE = 0;
-    State.matF = 0;
+    State.matE    = 0;
+    State.matF    = 0;
     applyBoardTransform();
 }
 
@@ -84,16 +73,16 @@ function resetCamera() {
 // getCanvasCoords in input.js stays accurate.
 // ---------------------------------------------------------------------------
 function resizeCanvas() {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr       = window.devicePixelRatio || 1;
     const container = document.getElementById('board-container');
-    const bcr = container.getBoundingClientRect();
+    const bcr       = container.getBoundingClientRect();
 
     calculateMetrics(bcr.width, bcr.height);
 
     // canvas.width reset clears the 2-D context transform — set it first.
-    canvas.width = Math.round(State.canvasW * dpr);
+    canvas.width  = Math.round(State.canvasW * dpr);
     canvas.height = Math.round(State.canvasH * dpr);
-    canvas.style.width = State.canvasW + 'px';
+    canvas.style.width  = State.canvasW + 'px';
     canvas.style.height = State.canvasH + 'px';
 
     // Prevent the flex container's align-items:center from shifting a
@@ -107,37 +96,68 @@ function resizeCanvas() {
 // ---------------------------------------------------------------------------
 // calculateMetrics — derive cellSize, canvasW/H, offsetX/Y from container size
 //
-// On mobile the cell size is constrained by BOTH available width and height so
-// the entire board always fits inside the board-container without overflowing.
-//   cellByWidth  = (w - 4)  / gridCols  — 2 px breathing room each side
-//   cellByHeight = (h - 8)  / gridRows  — 4 px breathing room top + bottom
-//   cellSize     = min(cellByWidth, cellByHeight)
+// On mobile the cell size is driven by the TRUE visible gameplay area:
 //
-// Consequence: the canvas is always exactly the container size, the board is
-// centred inside it, and no board ever needs vertical scrolling to be seen.
+//   availableWidth  = window.innerWidth  − 2 × PAD
+//   availableHeight = window.innerHeight − topBarH − bottomBarH − 2 × PAD
+//
+// Driving the calculation from window.innerHeight (the live CSS viewport
+// height) minus the measured bar heights is more reliable than the container
+// BCR alone.  Some browsers (iOS -webkit-fill-available, early Android Chrome
+// svh fall-back) make the body taller than the actual on-screen area, which
+// inflates the container BCR.  Sizing cells from that inflated height causes
+// the board to overflow the real viewport.
+//
+// offsetY is centred inside the VISIBLE slice of the canvas (capped at
+// window.innerHeight − topBarH) rather than the full canvas height, so the
+// board stays entirely within the screen even when the container extends
+// below the viewport edge.
 // ---------------------------------------------------------------------------
 function calculateMetrics(w, h) {
     const isMobile = w < 768 && w < h;
 
     if (isMobile) {
-        // Fit the board inside the container in BOTH dimensions simultaneously.
-        const cellByWidth = (w - 4) / State.gridCols;
-        const cellByHeight = (h - 8) / State.gridRows;
-        State.cellSize = Math.min(cellByWidth, cellByHeight);
+        // ── Measure bars to find the actual on-screen play area ──────────────
+        const header  = document.getElementById('game-header');
+        const ctrls   = document.getElementById('game-controls');
+        const topBarH = header ? header.getBoundingClientRect().height : 0;
+        const botBarH = ctrls  ? ctrls.getBoundingClientRect().height  : 0;
+
+        // 4 px safe gap on every edge so corners never touch the bar borders
+        const PAD    = 4;
+        const availW = w - PAD * 2;
+        const availH = Math.max(20, window.innerHeight - topBarH - botBarH - PAD * 2);
+
+        // Use the SMALLER ratio — guarantees the full board fits in both axes
+        const cellByWidth  = availW / State.gridCols;
+        const cellByHeight = availH / State.gridRows;
+        State.cellSize = Math.max(1, Math.min(cellByWidth, cellByHeight));
+
+        const boardW = State.gridCols * State.cellSize;
+        const boardH = State.gridRows * State.cellSize;
+
+        State.canvasW = w;
+        State.canvasH = h;
+        State.offsetX = (w - boardW) / 2;
+
+        // Centre within the VISIBLE portion of the canvas.
+        // The canvas origin is at the board-container top-left (below the header).
+        // Cap the reference height at (window.innerHeight − topBarH) so the board
+        // never extends below the viewport edge on inflated-body devices.
+        const visibleH = Math.min(h, window.innerHeight - topBarH);
+        State.offsetY  = Math.max(PAD, (visibleH - boardH) / 2);
     } else {
-        // Desktop: fit the whole board in the fixed-size container box.
+        // Desktop: container is explicitly size-constrained by CSS — use its BCR.
         State.cellSize = Math.min(w / State.gridCols, h / State.gridRows);
+
+        const boardW = State.gridCols * State.cellSize;
+        const boardH = State.gridRows * State.cellSize;
+
+        State.canvasW = w;
+        State.canvasH = h;
+        State.offsetX = (w - boardW) / 2;
+        State.offsetY = (h - boardH) / 2;
     }
-
-    const boardW = State.gridCols * State.cellSize;
-    const boardH = State.gridRows * State.cellSize;
-
-    // Canvas is always exactly the container size — the board is centred inside.
-    State.canvasW = w;
-    State.canvasH = h;
-
-    State.offsetX = (w - boardW) / 2;
-    State.offsetY = (h - boardH) / 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,15 +166,17 @@ function calculateMetrics(w, h) {
 // Called once after each new board is generated (not on persistence reload).
 //
 // Flow:
-//   1. Compute fitZoom — the scale at which the full board fits in the
-//      viewport with margins for the floating header/footer.
-//   2. If the board already fits at zoom=1 (fitZoom ≥ 0.96), skip animation.
+//   1. Compute fitZoom — the scale that fits the entire board in the TRUE
+//      visible play area (viewport − bars) with 88 % fill so there is
+//      visible breathing room around all four edges.
+//   2. If fitZoom ≥ 0.96 the board already fits the screen at 1× zoom —
+//      skip the animation and snap straight to 1×.
 //   3. Otherwise:
 //      a. Snap to fitZoom (board fully visible, centred on screen).
-//      b. Hold for ~600 ms so the player sees the overview.
-//      c. Ease back to zoom=1 / matF=0 over ~1100 ms (cubic ease-in-out).
-//   4. Set State.minZoom to allow zooming out FURTHER than the fit view
-//      (user requirement: freedom to zoom out for navigation).
+//      b. Hold for ~600 ms so the player can read the full puzzle layout.
+//      c. Ease back to zoom = 1 over ~1100 ms (cubic ease-in-out).
+//   4. Set State.minZoom to allow zooming FURTHER OUT than the fit view
+//      (player freedom to navigate large boards).
 // ---------------------------------------------------------------------------
 function startCameraEntranceAnimation() {
     // Cancel any previous animation
@@ -166,36 +188,99 @@ function startCameraEntranceAnimation() {
     const container = document.getElementById('board-container');
     if (!container) { resetCamera(); return; }
 
-    const bcr = container.getBoundingClientRect();
+    const bcr      = container.getBoundingClientRect();
     const isMobile = bcr.width < 768 && bcr.width < bcr.height;
 
     if (!isMobile || !State.cellSize) { resetCamera(); return; }
 
+    // ── True visible play area (mirrors calculateMetrics) ───────────────────
+    const header  = document.getElementById('game-header');
+    const ctrls   = document.getElementById('game-controls');
+    const topBarH = header ? header.getBoundingClientRect().height : 0;
+    const PAD     = 4;
+
+    // Visible slice of the canvas; container may extend below the viewport on
+    // devices with an inflated body, so cap at window.innerHeight − topBarH.
+    const visibleH = Math.min(bcr.height, window.innerHeight - topBarH);
+    const usableW  = bcr.width - PAD * 2;
+    const usableH  = Math.max(20, visibleH - PAD * 2);
+
     const boardW = State.gridCols * State.cellSize;
     const boardH = State.gridRows * State.cellSize;
 
-    let topBarH = 0;
-    let bottomBarH = 0;
-    const header = document.getElementById('game-header');
-    const footer = document.getElementById('game-controls');
-    if (header) topBarH = header.getBoundingClientRect().height;
-    if (footer) bottomBarH = footer.getBoundingClientRect().height;
+    // fitZoom: show the full board at 88 % fill — gives a clear overview margin
+    const fitZoomX = (usableW * 0.88) / boardW;
+    const fitZoomY = (usableH * 0.88) / boardH;
+    const fitZoom  = Math.min(fitZoomX, fitZoomY, 1.0);  // never zoom in beyond 1×
 
-    const availW = bcr.width;
-    const availH = bcr.height - topBarH - bottomBarH;
-
-    // Use a small safe padding (6%) so edges never touch borders
-    const fitZoomX = (availW * 0.94) / boardW;
-    const fitZoomY = (availH * 0.94) / boardH;
-    const fitZoom = Math.min(fitZoomX, fitZoomY, 1.0);  // never zoom in beyond 1×
-
-    // Allow zooming out to 40 % of the fit view (more freedom than the overview)
+    // Allow zooming out to 40 % of the fit view (freedom to navigate)
     State.minZoom = Math.max(fitZoom * 0.40, 0.08);
 
-    // Snap directly to the fit position per user request (Option A)
-    // We remove the animation completely for large boards so they stay fully visible.
+    if (fitZoom >= 0.96) {
+        // Board comfortably fits at full zoom — no intro animation needed
+        State.minZoom = 0.25;
+        resetCamera();
+        return;
+    }
+
+    // ── Step 1: snap to fit position ─────────────────────────────────────────
     State.cssZoom = fitZoom;
-    applyBoardTransform(); // This correctly centers the board within the available area
+    State.matE    = 0;
+    State.matF    = 0;
+    applyBoardTransform();          // sets matE/F to properly centred values
+
+    const startZ = State.cssZoom;
+    const startE = State.matE;
+    const startF = State.matF;
+
+    // ── Step 2 target: normal gameplay position ───────────────────────────────
+    const targetZ = 1.0;
+    const targetE = 0.0;
+    const targetF = 0.0;
+
+    const HOLD_MS = 600;   // time to show the full-board overview
+    const ANIM_MS = 1100;  // zoom-in duration
+    const t0      = performance.now();
+
+    function step(now) {
+        const elapsed = now - t0;
+
+        if (elapsed < HOLD_MS) {
+            // Still in the hold phase — keep the overview visible
+            window.cameraAnimReq = requestAnimationFrame(step);
+            return;
+        }
+
+        let p = (elapsed - HOLD_MS) / ANIM_MS;
+
+        if (p >= 1.0) {
+            // Animation complete — snap to exact target and re-apply clamping
+            State.cssZoom = targetZ;
+            State.matE    = targetE;
+            State.matF    = targetF;
+            applyBoardTransform();
+            window.cameraAnimReq = null;
+            return;
+        }
+
+        // Cubic ease-in-out
+        const t = p < 0.5
+            ? 4 * p * p * p
+            : 1 - Math.pow(-2 * p + 2, 3) / 2;
+
+        State.cssZoom = startZ + (targetZ - startZ) * t;
+        State.matE    = startE + (targetE - startE) * t;
+        State.matF    = startF + (targetF - startF) * t;
+
+        // Write the transform directly — skip applyBoardTransform clamping so
+        // the lerp is smooth even through intermediate zoom levels.
+        canvas.style.transform =
+            `matrix(${State.cssZoom},0,0,${State.cssZoom},${State.matE},${State.matF})`;
+
+        window.cameraAnimReq = requestAnimationFrame(step);
+    }
+
+    window.cameraAnimReq = requestAnimationFrame(step);
 }
 
 window.addEventListener('resize', () => {
