@@ -107,7 +107,7 @@ function calculateMetrics(w, h) {
 
     State.canvasW = w;
     State.canvasH = isMobile
-        ? Math.max(h, boardH + 140)   // 140 px: header + footer safe-area buffer
+        ? Math.max(h, boardH + 20)    // 20 px: small bottom margin on tall boards
         : Math.max(h, boardH);
 
     State.offsetX = (State.canvasW - boardW) / 2;
