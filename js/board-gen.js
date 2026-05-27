@@ -425,12 +425,14 @@ function splitPathIntoSegments(hamiltonPath, startId, level) {
             }
 
             // Factor 2: TURN COUNT — direction changes inside this segment.
-            // 0 turns = straight line (boring, easy to read, weak interactions)
-            // 1 turn  = L-shape or U-shape (good — like 70% of pro-game paths)
-            // 2 turns = S/Z/N-shape (excellent — complex, hard to read at a glance)
-            // Cap reward at 2 turns to avoid overly contorted paths.
+            // Premium puzzle games (Flow Free, AHA Games) use predominantly
+            // straight lines and L-shapes. Z/S/N shapes (2+ turns) feel chaotic
+            // and are avoided in professional titles.
+            // 0 turns = straight line → no bonus
+            // 1 turn  = L-shape / U-shape → strong bonus (~70% target)
+            // 2+ turns = Z/S shape → slight penalty (discouraged)
             const turns    = countSegmentTurns(hamiltonPath, pos, len);
-            const turnScore = Math.min(turns, 2) * 2.5; // up to 5.0 bonus
+            const turnScore = turns === 1 ? 2.5 : turns > 1 ? -1.0 : 0;
 
             // Factor 3: prefer lengths close to targetLen
             const lenScore = 1.0 - Math.abs(len - targetLen) / (targetLen + 2);
