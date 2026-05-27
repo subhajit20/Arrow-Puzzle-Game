@@ -885,5 +885,4 @@ function build100PackedLevel(forceNewGeneration = false) {
     State.lives = 3;
     Persistence.saveState();
     updateDomUI();
-    startCameraEntranceAnimation();
 }

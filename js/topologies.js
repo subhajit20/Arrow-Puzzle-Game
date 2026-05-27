@@ -49,19 +49,6 @@ function generateRandomGridDimensions(preset, level) {
 
     let rows = minR + Math.floor(Math.random() * (maxR - minR + 1));
     let cols = minC + Math.floor(Math.random() * (maxC - minC + 1));
-
-    // Make matrix width responsive to screen width
-    if (typeof window !== 'undefined' && window.innerWidth) {
-        let screenW = window.innerWidth;
-        // If on mobile portrait, compute how many columns fit nicely
-        if (screenW < 768 && screenW < (window.innerHeight || 800)) {
-            // Assume an optimal mobile cell size is ~42px
-            let optimalCols = Math.max(minC, Math.floor(screenW / 42));
-            // Boost cols to fill width, but don't exceed absolute max limits too quickly
-            cols = Math.max(cols, optimalCols);
-        }
-    }
-
     rows = Math.min(50, Math.max(6, rows));
     cols = Math.min(20, Math.max(2, cols));
     return { rows, cols };
