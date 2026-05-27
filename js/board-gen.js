@@ -809,8 +809,29 @@ function build100PackedLevel(forceNewGeneration = false) {
     State.gridSize = Math.max(State.gridRows, State.gridCols);
 
     const topo = getTopologyForLevel(State.level, State.gridRows, State.gridCols);
+    // Portrait topologies need more rows than cols — swap dimensions if the
+    // random generator produced a landscape or square board.
+    if (topo.enforcePortrait && State.gridCols > State.gridRows) {
+        let tmp = State.gridRows;
+        State.gridRows = State.gridCols;
+        State.gridCols = tmp;
+        // gridSize (the max) is unchanged by a swap, so no need to recalculate.
+    }
     State.shapeName = topo.name;
     State.gridMask = topo.makeMask(State.gridRows, State.gridCols);
+
+    // Safety check: if the topology produces too few playable cells for these
+    // dimensions (e.g. a Circle on a 6×2 board yields ~4 cells), substitute a
+    // full-rectangle mask so the generation pipeline always has enough cells to
+    // build real paths and the solvability validator has something to work with.
+    let _playableCount = 0;
+    for (let _r = 0; _r < State.gridRows; _r++)
+        for (let _c = 0; _c < State.gridCols; _c++)
+            if (State.gridMask[_r][_c] === 1) _playableCount++;
+    if (_playableCount < 6) {
+        State.shapeName = TOPOLOGIES.VERTICAL_RECT.name;
+        State.gridMask = TOPOLOGIES.VERTICAL_RECT.makeMask(State.gridRows, State.gridCols);
+    }
 
     resetCamera();
     resizeCanvas();
@@ -833,22 +854,25 @@ function build100PackedLevel(forceNewGeneration = false) {
     if (validResult) {
         State.paths = validResult.paths;
     } else {
-        // All attempts failed — fall back to a guaranteed-solvable 8×8 square.
-        State.gridRows = 8;
-        State.gridCols = 8;
-        State.gridSize = 8;
-        State.gridMask = TOPOLOGIES.SQUARE.makeMask(8, 8);
-        State.shapeName = "Square Matrix";
+        // All 20 attempts failed — fall back to a simple, guaranteed-solvable
+        // portrait board.  15×8 gives enough cells for interesting play while
+        // being fast to generate and reliably solvable.
+        const FB_ROWS = 15, FB_COLS = 8;
+        State.gridRows = FB_ROWS;
+        State.gridCols = FB_COLS;
+        State.gridSize = FB_ROWS;
+        State.gridMask = TOPOLOGIES.VERTICAL_RECT.makeMask(FB_ROWS, FB_COLS);
+        State.shapeName = TOPOLOGIES.VERTICAL_RECT.name;
         resetCamera();
         resizeCanvas();
         let fallback = null;
         for (let attempt = 0; attempt < 10; attempt++) {
             let fb = tryGenerateBoard();
             if (fb && fb.paths && fb.paths.length > 0) {
-                runUnjammingSolvabilityTweak(fb.paths, 8, 8, fb.gridOwnership);
-                fixVisualSelfIntersections(fb.paths, 8, 8);
-                if (!hasAnyDoubleSelfCollidingPath(fb.paths, 8, 8) &&
-                    isBoardFullySolvable(fb.paths, 8, 8)) {
+                runUnjammingSolvabilityTweak(fb.paths, FB_ROWS, FB_COLS, fb.gridOwnership);
+                fixVisualSelfIntersections(fb.paths, FB_ROWS, FB_COLS);
+                if (!hasAnyDoubleSelfCollidingPath(fb.paths, FB_ROWS, FB_COLS) &&
+                    isBoardFullySolvable(fb.paths, FB_ROWS, FB_COLS)) {
                     fallback = fb;
                     break;
                 }

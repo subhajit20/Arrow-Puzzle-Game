@@ -167,22 +167,24 @@ const actions = {
             build100PackedLevel(true);
         } catch (e) {
             console.error("Level generation error, retrying with safe defaults:", e);
+            // Emergency fallback — use a small portrait board that always generates cleanly.
+            const EM_ROWS = 12, EM_COLS = 6;
             State.gridSizePreset = "Standard";
-            State.shapeName = "Square Matrix";
-            State.gridRows = 6;
-            State.gridCols = 6;
-            State.gridSize = 6;
-            State.gridMask = TOPOLOGIES.SQUARE.makeMask(6, 6);
+            State.shapeName = TOPOLOGIES.VERTICAL_RECT.name;
+            State.gridRows = EM_ROWS;
+            State.gridCols = EM_COLS;
+            State.gridSize = EM_ROWS;
+            State.gridMask = TOPOLOGIES.VERTICAL_RECT.makeMask(EM_ROWS, EM_COLS);
             resetCamera();
             resizeCanvas();
             let emergencyPaths = null;
             for (let attempt = 0; attempt < 10; attempt++) {
                 let result = tryGenerateBoard();
                 if (result && result.paths && result.paths.length > 0) {
-                    runUnjammingSolvabilityTweak(result.paths, 6, 6, result.gridOwnership);
-                    fixVisualSelfIntersections(result.paths, 6, 6);
-                    if (!hasAnyDoubleSelfCollidingPath(result.paths, 6, 6) &&
-                        isBoardFullySolvable(result.paths, 6, 6)) {
+                    runUnjammingSolvabilityTweak(result.paths, EM_ROWS, EM_COLS, result.gridOwnership);
+                    fixVisualSelfIntersections(result.paths, EM_ROWS, EM_COLS);
+                    if (!hasAnyDoubleSelfCollidingPath(result.paths, EM_ROWS, EM_COLS) &&
+                        isBoardFullySolvable(result.paths, EM_ROWS, EM_COLS)) {
                         emergencyPaths = result.paths;
                         break;
                     }

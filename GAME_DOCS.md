@@ -467,37 +467,69 @@ Defined in `TOPOLOGIES` object in `topologies.js`. Each has a `name` and `makeMa
 | `WAVES` | Serpentine Waves | Sinusoidal vertical band |
 | `CORNER_CASTLE` | Corner Castle | Rectangle with top-left and bottom-right corners removed (35%) |
 | `GATEWAY` | Hedge Gateway | Rectangle with gap cut in the middle row left and right edges |
+| `FRAME` | Rectangle Frame | Thin outer border ring (15% of min dim); large void centre |
+| `L_BLOCK` | L-Block | Full rectangle with the top-right 50%×50% quadrant removed |
+| `TWIN_PANELS` | Twin Panels | Two separate rectangles split by a horizontal void gap (~10% height) |
+| `STAIRCASE` | Staircase Steps | Three descending rectangular steps, full-width at top → ⅓-width at bottom |
+| `VERTICAL_RECT` | Vertical Rectangle | Full rectangle, all cells playable — always portrait (rows > cols) |
 
-`getTopologyForLevel(level, rows, cols)` currently picks uniformly at random (level is unused).
+### Rectangle-family topology notes
+
+- **FRAME** — The interior void spans roughly the inner 70%×70% of the grid. The playable border ring is always at least 1 cell thick. On small grids the ring may be only a single-cell frame; on large grids it is a multi-cell-wide moat. Paths can only travel around the perimeter.
+
+- **L_BLOCK** — Removes a rectangular quadrant from the top-right (rows 0..r/2, cols c/2..c). The remaining L-shape forces many paths through the bottom-left corner, creating natural bottlenecks.
+
+- **TWIN_PANELS** — The void gap runs the full width of the grid, splitting it into an independent upper panel and a lower panel. Paths can slide off the board from both panels independently. They **cannot** collide across the void gap mid-flight; however, the solvability checker handles this correctly because escaped paths are removed from the occupancy grid.
+
+- **STAIRCASE** — Three steps descend from full width (cols 0..c) at the top third, to two-thirds width in the middle, to one-third width at the bottom. The right side of each lower step is void. Creates an asymmetric, right-leaning play area where paths in lower rows have fewer escape options toward the right.
+
+### Topology selection weights
+
+`getTopologyForLevel` uses a weighted pool — not a uniform random pick:
+
+| Topology key | Weight | Approx frequency |
+|---|---|---|
+| `VERTICAL_RECT` | 5 | ~15 % |
+| `SQUARE` | 1 | ~3 % |
+| All others (13 topologies) | 2 each | ~6 % each |
+
+To change how often a topology appears, edit `TOPOLOGY_WEIGHTS` in `getTopologyForLevel` (`topologies.js`). Topologies not in that map default to weight 2.
+
+**`enforcePortrait` flag:** If a topology object has `enforcePortrait: true`, `build100PackedLevel` will swap `State.gridRows` and `State.gridCols` whenever the random dimension generator produces a landscape board (cols > rows). `gridSize` (the max of the two) is unaffected by a swap and does not need recalculating.
 
 ---
 
 ## 16. Difficulty & Sizing Presets
 
-Grid size ranges by preset (`generateRandomGridDimensions`):
+Grid size ranges by preset (`generateRandomGridDimensions`).
+Rows (height) and cols (width) are **independent** — boards are portrait-biased by design.
+Global hard limits: rows 6–50, cols 2–20.
 
-| Preset | Rows | Cols |
+| Preset | Rows (height) | Cols (width) |
 |---|---|---|
-| Standard | 2–12 | 2–12 |
-| Grand | 12–22 | 12–22 |
-| Colossal | 20–32 | 20–32 |
-| Titan | 30–42 | 30–42 |
-| Cosmic | 40–50 | 40–50 |
+| Standard | 6–20 | 2–10 |
+| Grand | 15–28 | 6–13 |
+| Colossal | 22–38 | 9–16 |
+| Titan | 32–46 | 13–18 |
+| Cosmic | 40–50 | 16–20 |
 
-Auto mode scales with level:
+Auto mode scales rows and cols independently with level:
 
-| Level | Rows & Cols |
-|---|---|
-| 1–2 | 2–8 |
-| 3–5 | 6–12 |
-| 6–8 | 10–20 |
-| 9–12 | 18–30 |
-| 13–18 | 25–40 |
-| 19+ | 35–50 |
+| Level | Rows | Cols |
+|---|---|---|
+| 1–2 | 6–12 | 2–5 |
+| 3–5 | 8–20 | 3–8 |
+| 6–8 | 12–30 | 4–12 |
+| 9–12 | 18–38 | 6–15 |
+| 13–18 | 25–45 | 9–17 |
+| 19+ | 35–50 | 14–20 |
 
-Difficulty label shown in HUD badge (Auto mode only):
+**Level 10+ floor (Auto only):** rows ≥ 15, cols ≥ 6 — enforced via `Math.max` on the lower bounds inside `generateRandomGridDimensions`.
 
-| Max dim | Label |
+Difficulty label shown in HUD badge (Auto mode only).
+`getDifficultyLabel` uses `Math.max(gridRows, gridCols)` = `gridRows` with portrait orientation:
+
+| Row count | Label |
 |---|---|
 | ≤ 8 | NORMAL |
 | ≤ 12 | HARD |
@@ -572,6 +604,9 @@ Collision detected during MOVING
 | F6 | Retry in daily mode reset `State.score` instead of `State.dailyScore` | `game-logic.js` | Daily retry now sets `State.dailyScore = 0` |
 | F7 | Camera not reset when loading saved game | `board-gen.js:798` | Added `resetCamera()` before `return` in save-load fast path |
 | F8 | Unjammer could flip heading to self-intersecting direction | `board-gen.js` (unjammer) | Unjammer now checks `!evalResult.selfIntersect` before accepting flip |
+| F9 | Board dimensions were symmetric (rows = cols range) — produced square/landscape boards | `topologies.js` | Rows and cols now use independent portrait-biased ranges (rows 6–50, cols 2–20) |
+| F10 | Complex topologies on tiny boards produced < 6 playable cells, causing degenerate generation | `board-gen.js` | Added playable-cell-count guard; falls back to VERTICAL_RECT mask if count < 6 |
+| F11 | Fallback and emergency boards used 8×8 / 6×6 square — violated portrait design intent | `board-gen.js`, `game-logic.js` | Fallback → 15×8 VERTICAL_RECT; Emergency → 12×6 VERTICAL_RECT |
 
 ---
 

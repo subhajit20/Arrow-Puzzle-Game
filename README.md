@@ -100,16 +100,18 @@ Your score is cumulative across all levels and saved automatically between sessi
 
 The main campaign. Start at Level 1 and progress through increasingly large and complex boards. Your level and score are saved automatically — you can quit and come back anytime.
 
-Grid sizes grow with each level:
+Boards are portrait-oriented (tall) and grow with each level:
 
-| Levels | Board size |
-|---|---|
-| 1 – 2 | Tiny (up to 8 × 8) |
-| 3 – 5 | Small (up to 12 × 12) |
-| 6 – 8 | Medium (up to 20 × 20) |
-| 9 – 12 | Large (up to 30 × 30) |
-| 13 – 18 | Huge (up to 40 × 40) |
-| 19+ | Massive (up to 50 × 50) |
+| Levels | Height (rows) | Width (cols) |
+|---|---|---|
+| 1 – 2 | 6 – 12 | 2 – 5 |
+| 3 – 5 | 8 – 20 | 3 – 8 |
+| 6 – 8 | 12 – 30 | 4 – 12 |
+| 9 – 12 | 18 – 38 | 6 – 15 |
+| 13 – 18 | 25 – 45 | 9 – 17 |
+| 19+ | 35 – 50 | 14 – 20 |
+
+After Level 10, boards are always at least 15 rows tall and 6 columns wide.
 
 ### ☀️ Daily Puzzle
 
@@ -123,7 +125,7 @@ One unique puzzle per day, the same for every player. Your score in the daily pu
 
 ## Board Shapes
 
-Boards are not always plain rectangles. As you play you'll encounter 10 different grid shapes that change how arrows are arranged and which paths are available:
+Boards are not always plain rectangles. As you play you'll encounter 15 different grid shapes that change how arrows are arranged and which paths are available:
 
 | Shape | Description |
 |---|---|
@@ -137,6 +139,11 @@ Boards are not always plain rectangles. As you play you'll encounter 10 differen
 | **Serpentine Waves** | A sinusoidal vertical band |
 | **Corner Castle** | Rectangle with two opposite corners removed |
 | **Hedge Gateway** | Rectangle with gaps cut into the left and right mid-edges |
+| **Rectangle Frame** | Only the outer border is playable — a hollow picture frame |
+| **L-Block** | A full rectangle with the top-right quarter removed |
+| **Twin Panels** | Two separate rectangles divided by a horizontal void strip |
+| **Staircase Steps** | Three descending rectangular steps, widest at the top |
+| **Vertical Rectangle** | Full rectangle, always taller than wide — the most common board |
 
 Each shape changes the puzzle feel entirely — some create tight corridors, others create isolated clusters of arrows that need to be freed in a specific order.
 
@@ -146,14 +153,14 @@ Each shape changes the puzzle feel entirely — some create tight corridors, oth
 
 You can manually override the board size at any time using the **Size** button (cycle through presets). This is independent of your level progress.
 
-| Preset | Board size |
-|---|---|
-| **Auto** | Scales naturally with your level |
-| **Standard** | Up to 12 × 12 |
-| **Grand** | 12 – 22 cells |
-| **Colossal** | 20 – 32 cells |
-| **Titan** | 30 – 42 cells |
-| **Cosmic** | 40 – 50 cells |
+| Preset | Height (rows) | Width (cols) |
+|---|---|---|
+| **Auto** | Scales with your level | Scales with your level |
+| **Standard** | 6 – 20 | 2 – 10 |
+| **Grand** | 15 – 28 | 6 – 13 |
+| **Colossal** | 22 – 38 | 9 – 16 |
+| **Titan** | 32 – 46 | 13 – 18 |
+| **Cosmic** | 40 – 50 | 16 – 20 |
 
 ---
 

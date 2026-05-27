@@ -1,47 +1,56 @@
 function generateRandomGridDimensions(preset, level) {
+    // Rows (height) and cols (width) now use independent ranges.
+    // Rows always use a taller range so boards are portrait by default.
+    // Global hard limits: rows 6–50, cols 2–20.
     let minR, maxR, minC, maxC;
 
     if (preset === "Standard") {
-        minR = 2; maxR = 12;
-        minC = 2; maxC = 12;
+        minR = 6;  maxR = 20;
+        minC = 2;  maxC = 10;
     } else if (preset === "Grand") {
-        minR = 12; maxR = 22;
-        minC = 12; maxC = 22;
+        minR = 15; maxR = 28;
+        minC = 6;  maxC = 13;
     } else if (preset === "Colossal") {
-        minR = 20; maxR = 32;
-        minC = 20; maxC = 32;
+        minR = 22; maxR = 38;
+        minC = 9;  maxC = 16;
     } else if (preset === "Titan") {
-        minR = 30; maxR = 42;
-        minC = 30; maxC = 42;
+        minR = 32; maxR = 46;
+        minC = 13; maxC = 18;
     } else if (preset === "Cosmic") {
         minR = 40; maxR = 50;
-        minC = 40; maxC = 50;
+        minC = 16; maxC = 20;
     } else {
+        // Auto — rows and cols scale independently with level
         if (level <= 2) {
-            minR = 2; maxR = 8;
-            minC = 2; maxC = 8;
+            minR = 6;  maxR = 12;
+            minC = 2;  maxC = 5;
         } else if (level <= 5) {
-            minR = 6; maxR = 12;
-            minC = 6; maxC = 12;
+            minR = 8;  maxR = 20;
+            minC = 3;  maxC = 8;
         } else if (level <= 8) {
-            minR = 10; maxR = 20;
-            minC = 10; maxC = 20;
+            minR = 12; maxR = 30;
+            minC = 4;  maxC = 12;
         } else if (level <= 12) {
-            minR = 18; maxR = 30;
-            minC = 18; maxC = 30;
+            minR = 18; maxR = 38;
+            minC = 6;  maxC = 15;
         } else if (level <= 18) {
-            minR = 25; maxR = 40;
-            minC = 25; maxC = 40;
+            minR = 25; maxR = 45;
+            minC = 9;  maxC = 17;
         } else {
             minR = 35; maxR = 50;
-            minC = 35; maxC = 50;
+            minC = 14; maxC = 20;
+        }
+        // After level 10: hard floor of 15 rows × 6 cols
+        if (level > 10) {
+            minR = Math.max(minR, 15);
+            minC = Math.max(minC, 6);
         }
     }
 
     let rows = minR + Math.floor(Math.random() * (maxR - minR + 1));
     let cols = minC + Math.floor(Math.random() * (maxC - minC + 1));
-    rows = Math.min(50, Math.max(2, rows));
-    cols = Math.min(50, Math.max(2, cols));
+    rows = Math.min(50, Math.max(6, rows));
+    cols = Math.min(20, Math.max(2, cols));
     return { rows, cols };
 }
 
@@ -194,10 +203,102 @@ const TOPOLOGIES = {
             }
             return m;
         }
+    },
+
+    // ── Rectangle-family topologies ────────────────────────────────────────
+
+    // Playable cells form only the outer border of the rectangle.
+    // The interior is a large void, leaving a thin picture-frame ring.
+    FRAME: {
+        name: "Rectangle Frame",
+        makeMask: (r, c) => {
+            let m = Array(r).fill().map(() => Array(c).fill(0));
+            let t = Math.max(1, Math.floor(Math.min(r, c) * 0.15));
+            for (let row = 0; row < r; row++) {
+                for (let col = 0; col < c; col++) {
+                    if (row < t || row >= r - t || col < t || col >= c - t) {
+                        m[row][col] = 1;
+                    }
+                }
+            }
+            return m;
+        }
+    },
+
+    // Rectangle with the top-right quadrant removed, forming an L-shape.
+    L_BLOCK: {
+        name: "L-Block",
+        makeMask: (r, c) => {
+            let m = Array(r).fill().map(() => Array(c).fill(1));
+            let cutR = Math.floor(r * 0.5);
+            let cutC = Math.floor(c * 0.5);
+            for (let row = 0; row < cutR; row++) {
+                for (let col = cutC; col < c; col++) {
+                    m[row][col] = 0;
+                }
+            }
+            return m;
+        }
+    },
+
+    // Rectangle split into two separate panels by a horizontal void gap.
+    // Top and bottom panels are each independent rectangles.
+    TWIN_PANELS: {
+        name: "Twin Panels",
+        makeMask: (r, c) => {
+            let m = Array(r).fill().map(() => Array(c).fill(1));
+            let gap = Math.max(1, Math.floor(r * 0.1));
+            let gapStart = Math.floor(r / 2) - Math.floor(gap / 2);
+            for (let row = gapStart; row < gapStart + gap; row++) {
+                if (row >= 0 && row < r) {
+                    for (let col = 0; col < c; col++) m[row][col] = 0;
+                }
+            }
+            return m;
+        }
+    },
+
+    // Three descending rectangular steps from full-width at the top
+    // to one-third width at the bottom, like a staircase viewed from the side.
+    STAIRCASE: {
+        name: "Staircase Steps",
+        makeMask: (r, c) => {
+            let m = Array(r).fill().map(() => Array(c).fill(0));
+            const steps = 3;
+            for (let row = 0; row < r; row++) {
+                let step = Math.floor(row / r * steps);
+                let colWidth = Math.max(2, Math.floor(c * (steps - step) / steps));
+                for (let col = 0; col < colWidth; col++) {
+                    m[row][col] = 1;
+                }
+            }
+            return m;
+        }
+    },
+
+    // Full rectangle with all cells playable, but the board is always oriented
+    // portrait (rows > cols) — taller than wide.  The enforcePortrait flag tells
+    // build100PackedLevel to swap the generated dimensions when needed.
+    VERTICAL_RECT: {
+        name: "Vertical Rectangle",
+        enforcePortrait: true,
+        makeMask: (r, c) => Array(r).fill().map(() => Array(c).fill(1))
     }
 };
 
 function getTopologyForLevel(level, rows, cols) {
-    const choices = Object.values(TOPOLOGIES);
-    return choices[Math.floor(Math.random() * choices.length)];
+    // Weighted selection — VERTICAL_RECT appears most often, SQUARE rarely.
+    // Every other topology uses DEFAULT_WEIGHT.
+    const TOPOLOGY_WEIGHTS = {
+        VERTICAL_RECT: 5,   // ← most common: tall portrait boards
+        SQUARE:        1,   // ← least common: plain full rectangle
+    };
+    const DEFAULT_WEIGHT = 2;
+
+    const pool = [];
+    for (const [key, topo] of Object.entries(TOPOLOGIES)) {
+        const w = TOPOLOGY_WEIGHTS[key] !== undefined ? TOPOLOGY_WEIGHTS[key] : DEFAULT_WEIGHT;
+        for (let i = 0; i < w; i++) pool.push(topo);
+    }
+    return pool[Math.floor(Math.random() * pool.length)];
 }
