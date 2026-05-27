@@ -21,6 +21,7 @@ const State = {
     levelStartScore: 0,
     dailyPuzzleMode: false,
     dailyPuzzleScoreAtStart: 0,
+    dailyScore: 0,
     cssZoom: 1.0,
     matE: 0,
     matF: 0

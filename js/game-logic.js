@@ -85,11 +85,15 @@ function checkVictoryConditionStates() {
         AudioEngine.win();
         spawnWinExplosionParticles();
 
-        State.score += 100;
+        if (State.dailyPuzzleMode) {
+            State.dailyScore += 100;
+        } else {
+            State.score += 100;
+        }
         updateDomUI();
 
         if (State.dailyPuzzleMode) {
-            const earned = State.score - State.dailyPuzzleScoreAtStart;
+            const earned = State.dailyScore;
             const existing = DailyPuzzle.load();
             const attempts = (existing ? existing.attempts : 0) + 1;
             const bestScore = existing ? Math.max(existing.bestScore || 0, earned) : earned;
@@ -171,17 +175,30 @@ const actions = {
             State.gridMask = TOPOLOGIES.SQUARE.makeMask(6, 6);
             resetCamera();
             resizeCanvas();
-            let result = tryGenerateBoard();
-            if (result && result.paths && result.paths.length > 0) {
-                runUnjammingSolvabilityTweak(result.paths, 6, 6, result.gridOwnership);
-                State.paths = result.paths;
+            let emergencyPaths = null;
+            for (let attempt = 0; attempt < 10; attempt++) {
+                let result = tryGenerateBoard();
+                if (result && result.paths && result.paths.length > 0) {
+                    runUnjammingSolvabilityTweak(result.paths, 6, 6, result.gridOwnership);
+                    fixVisualSelfIntersections(result.paths, 6, 6);
+                    if (!hasAnyDoubleSelfCollidingPath(result.paths, 6, 6) &&
+                        isBoardFullySolvable(result.paths, 6, 6)) {
+                        emergencyPaths = result.paths;
+                        break;
+                    }
+                }
             }
+            State.paths = emergencyPaths || [];
             State.lives = 3;
             updateDomUI();
         }
     },
     retryCurrentLevel() {
-        State.score = State.dailyPuzzleMode ? State.dailyPuzzleScoreAtStart : State.levelStartScore;
+        if (State.dailyPuzzleMode) {
+            State.dailyScore = 0;
+        } else {
+            State.score = State.levelStartScore;
+        }
         State.lives = 3;
         document.getElementById('fail-overlay').classList.add('opacity-0', 'pointer-events-none', 'scale-105');
         State.isFailState = false;

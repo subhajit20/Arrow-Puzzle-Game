@@ -100,7 +100,7 @@ function startDailyPuzzle() {
     setTimeout(() => splash.classList.add('hidden'), 260);
 
     State.dailyPuzzleMode = true;
-    State.dailyPuzzleScoreAtStart = State.score;
+    State.dailyScore = 0;
 
     const seededRng = mulberry32(getDailyPuzzleSeed());
     const origRandom = Math.random;
@@ -128,9 +128,8 @@ function startNormalGame() {
 }
 
 function exitDailyPuzzle() {
-    const scoreEarned = State.score - State.dailyPuzzleScoreAtStart;
-
     State.dailyPuzzleMode = false;
+    State.dailyScore = 0;
     State.isWinState = false;
     State.isFailState = false;
     State.hintPathId = null;
@@ -141,10 +140,4 @@ function exitDailyPuzzle() {
     document.getElementById('win-overlay').classList.add('opacity-0', 'pointer-events-none', 'scale-105');
 
     build100PackedLevel(false);
-
-    if (scoreEarned > 0) {
-        State.score += scoreEarned;
-        Persistence.saveState();
-        updateDomUI();
-    }
 }

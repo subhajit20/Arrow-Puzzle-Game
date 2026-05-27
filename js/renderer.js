@@ -1,6 +1,6 @@
 function updateDomUI() {
     document.getElementById('level-display').innerText = `Level ${State.level}`;
-    document.getElementById('score-display').innerText = State.score;
+    document.getElementById('score-display').innerText = State.dailyPuzzleMode ? State.dailyScore : State.score;
 
     const badge = document.getElementById('tier-badge');
     if (State.dailyPuzzleMode) {
@@ -323,8 +323,12 @@ function animationUpdateTick() {
                 p.state = "CLEARED";
                 AudioEngine.clear();
 
-                State.score += 10;
-                Persistence.saveState();
+                if (State.dailyPuzzleMode) {
+                    State.dailyScore += 10;
+                } else {
+                    State.score += 10;
+                    Persistence.saveState();
+                }
 
                 updateDomUI();
                 checkVictoryConditionStates();

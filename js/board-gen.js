@@ -797,6 +797,7 @@ function fixVisualSelfIntersections(paths, rows, cols) {
 function build100PackedLevel(forceNewGeneration = false) {
     if (!forceNewGeneration && Persistence.loadState()) {
         State.levelStartScore = State.score;
+        resetCamera();
         resizeCanvas();
         updateDomUI();
         return;
@@ -814,22 +815,25 @@ function build100PackedLevel(forceNewGeneration = false) {
     resetCamera();
     resizeCanvas();
 
-    let result = null;
+    // Only accept a board that passes all validation — never fall through to a failed attempt.
+    let validResult = null;
     for (let attempt = 0; attempt < 20; attempt++) {
-        result = tryGenerateBoard();
-        if (result && result.paths && result.paths.length > 0) {
-            runUnjammingSolvabilityTweak(result.paths, State.gridRows, State.gridCols, result.gridOwnership);
-            fixVisualSelfIntersections(result.paths, State.gridRows, State.gridCols);
-            if (!hasAnyDoubleSelfCollidingPath(result.paths, State.gridRows, State.gridCols) &&
-                isBoardFullySolvable(result.paths, State.gridRows, State.gridCols)) {
+        let candidate = tryGenerateBoard();
+        if (candidate && candidate.paths && candidate.paths.length > 0) {
+            runUnjammingSolvabilityTweak(candidate.paths, State.gridRows, State.gridCols, candidate.gridOwnership);
+            fixVisualSelfIntersections(candidate.paths, State.gridRows, State.gridCols);
+            if (!hasAnyDoubleSelfCollidingPath(candidate.paths, State.gridRows, State.gridCols) &&
+                isBoardFullySolvable(candidate.paths, State.gridRows, State.gridCols)) {
+                validResult = candidate;
                 break;
             }
         }
     }
 
-    if (result && result.paths && result.paths.length > 0) {
-        State.paths = result.paths;
+    if (validResult) {
+        State.paths = validResult.paths;
     } else {
+        // All attempts failed — fall back to a guaranteed-solvable 8×8 square.
         State.gridRows = 8;
         State.gridCols = 8;
         State.gridSize = 8;
@@ -837,14 +841,20 @@ function build100PackedLevel(forceNewGeneration = false) {
         State.shapeName = "Square Matrix";
         resetCamera();
         resizeCanvas();
-        let fb = tryGenerateBoard();
-        if (fb && fb.paths && isBoardFullySolvable(fb.paths, 8, 8)) {
-            runUnjammingSolvabilityTweak(fb.paths, 8, 8, fb.gridOwnership);
-            fixVisualSelfIntersections(fb.paths, 8, 8);
-            State.paths = fb.paths;
-        } else {
-            State.paths = [];
+        let fallback = null;
+        for (let attempt = 0; attempt < 10; attempt++) {
+            let fb = tryGenerateBoard();
+            if (fb && fb.paths && fb.paths.length > 0) {
+                runUnjammingSolvabilityTweak(fb.paths, 8, 8, fb.gridOwnership);
+                fixVisualSelfIntersections(fb.paths, 8, 8);
+                if (!hasAnyDoubleSelfCollidingPath(fb.paths, 8, 8) &&
+                    isBoardFullySolvable(fb.paths, 8, 8)) {
+                    fallback = fb;
+                    break;
+                }
+            }
         }
+        State.paths = fallback ? fallback.paths : [];
     }
 
     State.levelStartScore = State.score;
