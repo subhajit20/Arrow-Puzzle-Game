@@ -49,6 +49,18 @@ function generateRandomGridDimensions(preset, level) {
 
     let rows = minR + Math.floor(Math.random() * (maxR - minR + 1));
     let cols = minC + Math.floor(Math.random() * (maxC - minC + 1));
+
+    // Mobile portrait: ensure enough columns so the board spans the full screen
+    // width.  Target ~34 px per cell; Math.ceil() guarantees we never under-shoot.
+    // This pairs with calculateMetrics which sizes cells as (screenW - 4) / cols.
+    if (typeof window !== 'undefined' && window.innerWidth) {
+        const screenW = window.innerWidth;
+        if (screenW < 768 && screenW < (window.innerHeight || 800)) {
+            const optimalCols = Math.ceil((screenW - 4) / 34);
+            cols = Math.max(cols, optimalCols);
+        }
+    }
+
     rows = Math.min(50, Math.max(6, rows));
     cols = Math.min(20, Math.max(2, cols));
     return { rows, cols };

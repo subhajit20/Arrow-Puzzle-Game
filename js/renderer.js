@@ -351,7 +351,4 @@ function animationUpdateTick() {
     requestAnimationFrame(animationUpdateTick);
 }
 
-window.addEventListener('resize', () => {
-    resizeCanvas();
-    drawEngine();
-});
+// resize listener lives in camera.js

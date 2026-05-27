@@ -24,7 +24,9 @@ const State = {
     dailyScore: 0,
     cssZoom: 1.0,
     matE: 0,
-    matF: 0
+    matF: 0,
+    canvasW: 0,
+    canvasH: 0
 };
 
 const canvas = document.getElementById('gameCanvas');
