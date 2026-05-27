@@ -16,6 +16,7 @@ let touchStartTime = 0;
 let ignoreTap = false;
 
 canvas.addEventListener('touchstart', (e) => {
+    if (State.revealActive) { e.preventDefault(); return; }
     AudioEngine.init();
     // Cancel any in-flight camera entrance animation so the user's touch takes over immediately
     if (window.cameraAnimReq) {
@@ -134,6 +135,7 @@ let mouseDownCoords = { x: 0, y: 0 };
 let mouseDownTime = 0;
 
 canvas.addEventListener('mousedown', (e) => {
+    if (State.revealActive) { e.preventDefault(); return; }
     AudioEngine.init();
     // Cancel any in-flight camera entrance animation on desktop click/drag
     if (window.cameraAnimReq) {
@@ -197,6 +199,7 @@ window.addEventListener('mouseup', (e) => {
 
 canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (State.revealActive) return;
     if (State.isWinState || State.isFailState) return;
 
     const boardBcr = document.getElementById('board-container').getBoundingClientRect();

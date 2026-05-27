@@ -771,7 +771,7 @@ function fixVisualSelfIntersections(paths, rows, cols) {
         // Arrowhead points directly into own body — try flipping
         let origHeading = p.heading;
         let oppHeading = origHeading === "UP" ? "DOWN" : origHeading === "DOWN" ? "UP"
-                       : origHeading === "LEFT" ? "RIGHT" : "LEFT";
+            : origHeading === "LEFT" ? "RIGHT" : "LEFT";
         p.heading = oppHeading;
         p.points.reverse();
 
@@ -797,9 +797,9 @@ function fixVisualSelfIntersections(paths, rows, cols) {
 function build100PackedLevel(forceNewGeneration = false) {
     if (!forceNewGeneration && Persistence.loadState()) {
         State.levelStartScore = State.score;
-        resetCamera();
         resizeCanvas();
         updateDomUI();
+        startPathRevealAnimation();
         return;
     }
 
@@ -885,5 +885,5 @@ function build100PackedLevel(forceNewGeneration = false) {
     State.lives = 3;
     Persistence.saveState();
     updateDomUI();
-    startCameraEntranceAnimation();
+    startPathRevealAnimation();
 }

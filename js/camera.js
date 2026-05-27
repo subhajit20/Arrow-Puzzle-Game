@@ -308,6 +308,91 @@ function startCameraEntranceAnimation() {
     window.cameraAnimReq = requestAnimationFrame(step);
 }
 
+// ---------------------------------------------------------------------------
+// startPathRevealAnimation
+//
+// Universal staggered entrance path drawing reveal animation.
+// Lock screen at fitted overview, dynamically draw paths sequentially, and
+// then trigger the cinematic camera zoom-in transition.
+// ---------------------------------------------------------------------------
+function startPathRevealAnimation() {
+    if (window.cameraAnimReq) {
+        cancelAnimationFrame(window.cameraAnimReq);
+        window.cameraAnimReq = null;
+    }
+
+    State.revealActive = true;
+    State.revealProgress = 0.0;
+
+    const container = document.getElementById('board-container');
+    if (!container) {
+        State.revealActive = false;
+        startCameraEntranceAnimation();
+        return;
+    }
+
+    const bcr      = container.getBoundingClientRect();
+    const isMobile = bcr.width < 768 && bcr.width < bcr.height;
+
+    if (!isMobile || !State.cellSize) {
+        State.revealActive = false;
+        resetCamera();
+        return;
+    }
+
+    // ── True visible play area (mirrors calculateMetrics) ───────────────────
+    const header  = document.getElementById('game-header');
+    const ctrls   = document.getElementById('game-controls');
+    const topBarH = header ? header.getBoundingClientRect().height : 0;
+    const botBarH = ctrls  ? ctrls.getBoundingClientRect().height  : 0;
+    const PAD     = 4;
+
+    const visibleH = Math.min(bcr.height, window.innerHeight - topBarH);
+    const usableW  = bcr.width - PAD * 2;
+    const usableH  = Math.max(20, visibleH - botBarH - PAD * 2);
+
+    const boardW = State.gridCols * State.cellSize;
+    const boardH = State.gridRows * State.cellSize;
+
+    const fitZoomX = (usableW * 0.88) / boardW;
+    const fitZoomY = (usableH * 0.88) / boardH;
+    const fitZoom  = Math.min(fitZoomX, fitZoomY, 1.0);
+
+    State.minZoom = Math.max(fitZoom * 0.40, 0.08);
+
+    // ── Step 1: snap to fitted board zoom (clean and empty board initially) ──
+    State.cssZoom = fitZoom;
+    State.matE    = 0;
+    State.matF    = 0;
+    applyBoardTransform();          // sets matE/F to properly centered values
+
+    // ── Step 2: progressive path reveal with adaptive duration ──────────────
+    const N = State.paths.length;
+    const duration = Math.min(1800, Math.max(600, N * 120));
+    const t0 = performance.now();
+
+    function step(now) {
+        const elapsed = now - t0;
+        let p = elapsed / duration;
+
+        if (p >= 1.0) {
+            State.revealProgress = 1.0;
+            State.revealActive = false;
+            drawEngine();
+            // Staggered reveal completes sequentially — run camera entrance animation next!
+            startCameraEntranceAnimation();
+            return;
+        }
+
+        State.revealProgress = p;
+        drawEngine();
+
+        window.cameraAnimReq = requestAnimationFrame(step);
+    }
+
+    window.cameraAnimReq = requestAnimationFrame(step);
+}
+
 window.addEventListener('resize', () => {
     resizeCanvas();
     drawEngine();

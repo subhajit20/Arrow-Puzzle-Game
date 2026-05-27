@@ -98,7 +98,7 @@ function drawEngine() {
     ctx.rect(ox, oy, cols * cSize, rows * cSize);
     ctx.clip();
 
-    State.paths.forEach(p => {
+    State.paths.forEach((p, idx) => {
         if (p.state === "CLEARED") return;
 
         let isSelected = (State.selectedPath && State.selectedPath.id === p.id) || (State.hintPathId === p.id);
@@ -151,7 +151,21 @@ function drawEngine() {
         let drawPoints = [];
         let totalSegLen = len - 1;
 
-        if (p.state === "IDLE") {
+        if (State.revealActive) {
+            const N = State.paths.length;
+            const staggerFactor = 0.4; // 40% of duration for delay stagger
+            const startRatio = N > 1 ? (idx / (N - 1)) * staggerFactor : 0.0;
+            const durationRatio = 1.0 - staggerFactor;
+            
+            let pProgress = 0.0;
+            if (State.revealProgress > startRatio) {
+                pProgress = Math.min(1.0, (State.revealProgress - startRatio) / durationRatio);
+            }
+            
+            if (pProgress > 0.0) {
+                drawPoints = getSubTrackPoints(fullTrack, 0, pProgress * totalSegLen);
+            }
+        } else if (p.state === "IDLE") {
             drawPoints = fullTrack.slice(0, len);
         } else {
             let dStart = p.animProgress;
@@ -175,7 +189,7 @@ function drawEngine() {
             ctx.stroke();
             ctx.restore();
 
-            if (p.state === "IDLE") {
+            if (p.state === "IDLE" && !State.revealActive) {
                 const headCell = p.points[p.points.length - 1];
                 let steps = 0;
                 let cr = headCell.r + dr;

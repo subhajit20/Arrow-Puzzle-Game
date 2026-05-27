@@ -27,7 +27,9 @@ const State = {
     matF: 0,
     canvasW: 0,
     canvasH: 0,
-    minZoom: 0.15   // updated dynamically by startCameraEntranceAnimation
+    minZoom: 0.15,  // updated dynamically by startCameraEntranceAnimation
+    revealActive: false,
+    revealProgress: 0.0
 };
 
 const canvas = document.getElementById('gameCanvas');
