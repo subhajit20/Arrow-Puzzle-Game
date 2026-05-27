@@ -68,9 +68,9 @@ function resetCamera() {
 }
 
 // ---------------------------------------------------------------------------
-// resizeCanvas — size the canvas to State.canvasW × State.canvasH (which can
-// be taller than the screen on mobile); anchor it to the container's top-left
-// so getCanvasCoords in input.js stays accurate.
+// resizeCanvas — size the canvas to State.canvasW × State.canvasH (always
+// exactly the container size); anchor it to the container's top-left so
+// getCanvasCoords in input.js stays accurate.
 // ---------------------------------------------------------------------------
 function resizeCanvas() {
     const dpr       = window.devicePixelRatio || 1;
@@ -95,14 +95,24 @@ function resizeCanvas() {
 
 // ---------------------------------------------------------------------------
 // calculateMetrics — derive cellSize, canvasW/H, offsetX/Y from container size
+//
+// On mobile the cell size is constrained by BOTH available width and height so
+// the entire board always fits inside the board-container without overflowing.
+//   cellByWidth  = (w - 4)  / gridCols  — 2 px breathing room each side
+//   cellByHeight = (h - 8)  / gridRows  — 4 px breathing room top + bottom
+//   cellSize     = min(cellByWidth, cellByHeight)
+//
+// Consequence: the canvas is always exactly the container size, the board is
+// centred inside it, and no board ever needs vertical scrolling to be seen.
 // ---------------------------------------------------------------------------
 function calculateMetrics(w, h) {
     const isMobile = w < 768 && w < h;
 
     if (isMobile) {
-        // Width-first on mobile: fills the full screen width (4 px total edge
-        // clearance, 2 px per side).  Column count controls density.
-        State.cellSize = (w - 4) / State.gridCols;
+        // Fit the board inside the container in BOTH dimensions simultaneously.
+        const cellByWidth  = (w - 4) / State.gridCols;
+        const cellByHeight = (h - 8) / State.gridRows;
+        State.cellSize = Math.min(cellByWidth, cellByHeight);
     } else {
         // Desktop: fit the whole board in the fixed-size container box.
         State.cellSize = Math.min(w / State.gridCols, h / State.gridRows);
@@ -111,20 +121,12 @@ function calculateMetrics(w, h) {
     const boardW = State.gridCols * State.cellSize;
     const boardH = State.gridRows * State.cellSize;
 
+    // Canvas is always exactly the container size — the board is centred inside.
     State.canvasW = w;
-    State.canvasH = isMobile
-        ? Math.max(h, boardH + 20)    // 20 px: small bottom margin on tall boards
-        : Math.max(h, boardH);
+    State.canvasH = h;
 
-    State.offsetX = (State.canvasW - boardW) / 2;
-
-    if (boardH + 20 <= h) {
-        // Board fits on screen: centre it vertically in the canvas
-        State.offsetY = (State.canvasH - boardH) / 2;
-    } else {
-        // Tall board: start just below the floating header (~10 % of h)
-        State.offsetY = Math.round(h * 0.10);
-    }
+    State.offsetX = (w - boardW) / 2;
+    State.offsetY = (h - boardH) / 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,11 +163,14 @@ function startCameraEntranceAnimation() {
     const boardW = State.gridCols * State.cellSize;
     const boardH = State.gridRows * State.cellSize;
 
-    // Fit scale: show entire board inside the viewport.
-    //   • 0.94 horizontal → 3 % breathing room each side
-    //   • 0.76 vertical   → ~12 % for header + ~8 % for footer + breathing room
+    // Fit scale: show entire board inside the board-container viewport.
+    // The bars are separate flex items (not overlaying the canvas), so bcr is
+    // already the pure board area — use 0.92 vertically for a small breathing
+    // margin rather than the old 0.76 which was designed for floating overlays.
+    //   • 0.94 horizontal → ~3 % breathing room each side
+    //   • 0.92 vertical   → ~4 % breathing room top and bottom
     const fitZoomX = (bcr.width  * 0.94) / boardW;
-    const fitZoomY = (bcr.height * 0.76) / boardH;
+    const fitZoomY = (bcr.height * 0.92) / boardH;
     const fitZoom  = Math.min(fitZoomX, fitZoomY, 1.0);  // never zoom in beyond 1×
 
     // Allow zooming out to 40 % of the fit view (more freedom than the overview)
