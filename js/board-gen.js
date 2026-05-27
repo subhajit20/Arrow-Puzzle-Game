@@ -260,6 +260,9 @@ function tryGenerateBoard() {
             if (_lvl > 25) maxLen = Math.max(3, Math.round(maxLen * 0.70));
             else if (_lvl > 10) maxLen = Math.max(3, Math.round(maxLen * 0.85));
         }
+        // Hard global cap: no crawler path ever exceeds 8 cells.
+        // The gap-fill pass and density optimizer handle the rest.
+        maxLen = Math.min(maxLen, 8);
 
         let consecutiveStraight = 0;
         let spiralDir = Math.random() < 0.5 ? 1 : -1;
@@ -437,6 +440,13 @@ function tryGenerateBoard() {
         }
     }
 
+    // Gap-fill length cap: any path that has already reached this length stops
+    // accepting new cells via extension. Remaining unassigned cells fall through
+    // to the steal-fallback below, which creates new short paths instead of
+    // ballooning existing ones into fat region-dominating monsters.
+    // Hard ceiling: 8 cells (matches the crawler hard cap).
+    const gapFillMaxLen = Math.min(8, getAdaptiveTargetLen(State.level || 1) + 2);
+
     // Prefer attaching to endpoints whose new escape ray stays self-intersection-free
     let progress = true;
     while (progress && unassigned.length > 0) {
@@ -455,7 +465,10 @@ function tryGenerateBoard() {
                     if (neighborId >= 1 && !seenPaths.has(neighborId)) {
                         seenPaths.add(neighborId);
                         let path = paths[neighborId - 1];
-                        if (path) {
+                        // Only extend paths that haven't reached the density cap.
+                        // Capped paths stop absorbing cells; unassigned cells that
+                        // can't find an uncapped neighbour become new short paths.
+                        if (path && path.points.length < gapFillMaxLen) {
                             let head = path.points[path.points.length - 1];
                             let tail = path.points[0];
 
@@ -833,14 +846,17 @@ function buildGridOwnership(paths) {
 // ---------------------------------------------------------------------------
 function getAdaptiveTargetLen(level) {
     const maxDim = Math.max(State.gridRows, State.gridCols);
-    // Base target by board size
+    // Base target average path length by board size.
+    // Tuned to match the reference density of ~4–5 cells/path on medium boards.
     let base;
-    if (maxDim >= 40) base = 8;
-    else if (maxDim >= 20) base = 10;
-    else base = 13;
-    // Level scaling: higher levels → shorter target → more interactions
-    if (level > 25) return Math.max(4, Math.floor(base * 0.62));
-    if (level > 10) return Math.max(5, Math.floor(base * 0.80));
+    if (maxDim >= 40) base = 7;
+    else if (maxDim >= 20) base = 9;
+    else base = 11;
+    // Level scaling: higher levels push toward very tight packing.
+    // Level 14 with maxDim~20: max(5, floor(9*0.68)) = 6 cells target avg.
+    // Level 26+ with maxDim~20: max(4, floor(9*0.55)) = 4 cells target avg.
+    if (level > 25) return Math.max(4, Math.floor(base * 0.55));
+    if (level > 10) return Math.max(5, Math.floor(base * 0.68));
     return base;
 }
 
@@ -873,23 +889,25 @@ function densityOptimizerPass(paths, level) {
     const dMoves = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 
     const targetAvgLen = getAdaptiveTargetLen(level);
-    // Paths above this length are split candidates (1.75× the target average)
-    const fatThreshold = Math.floor(targetAvgLen * 1.75);
+    // Fat threshold = exactly the target average. Any path longer than the
+    // target is a split candidate — no 1.75× buffer. This is the key change
+    // that makes the optimizer actually split most paths on the board.
+    const fatThreshold = targetAvgLen;
     // How many extra paths we want to reach target density
     const targetPathCount = Math.ceil(activeCells / targetAvgLen);
     const desiredSplits = Math.max(0, targetPathCount - paths.length);
 
-    // Cap splits by level to keep early boards accessible
+    // Higher split caps: early levels stay gentle, mid/high levels go aggressive
     let maxSplits;
-    if (level <= 10) maxSplits = Math.min(2, desiredSplits);
-    else if (level <= 25) maxSplits = Math.min(5, desiredSplits);
-    else maxSplits = Math.min(10, desiredSplits);
+    if (level <= 10) maxSplits = Math.min(4, desiredSplits);
+    else if (level <= 25) maxSplits = Math.min(16, desiredSplits);
+    else maxSplits = Math.min(28, desiredSplits);
 
     if (maxSplits === 0) return;
 
     let pathIdCounter = Math.max(...paths.map(p => p.id));
     let splitsApplied = 0;
-    const maxAttempts = maxSplits * 4; // budget: 4 tries per desired split
+    const maxAttempts = maxSplits * 6; // budget: 6 tries per desired split
 
     for (let attempt = 0; attempt < maxAttempts && splitsApplied < maxSplits; attempt++) {
 
@@ -917,9 +935,9 @@ function densityOptimizerPass(paths, level) {
         const go = buildGridOwnership(paths);
 
         // ── 4. Score every candidate split index ────────────────────────────
-        // Each half must be >= minHalf cells (floor half the target average,
-        // hard floor 2) so neither sub-path is a trivial stub.
-        const minHalf = Math.max(2, Math.floor(targetAvgLen * 0.5));
+        // Hard floor: every sub-path must be at least 3 cells (minimum for a
+        // readable path with a body and a head). No 2-cell stubs from splitting.
+        const minHalf = 3;
 
         let bestIdx = -1;
         let bestScore = -Infinity;
@@ -957,7 +975,7 @@ function densityOptimizerPass(paths, level) {
                 let cr = cellA.r + drA, cc = cellA.c + dcA;
                 while (cr >= 0 && cr < rows && cc >= 0 && cc < cols) {
                     const id = go[cr][cc];
-                    if (id >= 1 && id !== target.id) { blockScore += 3; break; }
+                    if (id >= 1 && id !== target.id) { blockScore += 5; break; }
                     cr += drA; cc += dcA;
                 }
             }
@@ -967,7 +985,7 @@ function densityOptimizerPass(paths, level) {
                 let cr = cellB.r + drB, cc = cellB.c + dcB;
                 while (cr >= 0 && cr < rows && cc >= 0 && cc < cols) {
                     const id = go[cr][cc];
-                    if (id >= 1 && id !== target.id) { blockScore += 3; break; }
+                    if (id >= 1 && id !== target.id) { blockScore += 5; break; }
                     cr += drB; cc += dcB;
                 }
             }

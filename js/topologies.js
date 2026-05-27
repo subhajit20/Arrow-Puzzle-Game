@@ -3,14 +3,14 @@ function generateRandomGridDimensions(preset, level) {
     let minR, maxR, minC, maxC;
 
     if (preset === "Standard") {
-        minR = 6;  maxR = 20;
-        minC = 2;  maxC = 10;
+        minR = 6; maxR = 20;
+        minC = 2; maxC = 10;
     } else if (preset === "Grand") {
         minR = 15; maxR = 28;
-        minC = 6;  maxC = 13;
+        minC = 6; maxC = 13;
     } else if (preset === "Colossal") {
         minR = 22; maxR = 38;
-        minC = 9;  maxC = 16;
+        minC = 9; maxC = 16;
     } else if (preset === "Titan") {
         minR = 32; maxR = 46;
         minC = 13; maxC = 18;
@@ -20,20 +20,20 @@ function generateRandomGridDimensions(preset, level) {
     } else {
         // Auto — rows and cols scale independently with level
         if (level <= 2) {
-            minR = 6;  maxR = 12;
-            minC = 2;  maxC = 5;
+            minR = 6; maxR = 12;
+            minC = 2; maxC = 5;
         } else if (level <= 5) {
-            minR = 8;  maxR = 20;
-            minC = 3;  maxC = 8;
+            minR = 8; maxR = 20;
+            minC = 3; maxC = 8;
         } else if (level <= 8) {
             minR = 12; maxR = 30;
-            minC = 4;  maxC = 12;
+            minC = 4; maxC = 12;
         } else if (level <= 12) {
             minR = 18; maxR = 38;
-            minC = 6;  maxC = 15;
+            minC = 6; maxC = 15;
         } else if (level <= 18) {
             minR = 25; maxR = 45;
-            minC = 9;  maxC = 17;
+            minC = 9; maxC = 17;
         } else {
             minR = 35; maxR = 50;
             minC = 14; maxC = 20;
@@ -320,11 +320,20 @@ const TOPOLOGIES = {
 };
 
 function getTopologyForLevel(level, rows, cols) {
-    // Weighted selection — VERTICAL_RECT appears most often, SQUARE rarely.
-    // Every other topology uses DEFAULT_WEIGHT.
+    // Level 15+: always use a full-rectangle topology for maximum puzzle density.
+    // Shape cutouts (diamonds, crosses, donuts, etc.) create dead void regions that
+    // make the board feel sparse regardless of how well paths are packed inside.
+    // Full rectangle = every single cell participates = true 100% density.
+    if (level >= 15) {
+        // 80% VERTICAL_RECT (tall portrait), 20% SQUARE (flexible orientation)
+        return Math.random() < 0.8 ? TOPOLOGIES.VERTICAL_RECT : TOPOLOGIES.SQUARE;
+    }
+
+    // Early levels: weighted selection across all topologies.
+    // VERTICAL_RECT still dominates but shapes add visual variety.
     const TOPOLOGY_WEIGHTS = {
         VERTICAL_RECT: 5,   // ← most common: tall portrait boards
-        SQUARE:        1,   // ← least common: plain full rectangle
+        SQUARE: 1,   // ← least common: plain full rectangle
     };
     const DEFAULT_WEIGHT = 2;
 
