@@ -26,20 +26,17 @@
             padding-right: max(0.75rem, env(safe-area-inset-right));
         }
 
-        /* ── Mobile: three-section fixed layout — bars own their rows, board fills the middle ── */
+        /* ── Mobile: normal flex-column page layout — header → board → controls ── */
         @media (max-width: 767px) {
             body {
                 padding: 0 !important;
                 display: flex !important;
                 flex-direction: column !important;
                 align-items: stretch !important;
-                justify-content: flex-start !important;
-                height: 100svh !important;
-                overflow: hidden !important;
             }
 
+            /* Top bar — plain flex child, no positioning */
             #game-header {
-                position: relative !important;
                 flex-shrink: 0 !important;
                 width: 100% !important;
                 max-width: none !important;
@@ -54,9 +51,9 @@
                 padding-top: max(0.75rem, env(safe-area-inset-top)) !important;
                 padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
                 padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
-                z-index: 10 !important;
             }
 
+            /* Board — grows to fill all remaining vertical space between the bars */
             #board-container {
                 flex: 1 !important;
                 min-height: 0 !important;
@@ -68,11 +65,10 @@
                 border-width: 0 !important;
                 box-shadow: none !important;
                 aspect-ratio: auto !important;
-                z-index: 0 !important;
             }
 
+            /* Bottom bar — plain flex child, no positioning */
             #game-controls {
-                position: relative !important;
                 flex-shrink: 0 !important;
                 width: 100% !important;
                 max-width: none !important;
@@ -87,7 +83,6 @@
                 padding-bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
                 padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
                 padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
-                z-index: 10 !important;
             }
         }
 
