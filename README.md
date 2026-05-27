@@ -33,14 +33,19 @@ Clear every single arrow from the board. An arrow is cleared when it slides all 
 
 ---
 
-## Controls
+## Controls & Camera System
+
+VECTO features a fully responsive, hardware-accelerated **cinematic camera system** tailored for mobile viewports:
+
+- **Cinematic Entrance Sequence**: When entering any gameplay mode or continuing progress, the board starts empty and dynamically draws the arrow paths progressively with a staggered timeline. The moment drawing completes, the camera seamlessly sweeps in to a deep, focused **`1.35×` gameplay zoom**.
+- **Bounded Panning & Centering**: Camera drag panning is strictly confined to the active board boundaries, preventing you from ever losing the board off-screen. Boards smaller than your screen height or width automatically center themselves perfectly.
 
 ### On Mobile (Touch)
 
 | Gesture | Action |
 |---|---|
 | **Tap** an arrow | Launch it |
-| **Drag** with one finger | Pan the camera |
+| **Drag** with one finger | Pan the camera (safely bounded) |
 | **Pinch** with two fingers | Zoom in or out |
 
 ### On Desktop (Mouse)
@@ -48,11 +53,11 @@ Clear every single arrow from the board. An arrow is cleared when it slides all 
 | Action | Result |
 |---|---|
 | **Click** an arrow | Launch it |
-| **Click and drag** | Pan the camera |
+| **Click and drag** | Pan the camera (safely bounded) |
 | **Scroll wheel** | Zoom in or out |
 | **Hover** over an arrow | Highlights it |
 
-> **Zoom range:** 1× to 6×. Useful for large boards where arrows are small.
+> **Zoom range:** Dynamic fit-view minimum (allowing zooming out for overview navigation) up to 6× gameplay zoom.
 
 ---
 
@@ -100,7 +105,7 @@ Your score is cumulative across all levels and saved automatically between sessi
 
 The main campaign. Start at Level 1 and progress through increasingly large and complex boards. Your level and score are saved automatically — you can quit and come back anytime.
 
-Boards are portrait-oriented (tall) and grow with each level:
+Boards are portrait-oriented and utilize a **dynamic grid proportion-balancing generator** that ensures grids visually fill the mobile viewport screen comfortably (targeting aspect ratios of `1.35` to `1.65` for 95% of generated puzzles, and rarely introducing tall `2.8–4.0` vertical challenge columns). Dimensions grow with each level:
 
 | Levels | Height (rows) | Width (cols) |
 |---|---|---|
@@ -111,7 +116,7 @@ Boards are portrait-oriented (tall) and grow with each level:
 | 13 – 18 | 25 – 45 | 9 – 17 |
 | 19+ | 35 – 50 | 14 – 20 |
 
-After Level 10, boards are always at least 15 rows tall and 6 columns wide.
+After Level 10, boards are always at least 15 rows tall and 6 columns wide. All generated matrices strictly respect these difficulty scaling preset boundaries while mathematically locking in comfortable portrait proportions.
 
 ### ☀️ Daily Puzzle
 
