@@ -243,9 +243,9 @@ function startCameraEntranceAnimation() {
     const startF = State.matF;
 
     // ── Step 2 target: normal gameplay position ───────────────────────────────
-    const targetZ = 1.0;
+    const targetZ = 1.35;
     
-    // Dynamically calculate the perfect target translation values for zoom=1.0
+    // Dynamically calculate the perfect target translation values for zoom=1.35
     const oldZoom = State.cssZoom;
     const oldE = State.matE;
     const oldF = State.matF;
@@ -258,12 +258,13 @@ function startCameraEntranceAnimation() {
     const targetE = State.matE;
     const targetF = State.matF;
     
-    // Restore starting values before starting animation frame loop
+    // Restore starting values and immediately apply them to the canvas to prevent snapping/zoom-out jumps
     State.cssZoom = startZ;
     State.matE = startE;
     State.matF = startF;
+    applyBoardTransform();
 
-    const HOLD_MS = 600;   // time to show the full-board overview
+    const HOLD_MS = 0;     // Instant zoom-in seamless handoff
     const ANIM_MS = 1100;  // zoom-in duration
     const t0      = performance.now();
 
@@ -366,9 +367,9 @@ function startPathRevealAnimation() {
     State.matF    = 0;
     applyBoardTransform();          // sets matE/F to properly centered values
 
-    // ── Step 2: progressive path reveal with adaptive duration ──────────────
+    // ── Step 2: progressive path reveal with adaptive duration (2x speedup) ──
     const N = State.paths.length;
-    const duration = Math.min(1800, Math.max(600, N * 120));
+    const duration = Math.min(900, Math.max(300, N * 60));
     const t0 = performance.now();
 
     function step(now) {
