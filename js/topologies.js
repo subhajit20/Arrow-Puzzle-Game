@@ -1,6 +1,4 @@
 function generateRandomGridDimensions(preset, level) {
-    // Rows (height) and cols (width) now use independent ranges.
-    // Rows always use a taller range so boards are portrait by default.
     // Global hard limits: rows 6–50, cols 2–20.
     let minR, maxR, minC, maxC;
 
@@ -47,12 +45,21 @@ function generateRandomGridDimensions(preset, level) {
         }
     }
 
-    let rows = minR + Math.floor(Math.random() * (maxR - minR + 1));
-    let cols = minC + Math.floor(Math.random() * (maxC - minC + 1));
+    // Determine target ratio (5% chance of vertical challenge, 95% balanced)
+    let targetRatio;
+    if (Math.random() < 0.05) {
+        targetRatio = 2.8 + Math.random() * 1.2; // 2.8 to 4.0 (tall vertical challenge)
+    } else {
+        targetRatio = 1.35 + Math.random() * 0.3; // 1.35 to 1.65 (balanced portrait)
+    }
 
-    // Mobile portrait: ensure enough columns so the board spans the full screen
-    // width.  Target ~34 px per cell; Math.ceil() guarantees we never under-shoot.
-    // This pairs with calculateMetrics which sizes cells as (screenW - 4) / cols.
+    // 1. Roll rows within the active bounds
+    let rows = minR + Math.floor(Math.random() * (maxR - minR + 1));
+
+    // 2. Calculate columns using the target aspect ratio
+    let cols = Math.ceil(rows / targetRatio);
+
+    // 3. Mobile portrait: ensure enough columns so the board spans the full screen width
     if (typeof window !== 'undefined' && window.innerWidth) {
         const screenW = window.innerWidth;
         if (screenW < 768 && screenW < (window.innerHeight || 800)) {
@@ -61,8 +68,16 @@ function generateRandomGridDimensions(preset, level) {
         }
     }
 
+    // 4. Strictly clamp cols within active preset boundaries
+    cols = Math.max(minC, Math.min(maxC, cols));
+
+    // 5. Recompute rows based on final cols to lock in the target ratio within preset limits
+    rows = Math.max(minR, Math.min(maxR, Math.ceil(cols * targetRatio)));
+
+    // 6. Global hard safety clamps
     rows = Math.min(50, Math.max(6, rows));
     cols = Math.min(20, Math.max(2, cols));
+
     return { rows, cols };
 }
 
