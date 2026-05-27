@@ -26,7 +26,8 @@ const State = {
     matE: 0,
     matF: 0,
     canvasW: 0,
-    canvasH: 0
+    canvasH: 0,
+    minZoom: 0.15   // updated dynamically by startCameraEntranceAnimation
 };
 
 const canvas = document.getElementById('gameCanvas');
