@@ -17,6 +17,7 @@ let ignoreTap = false;
 
 canvas.addEventListener('touchstart', (e) => {
     AudioEngine.init();
+    if (window.cameraAnimReq) cancelAnimationFrame(window.cameraAnimReq);
     if (State.isWinState || State.isFailState) return;
 
     const now = Date.now();
@@ -72,7 +73,7 @@ canvas.addEventListener('touchmove', (e) => {
 
         const currentDist = Math.hypot(t1x - t2x, t1y - t2y);
         if (startTouchDistance > 0 && currentDist > 0) {
-            const newZoom = Math.min(6.0, Math.max(1.0, startZoom * currentDist / startTouchDistance));
+            const newZoom = Math.min(6.0, Math.max(0.1, startZoom * currentDist / startTouchDistance));
             const midX = (t1x + t2x) / 2;
             const midY = (t1y + t2y) / 2;
             State.cssZoom = newZoom;
@@ -130,6 +131,7 @@ let mouseDownTime = 0;
 
 canvas.addEventListener('mousedown', (e) => {
     AudioEngine.init();
+    if (window.cameraAnimReq) cancelAnimationFrame(window.cameraAnimReq);
     if (State.isWinState || State.isFailState) return;
 
     isMouseDown = true;
@@ -198,7 +200,7 @@ canvas.addEventListener('wheel', (e) => {
     const zoomSpeed = 0.1;
     const newZoom = e.deltaY < 0
         ? Math.min(6.0, State.cssZoom * (1 + zoomSpeed))
-        : Math.max(1.0, State.cssZoom * (1 - zoomSpeed));
+        : Math.max(0.1, State.cssZoom * (1 - zoomSpeed));
 
     State.cssZoom = newZoom;
     State.matE = relX - newZoom * anchorX;
