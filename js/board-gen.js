@@ -244,13 +244,22 @@ function tryGenerateBoard() {
         let lastMove = bestDir;
         let maxDim = Math.max(State.gridRows, State.gridCols);
         // Denser boards get shorter paths so MORE paths pack the grid.
-        // maxDim 40-50 → 5–8 cells each  → ~120–190 paths on a 960-cell board
-        // maxDim 20-39 → 6–11 cells each → ~30–70 paths
-        // maxDim  <20  → 8–14 cells each → ~8–18 paths
+        // Phase 1 density: tightened crawler caps so the optimizer has fewer
+        // fat paths to split and more even packing from the start.
+        // maxDim 40-50 → 4–7 cells each  → ~137–240 paths on a 960-cell board
+        // maxDim 20-39 → 5–9 cells each  → ~33–60 paths
+        // maxDim  <20  → 6–11 cells each → ~8–20 paths
         let maxLen;
-        if (maxDim >= 40) maxLen = 5 + Math.floor(Math.random() * 4);  // 5–8
-        else if (maxDim >= 20) maxLen = 6 + Math.floor(Math.random() * 6); // 6–11
-        else maxLen = 8 + Math.floor(Math.random() * 7); // 8–14
+        if (maxDim >= 40) maxLen = 4 + Math.floor(Math.random() * 4);    // 4–7
+        else if (maxDim >= 20) maxLen = 5 + Math.floor(Math.random() * 5); // 5–9
+        else maxLen = 6 + Math.floor(Math.random() * 6);                    // 6–11
+
+        // Level-aware density scaling: tighten caps as the player progresses
+        {
+            const _lvl = State.level || 1;
+            if (_lvl > 25) maxLen = Math.max(3, Math.round(maxLen * 0.70));
+            else if (_lvl > 10) maxLen = Math.max(3, Math.round(maxLen * 0.85));
+        }
 
         let consecutiveStraight = 0;
         let spiralDir = Math.random() < 0.5 ? 1 : -1;
@@ -797,6 +806,240 @@ function fixVisualSelfIntersections(paths, rows, cols) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// buildGridOwnership
+// Rebuilds a full gridOwnership map from paths + current mask state.
+// Values: -2 = masked/void, -1 = unassigned playable cell, >=1 = path id.
+// ---------------------------------------------------------------------------
+function buildGridOwnership(paths) {
+    const rows = State.gridRows;
+    const cols = State.gridCols;
+    const go = Array(rows).fill().map(() => Array(cols).fill(-2));
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            if (State.gridMask[r][c] === 1) go[r][c] = -1;
+        }
+    }
+    paths.forEach(p => {
+        p.points.forEach(pt => { go[pt.r][pt.c] = p.id; });
+    });
+    return go;
+}
+
+// ---------------------------------------------------------------------------
+// getAdaptiveTargetLen
+// Returns the target maximum path length used by the density optimizer.
+// Lower = denser board. Scales with board dimensions and level progression.
+// ---------------------------------------------------------------------------
+function getAdaptiveTargetLen(level) {
+    const maxDim = Math.max(State.gridRows, State.gridCols);
+    // Base target by board size
+    let base;
+    if (maxDim >= 40) base = 8;
+    else if (maxDim >= 20) base = 10;
+    else base = 13;
+    // Level scaling: higher levels → shorter target → more interactions
+    if (level > 25) return Math.max(4, Math.floor(base * 0.62));
+    if (level > 10) return Math.max(5, Math.floor(base * 0.80));
+    return base;
+}
+
+// ---------------------------------------------------------------------------
+// densityOptimizerPass
+//
+// Phase 2 of the density system. After the board generator produces a valid
+// solvable board, this pass identifies "fat" paths (paths substantially
+// longer than the adaptive target length) and splits them at strategically
+// chosen points to:
+//
+//   • Create dependency chains: new endpoint aimed at another path's body
+//   • Create crossing corridors: high adjacency to neighbouring paths
+//   • Create choke points: split boundary in a region shared by many paths
+//
+// Each split is validated (full validatePaths + isBoardFullySolvable check)
+// before being committed. Failed splits are rolled back via snapshot.
+// The board always exits this function in a fully valid solvable state.
+// ---------------------------------------------------------------------------
+function densityOptimizerPass(paths, level) {
+    // Count active (playable) cells
+    let activeCells = 0;
+    for (let r = 0; r < State.gridRows; r++)
+        for (let c = 0; c < State.gridCols; c++)
+            if (State.gridMask[r][c] === 1) activeCells++;
+    if (activeCells === 0 || paths.length === 0) return;
+
+    const rows = State.gridRows;
+    const cols = State.gridCols;
+    const dMoves = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+    const targetAvgLen = getAdaptiveTargetLen(level);
+    // Paths above this length are split candidates (1.75× the target average)
+    const fatThreshold = Math.floor(targetAvgLen * 1.75);
+    // How many extra paths we want to reach target density
+    const targetPathCount = Math.ceil(activeCells / targetAvgLen);
+    const desiredSplits = Math.max(0, targetPathCount - paths.length);
+
+    // Cap splits by level to keep early boards accessible
+    let maxSplits;
+    if (level <= 10) maxSplits = Math.min(2, desiredSplits);
+    else if (level <= 25) maxSplits = Math.min(5, desiredSplits);
+    else maxSplits = Math.min(10, desiredSplits);
+
+    if (maxSplits === 0) return;
+
+    let pathIdCounter = Math.max(...paths.map(p => p.id));
+    let splitsApplied = 0;
+    const maxAttempts = maxSplits * 4; // budget: 4 tries per desired split
+
+    for (let attempt = 0; attempt < maxAttempts && splitsApplied < maxSplits; attempt++) {
+
+        // ── 1. Snapshot all paths for rollback ─────────────────────────────
+        const snapshot = paths.map(p => ({
+            id: p.id,
+            points: JSON.parse(JSON.stringify(p.points)),
+            heading: p.heading,
+            originalPoints: JSON.parse(JSON.stringify(p.originalPoints))
+        }));
+        const snapshotLen = paths.length;
+
+        // ── 2. Find fat paths ───────────────────────────────────────────────
+        const fatPaths = paths
+            .filter(p => p.points.length > fatThreshold)
+            .sort((a, b) => b.points.length - a.points.length);
+        if (fatPaths.length === 0) break;
+
+        // Pick from the top 3 longest with a random skew for board variety
+        const target = fatPaths[Math.floor(Math.random() * Math.min(3, fatPaths.length))];
+        const pts = target.points;
+        const n = pts.length;
+
+        // ── 3. Build current gridOwnership ──────────────────────────────────
+        const go = buildGridOwnership(paths);
+
+        // ── 4. Score every candidate split index ────────────────────────────
+        // Each half must be >= minHalf cells (floor half the target average,
+        // hard floor 2) so neither sub-path is a trivial stub.
+        const minHalf = Math.max(2, Math.floor(targetAvgLen * 0.5));
+
+        let bestIdx = -1;
+        let bestScore = -Infinity;
+
+        for (let i = minHalf - 1; i <= n - minHalf - 1; i++) {
+            const halfA = i + 1;       // pts[0 .. i]
+            const halfB = n - i - 1;   // pts[i+1 .. n-1]
+            if (halfA < 2 || halfB < 2) continue;
+
+            const cellA = pts[i];      // new endpoint of path A
+            const cellB = pts[i + 1];  // new endpoint of path B
+
+            // a) Adjacency — other-path cells touching the split boundary
+            let adjScore = 0;
+            for (const d of dMoves) {
+                const r1 = cellA.r + d[0], c1 = cellA.c + d[1];
+                if (r1 >= 0 && r1 < rows && c1 >= 0 && c1 < cols) {
+                    const id = go[r1][c1];
+                    if (id >= 1 && id !== target.id) adjScore++;
+                }
+                const r2 = cellB.r + d[0], c2 = cellB.c + d[1];
+                if (r2 >= 0 && r2 < rows && c2 >= 0 && c2 < cols) {
+                    const id = go[r2][c2];
+                    if (id >= 1 && id !== target.id) adjScore++;
+                }
+            }
+
+            // b) Dependency blocking — does the natural outbound heading of
+            //    the new endpoint aim straight at another path's body?
+            //    This creates explicit dependency chains between paths.
+            let blockScore = 0;
+            if (i >= 1) {
+                const drA = cellA.r - pts[i - 1].r;
+                const dcA = cellA.c - pts[i - 1].c;
+                let cr = cellA.r + drA, cc = cellA.c + dcA;
+                while (cr >= 0 && cr < rows && cc >= 0 && cc < cols) {
+                    const id = go[cr][cc];
+                    if (id >= 1 && id !== target.id) { blockScore += 3; break; }
+                    cr += drA; cc += dcA;
+                }
+            }
+            if (i + 2 < n) {
+                const drB = cellB.r - pts[i + 2].r;
+                const dcB = cellB.c - pts[i + 2].c;
+                let cr = cellB.r + drB, cc = cellB.c + dcB;
+                while (cr >= 0 && cr < rows && cc >= 0 && cc < cols) {
+                    const id = go[cr][cc];
+                    if (id >= 1 && id !== target.id) { blockScore += 3; break; }
+                    cr += drB; cc += dcB;
+                }
+            }
+
+            // c) Balance — prefer splits near the middle of the fat path
+            const balance = 1.0 - Math.abs(halfA - halfB) / n;
+
+            // d) Small jitter to avoid deterministic index selection
+            const jitter = Math.random() * 0.4;
+
+            const score = adjScore * 2.5 + blockScore + balance * 1.5 + jitter;
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestIdx = i;
+            }
+        }
+
+        if (bestIdx === -1) continue;
+
+        // ── 5. Perform the split ─────────────────────────────────────────────
+        const newId = ++pathIdCounter;
+        const ptsA = pts.slice(0, bestIdx + 1);
+        const ptsB = pts.slice(bestIdx + 1);
+
+        // Modify original path → becomes path A
+        target.points = ptsA;
+        target.originalPoints = [];
+
+        // Create path B
+        const pathB = {
+            id: newId,
+            points: ptsB,
+            heading: "RIGHT",
+            state: "IDLE",
+            animProgress: 0,
+            crashFlashFrames: 0,
+            originalPoints: []
+        };
+        paths.push(pathB);
+
+        // ── 6. Re-assign headings for the two new sub-paths ─────────────────
+        // assignSmartHeadings is path-independent (uses only board dims),
+        // so calling it on just the two new paths is correct and efficient.
+        assignSmartHeadings([target, pathB], rows, cols);
+
+        // ── 7. Re-run unjammer + visual fix on the full board ────────────────
+        runUnjammingSolvabilityTweak(paths, rows, cols, null);
+        fixVisualSelfIntersections(paths, rows, cols);
+
+        // ── 8. Full validation ───────────────────────────────────────────────
+        const valid =
+            !hasAnyDoubleSelfCollidingPath(paths, rows, cols) &&
+            validatePaths(paths, State.gridMask, rows, cols) &&
+            isBoardFullySolvable(paths, rows, cols);
+
+        if (valid) {
+            splitsApplied++;
+        } else {
+            // ── 9. Rollback ──────────────────────────────────────────────────
+            // Remove any paths added during this attempt
+            while (paths.length > snapshotLen) paths.pop();
+            // Restore all original path state from snapshot
+            for (let si = 0; si < snapshotLen; si++) {
+                paths[si].points        = snapshot[si].points;
+                paths[si].heading       = snapshot[si].heading;
+                paths[si].originalPoints = snapshot[si].originalPoints;
+            }
+        }
+    }
+}
+
 function build100PackedLevel(forceNewGeneration = false) {
     if (!forceNewGeneration && Persistence.loadState()) {
         State.levelStartScore = State.score;
@@ -853,8 +1096,12 @@ function build100PackedLevel(forceNewGeneration = false) {
             fixVisualSelfIntersections(candidate.paths, State.gridRows, State.gridCols);
             if (!hasAnyDoubleSelfCollidingPath(candidate.paths, State.gridRows, State.gridCols) &&
                 isBoardFullySolvable(candidate.paths, State.gridRows, State.gridCols)) {
-                
-                // Evaluate puzzle complexity
+
+                // Phase 2 density optimization: split fat paths to create
+                // interaction density, dependency chains, and choke points.
+                densityOptimizerPass(candidate.paths, State.level);
+
+                // Evaluate puzzle complexity (reflects the optimized board)
                 const complexity = evaluateBoardComplexity(candidate.paths, State.gridRows, State.gridCols);
                 let tier = "NORMAL";
                 if (complexity.score < 6) tier = "EASY";
@@ -911,7 +1158,10 @@ function build100PackedLevel(forceNewGeneration = false) {
                 fixVisualSelfIntersections(fb.paths, FB_ROWS, FB_COLS);
                 if (!hasAnyDoubleSelfCollidingPath(fb.paths, FB_ROWS, FB_COLS) &&
                     isBoardFullySolvable(fb.paths, FB_ROWS, FB_COLS)) {
-                    
+
+                    // Apply density optimizer on fallback board too
+                    densityOptimizerPass(fb.paths, State.level);
+
                     const complexity = evaluateBoardComplexity(fb.paths, FB_ROWS, FB_COLS);
                     if (complexity.score < 6) fbDifficulty = "EASY";
                     else if (complexity.score < 13) fbDifficulty = "NORMAL";
