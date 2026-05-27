@@ -27,9 +27,15 @@ function applyBoardTransform() {
             // Canvas narrower than container: centre it (handles zoom-out)
             State.matE = (bcr.width - scaledW) / 2;
         } else {
-            // Canvas wider: allow panning, clamp to valid range
-            const maxE = (scaledW - bcr.width) / 2;
-            State.matE = Math.min(maxE, Math.max(-maxE, State.matE));
+            // Canvas wider: allow panning across the full board width.
+            // Bounds are board-edge-based so the player can reach every column:
+            //   maxE  →  board left  edge at container left  edge
+            //   minE  →  board right edge at container right edge
+            const ox    = State.offsetX  || 0;
+            const brdW  = (State.gridCols || 0) * (State.cellSize || 0);
+            const maxE  = -ox * State.cssZoom;
+            const minE  = bcr.width - (ox + brdW) * State.cssZoom;
+            State.matE  = Math.min(maxE, Math.max(minE, State.matE));
         }
 
         // Vertical ───────────────────────────────────────────────────────────

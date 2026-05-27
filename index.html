@@ -48,7 +48,8 @@
                 backdrop-filter: none !important;
                 -webkit-backdrop-filter: none !important;
                 box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06) !important;
-                padding-top: max(0.75rem, env(safe-area-inset-top)) !important;
+                padding-top: max(0.5rem, env(safe-area-inset-top)) !important;
+                padding-bottom: 0.5rem !important;
                 padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
                 padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
             }
@@ -80,9 +81,41 @@
                 backdrop-filter: none !important;
                 -webkit-backdrop-filter: none !important;
                 box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.06) !important;
-                padding-bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+                padding-top: 0.5rem !important;
+                padding-bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
                 padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
                 padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
+            }
+
+            /* Compact typography in header */
+            #level-display {
+                font-size: 1rem !important;
+                line-height: 1.25 !important;
+            }
+
+            #score-display {
+                font-size: 1rem !important;
+                line-height: 1.25 !important;
+            }
+
+            #tier-badge {
+                font-size: 0.6rem !important;
+                margin-top: 0 !important;
+            }
+
+            /* Smaller heart container */
+            #game-header .flex.items-center.gap-1 {
+                padding: 0.2rem 0.5rem !important;
+            }
+
+            /* Compact control buttons */
+            #hint-btn {
+                padding-top: 0.5rem !important;
+                padding-bottom: 0.5rem !important;
+            }
+
+            #game-controls > button:first-child {
+                padding: 0.5rem !important;
             }
         }
 

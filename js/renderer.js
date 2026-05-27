@@ -89,62 +89,9 @@ function drawEngine() {
     const rows = State.gridRows;
     const cols = State.gridCols;
 
-    ctx.fillStyle = "#f8fafc";
-    ctx.fillRect(ox, oy, cols * cSize, rows * cSize);
-
+    // Board background: plain white — no grid lines or cell shading
     ctx.fillStyle = "#ffffff";
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            if (State.gridMask[r]?.[c] === 1) {
-                ctx.fillRect(ox + c * cSize, oy + r * cSize, cSize, cSize);
-            }
-        }
-    }
-
-    ctx.fillStyle = "#f1f5f9";
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            if (State.gridMask[r]?.[c] === -1) {
-                ctx.fillRect(ox + c * cSize + 1, oy + r * cSize + 1, cSize - 2, cSize - 2);
-            }
-        }
-    }
-
-    ctx.strokeStyle = State.gridSize > 30 ? "rgba(241, 245, 249, 0.4)" : "#f1f5f9";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            if (State.gridMask[r]?.[c] === 1) {
-                if (c === 0 || State.gridMask[r]?.[c - 1] !== 1) {
-                    ctx.moveTo(ox + c * cSize, oy + r * cSize);
-                    ctx.lineTo(ox + c * cSize, oy + (r + 1) * cSize);
-                }
-                ctx.moveTo(ox + (c + 1) * cSize, oy + r * cSize);
-                ctx.lineTo(ox + (c + 1) * cSize, oy + (r + 1) * cSize);
-
-                if (r === 0 || State.gridMask[r - 1]?.[c] !== 1) {
-                    ctx.moveTo(ox + c * cSize, oy + r * cSize);
-                    ctx.lineTo(ox + (c + 1) * cSize, oy + r * cSize);
-                }
-                ctx.moveTo(ox + c * cSize, oy + (r + 1) * cSize);
-                ctx.lineTo(ox + (c + 1) * cSize, oy + (r + 1) * cSize);
-            }
-        }
-    }
-    ctx.stroke();
-
-    ctx.strokeStyle = "#cbd5e1";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-            if (State.gridMask[r]?.[c] === -1) {
-                ctx.rect(ox + c * cSize + 1, oy + r * cSize + 1, cSize - 2, cSize - 2);
-            }
-        }
-    }
-    ctx.stroke();
+    ctx.fillRect(ox, oy, cols * cSize, rows * cSize);
 
     ctx.save();
     ctx.beginPath();
