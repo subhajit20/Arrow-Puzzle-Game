@@ -186,7 +186,298 @@ function getOccupiedNeighborsCount(r, c, gridOwnership) {
     return count;
 }
 
+// ===========================================================================
+// HAMILTONIAN GENERATION ENGINE
+//
+// Replaces the greedy crawler as the primary board generation strategy.
+// Guarantees 100% cell coverage from the very first step — no gap-fill needed.
+//
+// Pipeline:
+//   1. findConnectedComponents  — identify playable cell islands
+//   2. buildWarnsdorffPath      — space-filling path through each island
+//   3. splitPathIntoSegments    — strategic cuts into short puzzle paths
+//   4. tryHamiltonianBoard      — orchestrates 1-3 and validates result
+//
+// The old greedy crawler (tryGreedyCrawlerBoard) is kept as a fallback for
+// exotic topologies where Warnsdorff fails to find a Hamiltonian path.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// findConnectedComponents
+// BFS flood-fill to identify all connected groups of playable cells.
+// Most topologies produce one big component; TWIN_PANELS and odd shapes can
+// produce two or more disconnected regions.
+// ---------------------------------------------------------------------------
+function findConnectedComponents() {
+    const rows = State.gridRows;
+    const cols = State.gridCols;
+    const dMoves = [[-1,0],[1,0],[0,-1],[0,1]];
+    const visited = new Uint8Array(rows * cols);
+    const components = [];
+
+    for (let sr = 0; sr < rows; sr++) {
+        for (let sc = 0; sc < cols; sc++) {
+            if (State.gridMask[sr][sc] !== 1 || visited[sr * cols + sc]) continue;
+
+            const component = [];
+            const queue = [{ r: sr, c: sc }];
+            visited[sr * cols + sc] = 1;
+
+            while (queue.length > 0) {
+                const { r, c } = queue.shift();
+                component.push({ r, c });
+                for (const [dr, dc] of dMoves) {
+                    const nr = r + dr, nc = c + dc;
+                    if (nr >= 0 && nr < rows && nc >= 0 && nc < cols
+                        && State.gridMask[nr][nc] === 1
+                        && !visited[nr * cols + nc]) {
+                        visited[nr * cols + nc] = 1;
+                        queue.push({ r: nr, c: nc });
+                    }
+                }
+            }
+
+            components.push(component);
+        }
+    }
+
+    return components;
+}
+
+// ---------------------------------------------------------------------------
+// buildWarnsdorffPath
+// Warnsdorff's heuristic: at every step extend to the unvisited neighbour
+// that itself has the fewest remaining unvisited neighbours.  This drives the
+// path toward dead-end corners early, avoiding the backtracking nightmare of
+// naive DFS Hamiltonian search.
+//
+// Returns the complete path array (one cell object per playable cell in the
+// component) on success, or null if every start position gets stuck.
+// ---------------------------------------------------------------------------
+function buildWarnsdorffPath(component, rows, cols) {
+    const dMoves = [[-1,0],[1,0],[0,-1],[0,1]];
+    const total = component.length;
+    if (total <= 1) return component.slice();
+
+    // Fast membership lookup
+    const inComp = new Uint8Array(rows * cols);
+    component.forEach(cell => { inComp[cell.r * cols + cell.c] = 1; });
+
+    // Warnsdorff degree: number of unvisited neighbours
+    function deg(r, c, visited) {
+        let d = 0;
+        for (const [dr, dc] of dMoves) {
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols
+                && inComp[nr * cols + nc] && !visited[nr * cols + nc]) d++;
+        }
+        return d;
+    }
+
+    // Prefer low-degree start cells (corners / edges) — they get stuck fastest
+    // if left for later, so Warnsdorff works best starting from them.
+    const emptyVisited = new Uint8Array(rows * cols);
+    const startCandidates = component
+        .map((cell, idx) => ({ idx, d: deg(cell.r, cell.c, emptyVisited) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 6)
+        .map(x => x.idx);
+
+    // Add a few random starts for board variety
+    for (let i = 0; i < 4; i++)
+        startCandidates.push(Math.floor(Math.random() * total));
+
+    for (const si of startCandidates) {
+        const visited = new Uint8Array(rows * cols);
+        const path = [];
+        const start = component[si % total];
+        path.push(start);
+        visited[start.r * cols + start.c] = 1;
+        let cur = start;
+
+        while (path.length < total) {
+            const nbrs = [];
+            for (const [dr, dc] of dMoves) {
+                const nr = cur.r + dr, nc = cur.c + dc;
+                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols
+                    && inComp[nr * cols + nc] && !visited[nr * cols + nc]) {
+                    nbrs.push({ r: nr, c: nc, d: deg(nr, nc, visited) });
+                }
+            }
+
+            if (nbrs.length === 0) break; // stuck
+
+            // Ascending by degree + tiny random noise to break ties with variety
+            nbrs.sort((a, b) => (a.d - b.d) + (Math.random() - 0.5) * 0.3);
+            const next = nbrs[0];
+            path.push(next);
+            visited[next.r * cols + next.c] = 1;
+            cur = next;
+        }
+
+        if (path.length === total) return path; // success — full coverage
+    }
+
+    return null; // all starts failed — caller uses greedy-crawler fallback
+}
+
+// ---------------------------------------------------------------------------
+// splitPathIntoSegments
+// Cuts a Hamiltonian path into short puzzle-path objects.
+//
+// Cut-point strategy: score every candidate cut length and pick the one whose
+// boundary cells are most adjacent to ALREADY-COMMITTED path segments.
+// This naturally creates dependency chains — each new endpoint faces the body
+// of a previously placed path, forcing the player to clear in order.
+// ---------------------------------------------------------------------------
+function splitPathIntoSegments(hamiltonPath, startId, level) {
+    const targetLen = getAdaptiveTargetLen(level);
+    const minLen    = 3;
+    const rows = State.gridRows;
+    const cols = State.gridCols;
+    const dMoves = [[-1,0],[1,0],[0,-1],[0,1]];
+    const n = hamiltonPath.length;
+
+    // Track committed ownership for adjacency scoring
+    const committed = new Int32Array(rows * cols).fill(-1);
+
+    const paths = [];
+    let idCounter = startId;
+    let pos = 0;
+
+    while (pos < n) {
+        const remaining = n - pos;
+        if (remaining <= 0) break;
+
+        // If too few cells remain to split further, absorb them all into one segment
+        if (remaining < minLen * 2) {
+            if (remaining >= 2) {
+                const seg = hamiltonPath.slice(pos);
+                const p = {
+                    id: idCounter++,
+                    points: seg,
+                    heading: "RIGHT",
+                    state: "IDLE",
+                    animProgress: 0,
+                    crashFlashFrames: 0,
+                    originalPoints: []
+                };
+                seg.forEach(cell => { committed[cell.r * cols + cell.c] = p.id; });
+                paths.push(p);
+            }
+            break;
+        }
+
+        // Segment length range: must leave at least minLen cells for the next segment
+        const maxLen    = Math.min(targetLen + 2, remaining - minLen);
+        const clampMax  = Math.max(minLen, maxLen);
+
+        let bestLen   = minLen + Math.floor((clampMax - minLen) / 2);
+        let bestScore = -Infinity;
+
+        for (let len = minLen; len <= clampMax; len++) {
+            const endCell  = hamiltonPath[pos + len - 1];
+            const nextCell = hamiltonPath[pos + len]; // always exists (remaining - minLen >= minLen)
+
+            // Primary: how many already-committed path cells touch the cut boundary?
+            // More adjacency = stronger inter-path interaction at this seam.
+            let adjScore = 0;
+            for (const [dr, dc] of dMoves) {
+                const ar = endCell.r  + dr, ac = endCell.c  + dc;
+                if (ar >= 0 && ar < rows && ac >= 0 && ac < cols
+                    && committed[ar * cols + ac] >= 0) adjScore++;
+                const br = nextCell.r + dr, bc = nextCell.c + dc;
+                if (br >= 0 && br < rows && bc >= 0 && bc < cols
+                    && committed[br * cols + bc] >= 0) adjScore++;
+            }
+
+            // Secondary: prefer lengths close to targetLen
+            const lenScore = 1.0 - Math.abs(len - targetLen) / (targetLen + 2);
+
+            // Tertiary: small random jitter for board variety
+            const score = adjScore * 3.0 + lenScore * 1.5 + Math.random() * 0.4;
+            if (score > bestScore) { bestScore = score; bestLen = len; }
+        }
+
+        const seg = hamiltonPath.slice(pos, pos + bestLen);
+        const p = {
+            id: idCounter++,
+            points: seg,
+            heading: "RIGHT",
+            state: "IDLE",
+            animProgress: 0,
+            crashFlashFrames: 0,
+            originalPoints: []
+        };
+        seg.forEach(cell => { committed[cell.r * cols + cell.c] = p.id; });
+        paths.push(p);
+        pos += bestLen;
+    }
+
+    return paths;
+}
+
+// ---------------------------------------------------------------------------
+// tryHamiltonianBoard
+// Orchestrates the Hamiltonian generation pipeline.  Returns a valid
+// { paths, gridOwnership } result on success, or null on failure.
+// ---------------------------------------------------------------------------
+function tryHamiltonianBoard() {
+    const rows  = State.gridRows;
+    const cols  = State.gridCols;
+    const level = State.level || 1;
+
+    // Step 1: find connected islands of playable cells
+    const components = findConnectedComponents();
+    if (components.length === 0) return null;
+
+    const allPaths = [];
+    let pathIdCounter = 1;
+
+    for (const component of components) {
+        if (component.length < 2) continue; // single isolated cell — skip
+
+        // Step 2: Warnsdorff space-filling path through this island
+        const hamiltonPath = buildWarnsdorffPath(component, rows, cols);
+        if (!hamiltonPath || hamiltonPath.length !== component.length) return null;
+
+        // Step 3: split into short puzzle-path segments
+        const segPaths = splitPathIntoSegments(hamiltonPath, pathIdCounter, level);
+        segPaths.forEach(p => allPaths.push(p));
+        pathIdCounter += segPaths.length;
+    }
+
+    if (allPaths.length === 0) return null;
+
+    // Step 4: verify 100% coverage (every playable cell must belong to a path)
+    const go = buildGridOwnership(allPaths);
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            if (State.gridMask[r][c] === 1 && go[r][c] < 1) return null;
+        }
+    }
+
+    // Step 5: assign smart headings (Chevron Self-Collision Guard)
+    assignSmartHeadings(allPaths, rows, cols);
+
+    return { paths: allPaths, gridOwnership: go };
+}
+
+// ---------------------------------------------------------------------------
+// tryGenerateBoard  (entry point called by build100PackedLevel)
+// Tries Hamiltonian generation first.  Falls back to the original greedy
+// crawler when Warnsdorff cannot find a Hamiltonian path (rare exotic shapes).
+// ---------------------------------------------------------------------------
 function tryGenerateBoard() {
+    const hamiltonResult = tryHamiltonianBoard();
+    if (hamiltonResult) return hamiltonResult;
+    return tryGreedyCrawlerBoard();
+}
+
+// ---------------------------------------------------------------------------
+// tryGreedyCrawlerBoard  (original generator — now fallback only)
+// ---------------------------------------------------------------------------
+function tryGreedyCrawlerBoard() {
     let gridOwnership = Array(State.gridRows).fill().map(() => Array(State.gridCols).fill(-1));
 
     for (let r = 0; r < State.gridRows; r++) {
