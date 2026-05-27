@@ -71,8 +71,11 @@ function generateRandomGridDimensions(preset, level) {
     // 4. Strictly clamp cols within active preset boundaries
     cols = Math.max(minC, Math.min(maxC, cols));
 
-    // 5. Recompute rows based on final cols to lock in the target ratio within preset limits
-    rows = Math.max(minR, Math.min(maxR, Math.ceil(cols * targetRatio)));
+    // 5. Keep the originally rolled rows — do NOT recalculate from clamped cols.
+    // Recalculating would snap rows back to near minR whenever cols is capped
+    // (e.g. level 19+: rolled rows=45 → cols clamped to 20 → ceil(20×1.5)=30
+    //  → max(35,30)=35, discarding the rolled 45). Just clamp to preset bounds.
+    rows = Math.max(minR, Math.min(maxR, rows));
 
     // 6. Global hard safety clamps
     rows = Math.min(50, Math.max(6, rows));
