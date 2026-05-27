@@ -1,56 +1,89 @@
 function generateRandomGridDimensions(preset, level) {
-    // Premium puzzle philosophy: compact near-square boards (8×8–20×20) deliver
-    // denser strategic interactions than giant stretched boards.
-    // Difficulty comes from path density and dependency depth, NOT matrix size.
-    // Preferred premium sizes: 10×10, 12×12, 14×14, 16×16, 18×18, 18×20, 20×20.
-    // Avoid stretched shapes like 10×50 or 8×40 — they kill interaction density.
-    let minSide, maxSide;
+    let rows, cols;
 
-    if (preset === "Standard") {
-        minSide = 8;  maxSide = 12;
-    } else if (preset === "Grand") {
-        minSide = 12; maxSide = 16;
-    } else if (preset === "Colossal") {
-        minSide = 14; maxSide = 18;
-    } else if (preset === "Titan") {
-        minSide = 16; maxSide = 20;
-    } else if (preset === "Cosmic") {
-        minSide = 18; maxSide = 20;
-    } else {
-        // Auto: slow compact growth with level.
-        // Board size stays tight — density, not dimensions, creates difficulty.
-        if (level <= 3)       { minSide = 8;  maxSide = 10; }
-        else if (level <= 6)  { minSide = 10; maxSide = 12; }
-        else if (level <= 10) { minSide = 12; maxSide = 14; }
-        else if (level <= 15) { minSide = 14; maxSide = 16; }
-        else if (level <= 20) { minSide = 16; maxSide = 18; }
-        else                  { minSide = 18; maxSide = 20; }
-    }
+    if (preset === "Auto") {
+        // Auto mode: boards scale with level and become tall portrait puzzles at
+        // high levels. Density (short paths) creates difficulty — NOT board size
+        // alone. But larger boards give more room for complex dependency chains.
+        //
+        // Column range stays 18-20 from level 16+ so the board is always
+        // comfortably wide. Row count grows to create tall scrollable puzzles.
+        //
+        // Level  1–3  :  8–12 rows × 8–10 cols   (intro)
+        // Level  4–6  : 10–16 rows × 10–12 cols   (easy)
+        // Level  7–10 : 12–20 rows × 10–14 cols   (normal)
+        // Level 11–15 : 14–26 rows × 12–18 cols   (hard)
+        // Level 16–20 : 18–32 rows × 16–20 cols   (hard+)
+        // Level 21–30 : 24–42 rows × 18–20 cols   (expert)
+        // Level 31+   : 32–50 rows × 18–20 cols   (titan)
+        let minRows, maxRows, minCols, maxCols;
 
-    // Roll rows from the compact range
-    let rows = minSide + Math.floor(Math.random() * (maxSide - minSide + 1));
+        if (level <= 3)       { minRows = 8;  maxRows = 12; minCols = 8;  maxCols = 10; }
+        else if (level <= 6)  { minRows = 10; maxRows = 16; minCols = 10; maxCols = 12; }
+        else if (level <= 10) { minRows = 12; maxRows = 20; minCols = 10; maxCols = 14; }
+        else if (level <= 15) { minRows = 14; maxRows = 26; minCols = 12; maxCols = 18; }
+        else if (level <= 20) { minRows = 18; maxRows = 32; minCols = 16; maxCols = 20; }
+        else if (level <= 30) { minRows = 24; maxRows = 42; minCols = 18; maxCols = 20; }
+        else                  { minRows = 32; maxRows = 50; minCols = 18; maxCols = 20; }
 
-    // Cols: within 0–2 cells of rows — produces near-square or slightly portrait
-    // boards (14×14, 18×18, 18×20, 20×20…). No stretched tall rectangles.
-    let colOffset = Math.floor(Math.random() * 3); // 0, 1, or 2 less than rows
-    let cols = Math.max(minSide - 2, rows - colOffset);
-    cols = Math.min(maxSide, cols);
+        rows = minRows + Math.floor(Math.random() * (maxRows - minRows + 1));
+        cols = minCols + Math.floor(Math.random() * (maxCols - minCols + 1));
 
-    // Mobile portrait: ensure enough columns for comfortable play width
-    if (typeof window !== 'undefined' && window.innerWidth) {
-        const screenW = window.innerWidth;
-        if (screenW < 768 && screenW < (window.innerHeight || 800)) {
-            const optimalCols = Math.ceil((screenW - 4) / 34);
-            cols = Math.max(cols, Math.min(optimalCols, maxSide));
+        // Mobile portrait: shrink columns slightly to fit small screens
+        if (typeof window !== 'undefined' && window.innerWidth) {
+            const screenW = window.innerWidth;
+            if (screenW < 768 && screenW < (window.innerHeight || 800)) {
+                const optimalCols = Math.ceil((screenW - 4) / 34);
+                cols = Math.max(minCols, Math.min(optimalCols, maxCols));
+            }
         }
+
+        // Always portrait (rows >= cols)
+        if (cols > rows) { let tmp = rows; rows = cols; cols = tmp; }
+
+        // Safety clamps
+        rows = Math.max(8, Math.min(50, rows));
+        cols = Math.max(6, Math.min(20, cols));
+
+    } else {
+        // Preset modes: compact near-square boards (fixed manual selections).
+        // Difficulty here is controlled purely by density inside the fixed canvas.
+        let minSide, maxSide;
+        if (preset === "Standard") {
+            minSide = 8;  maxSide = 12;
+        } else if (preset === "Grand") {
+            minSide = 12; maxSide = 16;
+        } else if (preset === "Colossal") {
+            minSide = 14; maxSide = 18;
+        } else if (preset === "Titan") {
+            minSide = 16; maxSide = 20;
+        } else if (preset === "Cosmic") {
+            minSide = 18; maxSide = 20;
+        } else {
+            minSide = 8; maxSide = 12;
+        }
+
+        rows = minSide + Math.floor(Math.random() * (maxSide - minSide + 1));
+        // Cols within 0–2 less than rows → near-square portrait
+        let colOffset = Math.floor(Math.random() * 3);
+        cols = Math.max(minSide - 2, rows - colOffset);
+        cols = Math.min(maxSide, cols);
+
+        // Mobile portrait adjustment
+        if (typeof window !== 'undefined' && window.innerWidth) {
+            const screenW = window.innerWidth;
+            if (screenW < 768 && screenW < (window.innerHeight || 800)) {
+                const optimalCols = Math.ceil((screenW - 4) / 34);
+                cols = Math.max(cols, Math.min(optimalCols, maxSide));
+            }
+        }
+
+        if (cols > rows) { let tmp = rows; rows = cols; cols = tmp; }
+
+        // Safety clamps for preset modes
+        rows = Math.max(8, Math.min(20, rows));
+        cols = Math.max(6, Math.min(20, cols));
     }
-
-    // Keep rows >= cols for portrait orientation
-    if (cols > rows) { let tmp = rows; rows = cols; cols = tmp; }
-
-    // Final safety clamps
-    rows = Math.max(8, Math.min(20, rows));
-    cols = Math.max(6, Math.min(20, cols));
 
     return { rows, cols };
 }
@@ -291,20 +324,45 @@ const TOPOLOGIES = {
 };
 
 function getTopologyForLevel(level, rows, cols) {
+    const minSide = Math.min(rows, cols);
+    const aspectRatio = Math.max(rows, cols) / Math.max(1, minSide);
+
     // Small boards (shorter side ≤ 10): always full rectangle.
-    // Shape topologies on tiny boards waste too many active cells and destroy
-    // the density that makes compact boards feel premium.
-    // Level 15+: always full rectangle for maximum density regardless of size.
-    if (Math.min(rows, cols) <= 10 || level >= 15) {
-        // 80% VERTICAL_RECT (portrait), 20% SQUARE (flexible orientation)
+    // Shape topologies on tiny boards waste too many active cells.
+    if (minSide <= 10) {
         return Math.random() < 0.8 ? TOPOLOGIES.VERTICAL_RECT : TOPOLOGIES.SQUARE;
     }
 
-    // Mid-range boards at early levels: topology variety adds visual interest
-    // while boards are large enough to absorb shape cutouts meaningfully.
+    // Very tall boards (aspect ratio > 1.8 — e.g. 20×36, 20×50):
+    // Restrict to topologies that work well on tall portraits.
+    // DIAMOND / CIRCLE / WAVES on a 20×50 produce near-empty top/bottom thirds
+    // which kills density. Octagon, Hourglass, L-Block, Staircase all work fine.
+    if (aspectRatio > 1.8) {
+        const tallWeights = {
+            VERTICAL_RECT: 6,   // full portrait — most common
+            SQUARE:         1,   // plain full rect
+            OCTAGON:        2,   // mild corner bevels — works on any ratio
+            CORNER_CASTLE:  2,   // cuts two diagonal corners
+            HOURGLASS:      1,   // narrows at centre — choke-point variety
+            L_BLOCK:        1,   // L-shape asymmetry
+            STAIRCASE:      1,   // stepped sides
+            CROSS:          1,   // vertical+horizontal band
+            TWIN_PANELS:    1,   // two stacked rectangles
+        };
+        const pool = [];
+        for (const [key, w] of Object.entries(tallWeights)) {
+            if (TOPOLOGIES[key]) {
+                for (let i = 0; i < w; i++) pool.push(TOPOLOGIES[key]);
+            }
+        }
+        return pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    // Near-square and moderate boards: full topology variety.
+    // DIAMOND and CIRCLE work well here because the aspect ratio is ≤ 1.8.
     const TOPOLOGY_WEIGHTS = {
-        VERTICAL_RECT: 5,   // ← most common: tall portrait boards
-        SQUARE: 1,   // ← least common: plain full rectangle
+        VERTICAL_RECT: 5,   // most common
+        SQUARE:         1,   // plain rectangle
     };
     const DEFAULT_WEIGHT = 2;
 

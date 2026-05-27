@@ -852,17 +852,25 @@ function buildGridOwnership(paths) {
 // ---------------------------------------------------------------------------
 function getAdaptiveTargetLen(level) {
     const maxDim = Math.max(State.gridRows, State.gridCols);
-    // Base target average path length tuned for compact 8–20 boards.
-    // Smaller boards need shorter paths to achieve the reference density.
-    // At level 14: 10×10→4, 14×14→5, 18×18→6 average cells per path.
-    // At level 26+: all board sizes push toward 4 cells average.
+    // Base target average path length. Larger boards get shorter path targets
+    // so hundreds of paths pack the grid tightly. At high levels, the level
+    // scaling below drives every board toward ~3–5 cells per path.
+    //
+    //  maxDim 40–50 (e.g. 20×50) → base 6  → level 22: ~4 cells/path → ~250 paths
+    //  maxDim 30–39 (e.g. 20×36) → base 7  → level 22: ~4 cells/path → ~175 paths
+    //  maxDim 18–29 (e.g. 20×24) → base 8  → level 22: ~5 cells/path → ~100 paths
+    //  maxDim 14–17               → base 8  → level 22: ~5 cells/path
+    //  maxDim 10–13               → base 7  → level 22: ~5 cells/path
+    //  maxDim  <10                → base 6
     let base;
-    if (maxDim >= 18) base = 9;
+    if (maxDim >= 40) base = 6;
+    else if (maxDim >= 30) base = 7;
+    else if (maxDim >= 18) base = 8;
     else if (maxDim >= 14) base = 8;
     else if (maxDim >= 10) base = 7;
     else base = 6;
-    if (level > 25) return Math.max(4, Math.floor(base * 0.55));
-    if (level > 10) return Math.max(4, Math.floor(base * 0.68));
+    if (level > 25) return Math.max(3, Math.floor(base * 0.55));
+    if (level > 10) return Math.max(3, Math.floor(base * 0.68));
     return base;
 }
 
@@ -903,17 +911,19 @@ function densityOptimizerPass(paths, level) {
     const targetPathCount = Math.ceil(activeCells / targetAvgLen);
     const desiredSplits = Math.max(0, targetPathCount - paths.length);
 
-    // Higher split caps: early levels stay gentle, mid/high levels go aggressive
+    // Split caps scale with level and board size so large high-level boards
+    // (e.g. 20×50 = 1000 cells) get enough splits to hit target density.
+    // maxAttempts is capped at 4× rather than 6× for performance on large boards.
     let maxSplits;
-    if (level <= 10) maxSplits = Math.min(4, desiredSplits);
-    else if (level <= 25) maxSplits = Math.min(16, desiredSplits);
-    else maxSplits = Math.min(28, desiredSplits);
+    if (level <= 10) maxSplits = Math.min(8,  desiredSplits);
+    else if (level <= 20) maxSplits = Math.min(30, desiredSplits);
+    else maxSplits = Math.min(60, desiredSplits);  // up from 28 — needed for 20×50+
 
     if (maxSplits === 0) return;
 
     let pathIdCounter = Math.max(...paths.map(p => p.id));
     let splitsApplied = 0;
-    const maxAttempts = maxSplits * 6; // budget: 6 tries per desired split
+    const maxAttempts = maxSplits * 4; // 4 tries per desired split (was 6)
 
     for (let attempt = 0; attempt < maxAttempts && splitsApplied < maxSplits; attempt++) {
 
