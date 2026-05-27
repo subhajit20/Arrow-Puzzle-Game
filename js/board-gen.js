@@ -243,11 +243,14 @@ function tryGenerateBoard() {
 
         let lastMove = bestDir;
         let maxDim = Math.max(State.gridRows, State.gridCols);
-        let maxLen = 7;
-        if (maxDim >= 60) maxLen = 8 + Math.floor(Math.random() * 5);
-        else if (maxDim >= 40) maxLen = 9 + Math.floor(Math.random() * 6);
-        else if (maxDim >= 20) maxLen = 10 + Math.floor(Math.random() * 7);
-        else maxLen = 12 + Math.floor(Math.random() * 7);
+        // Denser boards get shorter paths so MORE paths pack the grid.
+        // maxDim 40-50 → 5–8 cells each  → ~120–190 paths on a 960-cell board
+        // maxDim 20-39 → 6–11 cells each → ~30–70 paths
+        // maxDim  <20  → 8–14 cells each → ~8–18 paths
+        let maxLen;
+        if (maxDim >= 40) maxLen = 5 + Math.floor(Math.random() * 4);  // 5–8
+        else if (maxDim >= 20) maxLen = 6 + Math.floor(Math.random() * 6); // 6–11
+        else maxLen = 8 + Math.floor(Math.random() * 7); // 8–14
 
         let consecutiveStraight = 0;
         let spiralDir = Math.random() < 0.5 ? 1 : -1;
