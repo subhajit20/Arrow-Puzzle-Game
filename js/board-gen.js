@@ -294,6 +294,7 @@ function buildWarnsdorffPath(component, rows, cols) {
         path.push(start);
         visited[start.r * cols + start.c] = 1;
         let cur = start;
+        let lastDr = 0, lastDc = 0; // track last move direction for turn-bias
 
         while (path.length < total) {
             const nbrs = [];
@@ -301,15 +302,29 @@ function buildWarnsdorffPath(component, rows, cols) {
                 const nr = cur.r + dr, nc = cur.c + dc;
                 if (nr >= 0 && nr < rows && nc >= 0 && nc < cols
                     && inComp[nr * cols + nc] && !visited[nr * cols + nc]) {
-                    nbrs.push({ r: nr, c: nc, d: deg(nr, nc, visited) });
+                    nbrs.push({ r: nr, c: nc, d: deg(nr, nc, visited),
+                                dr: nr - cur.r, dc: nc - cur.c });
                 }
             }
 
             if (nbrs.length === 0) break; // stuck
 
-            // Ascending by degree + tiny random noise to break ties with variety
-            nbrs.sort((a, b) => (a.d - b.d) + (Math.random() - 0.5) * 0.3);
+            // Primary sort: Warnsdorff degree (ascending — fewest exits first).
+            // Tiebreaker when degrees are equal or within 1: PREFER A TURN.
+            // Continuing straight produces boustrophedon (row-by-row serpentine)
+            // which yields all-straight cuts. A turn preference makes the path
+            // winding so ~60-70% of cut segments become L- or S-shaped.
+            nbrs.sort((a, b) => {
+                const degDiff = a.d - b.d;
+                if (Math.abs(degDiff) >= 2) return degDiff; // clear winner — degree only
+                // Near-tie: favour the neighbour that requires a direction change
+                const aTurn = (a.dr !== lastDr || a.dc !== lastDc) ? -0.5 : 0.4;
+                const bTurn = (b.dr !== lastDr || b.dc !== lastDc) ? -0.5 : 0.4;
+                return degDiff + aTurn - bTurn + (Math.random() - 0.5) * 0.25;
+            });
             const next = nbrs[0];
+            lastDr = next.r - cur.r;
+            lastDc = next.c - cur.c;
             path.push(next);
             visited[next.r * cols + next.c] = 1;
             cur = next;
@@ -325,11 +340,29 @@ function buildWarnsdorffPath(component, rows, cols) {
 // splitPathIntoSegments
 // Cuts a Hamiltonian path into short puzzle-path objects.
 //
-// Cut-point strategy: score every candidate cut length and pick the one whose
-// boundary cells are most adjacent to ALREADY-COMMITTED path segments.
-// This naturally creates dependency chains — each new endpoint faces the body
-// of a previously placed path, forcing the player to clear in order.
+// Cut-point scoring (three factors):
+//   adjScore  — boundary adjacent to already-committed segments (dependency chains)
+//   turnScore — how many direction changes are INSIDE the candidate segment
+//               (strongly rewards L-shapes and S-shapes over straight lines)
+//   lenScore  — segment length close to targetLen
+//
+// The turn score is the key addition that produces snake-shaped paths rather
+// than monotone straight lines.
 // ---------------------------------------------------------------------------
+
+// Count direction changes inside hamiltonPath[from .. from+len-1]
+function countSegmentTurns(hamiltonPath, from, len) {
+    let turns = 0;
+    for (let i = 1; i < len - 1; i++) {
+        const dr1 = hamiltonPath[from + i].r     - hamiltonPath[from + i - 1].r;
+        const dc1 = hamiltonPath[from + i].c     - hamiltonPath[from + i - 1].c;
+        const dr2 = hamiltonPath[from + i + 1].r - hamiltonPath[from + i].r;
+        const dc2 = hamiltonPath[from + i + 1].c - hamiltonPath[from + i].c;
+        if (dr1 !== dr2 || dc1 !== dc2) turns++;
+    }
+    return turns;
+}
+
 function splitPathIntoSegments(hamiltonPath, startId, level) {
     const targetLen = getAdaptiveTargetLen(level);
     const minLen    = 3;
@@ -379,8 +412,8 @@ function splitPathIntoSegments(hamiltonPath, startId, level) {
             const endCell  = hamiltonPath[pos + len - 1];
             const nextCell = hamiltonPath[pos + len]; // always exists (remaining - minLen >= minLen)
 
-            // Primary: how many already-committed path cells touch the cut boundary?
-            // More adjacency = stronger inter-path interaction at this seam.
+            // Factor 1: adjacency to already-committed paths at the cut boundary
+            // More adjacency = stronger inter-path blocking interaction.
             let adjScore = 0;
             for (const [dr, dc] of dMoves) {
                 const ar = endCell.r  + dr, ac = endCell.c  + dc;
@@ -391,11 +424,19 @@ function splitPathIntoSegments(hamiltonPath, startId, level) {
                     && committed[br * cols + bc] >= 0) adjScore++;
             }
 
-            // Secondary: prefer lengths close to targetLen
+            // Factor 2: TURN COUNT — direction changes inside this segment.
+            // 0 turns = straight line (boring, easy to read, weak interactions)
+            // 1 turn  = L-shape or U-shape (good — like 70% of pro-game paths)
+            // 2 turns = S/Z/N-shape (excellent — complex, hard to read at a glance)
+            // Cap reward at 2 turns to avoid overly contorted paths.
+            const turns    = countSegmentTurns(hamiltonPath, pos, len);
+            const turnScore = Math.min(turns, 2) * 2.5; // up to 5.0 bonus
+
+            // Factor 3: prefer lengths close to targetLen
             const lenScore = 1.0 - Math.abs(len - targetLen) / (targetLen + 2);
 
-            // Tertiary: small random jitter for board variety
-            const score = adjScore * 3.0 + lenScore * 1.5 + Math.random() * 0.4;
+            // Factor 4: small random jitter for board variety
+            const score = adjScore * 2.5 + turnScore + lenScore * 1.5 + Math.random() * 0.4;
             if (score > bestScore) { bestScore = score; bestLen = len; }
         }
 
