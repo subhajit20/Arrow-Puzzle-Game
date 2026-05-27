@@ -14,38 +14,49 @@ window.cameraAnimReq = null;
 function applyBoardTransform() {
     // Clamp zoom
     if (State.cssZoom < State.minZoom) State.cssZoom = State.minZoom;
-    if (State.cssZoom > 6.0)           State.cssZoom = 6.0;
+    if (State.cssZoom > 6.0) State.cssZoom = 6.0;
 
     const container = document.getElementById('board-container');
     if (container && State.canvasW && State.canvasH) {
-        const bcr     = container.getBoundingClientRect();
+        const bcr = container.getBoundingClientRect();
         const scaledW = State.canvasW * State.cssZoom;
         const scaledH = State.canvasH * State.cssZoom;
 
+        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
+        let topBarH = 0;
+        let bottomBarH = 0;
+        if (isMobile) {
+            const header = document.getElementById('game-header');
+            const footer = document.getElementById('game-controls');
+            if (header) topBarH = header.getBoundingClientRect().height;
+            if (footer) bottomBarH = footer.getBoundingClientRect().height;
+        }
+
+        const availW = bcr.width;
+        const availH = bcr.height - topBarH - bottomBarH;
+
         // Horizontal ─────────────────────────────────────────────────────────
-        if (scaledW <= bcr.width) {
-            // Canvas narrower than container: centre it (handles zoom-out)
-            State.matE = (bcr.width - scaledW) / 2;
+        if (scaledW <= availW) {
+            // Canvas narrower than available: centre it
+            State.matE = (availW - scaledW) / 2;
         } else {
-            // Canvas wider: allow panning across the full board width.
-            // Bounds are board-edge-based so the player can reach every column:
-            //   maxE  →  board left  edge at container left  edge
-            //   minE  →  board right edge at container right edge
-            const ox    = State.offsetX  || 0;
-            const brdW  = (State.gridCols || 0) * (State.cellSize || 0);
-            const maxE  = -ox * State.cssZoom;
-            const minE  = bcr.width - (ox + brdW) * State.cssZoom;
-            State.matE  = Math.min(maxE, Math.max(minE, State.matE));
+            // Canvas wider: allow panning
+            const ox = State.offsetX || 0;
+            const brdW = (State.gridCols || 0) * (State.cellSize || 0);
+            const maxE = -ox * State.cssZoom;
+            const minE = availW - (ox + brdW) * State.cssZoom;
+            State.matE = Math.min(maxE, Math.max(minE, State.matE));
         }
 
         // Vertical ───────────────────────────────────────────────────────────
-        if (scaledH <= bcr.height) {
-            // Canvas shorter than container: centre it
-            State.matF = (bcr.height - scaledH) / 2;
+        if (scaledH <= availH) {
+            // Canvas shorter than available: centre it perfectly between bars
+            State.matF = topBarH + (availH - scaledH) / 2;
         } else {
-            // Canvas taller: scroll from top (matF=0) to bottom (matF=-max)
-            const maxDown = scaledH - bcr.height;
-            State.matF = Math.min(0, Math.max(-maxDown, State.matF));
+            // Canvas taller: scroll from just below top bar to just above bottom bar
+            const maxF = topBarH;
+            const minF = topBarH + availH - scaledH;
+            State.matF = Math.min(maxF, Math.max(minF, State.matF));
         }
     }
 
@@ -62,8 +73,8 @@ function resetCamera() {
         window.cameraAnimReq = null;
     }
     State.cssZoom = 1.0;
-    State.matE    = 0;
-    State.matF    = 0;
+    State.matE = 0;
+    State.matF = 0;
     applyBoardTransform();
 }
 
@@ -73,16 +84,16 @@ function resetCamera() {
 // getCanvasCoords in input.js stays accurate.
 // ---------------------------------------------------------------------------
 function resizeCanvas() {
-    const dpr       = window.devicePixelRatio || 1;
+    const dpr = window.devicePixelRatio || 1;
     const container = document.getElementById('board-container');
-    const bcr       = container.getBoundingClientRect();
+    const bcr = container.getBoundingClientRect();
 
     calculateMetrics(bcr.width, bcr.height);
 
     // canvas.width reset clears the 2-D context transform — set it first.
-    canvas.width  = Math.round(State.canvasW * dpr);
+    canvas.width = Math.round(State.canvasW * dpr);
     canvas.height = Math.round(State.canvasH * dpr);
-    canvas.style.width  = State.canvasW + 'px';
+    canvas.style.width = State.canvasW + 'px';
     canvas.style.height = State.canvasH + 'px';
 
     // Prevent the flex container's align-items:center from shifting a
@@ -110,7 +121,7 @@ function calculateMetrics(w, h) {
 
     if (isMobile) {
         // Fit the board inside the container in BOTH dimensions simultaneously.
-        const cellByWidth  = (w - 4) / State.gridCols;
+        const cellByWidth = (w - 4) / State.gridCols;
         const cellByHeight = (h - 8) / State.gridRows;
         State.cellSize = Math.min(cellByWidth, cellByHeight);
     } else {
@@ -155,7 +166,7 @@ function startCameraEntranceAnimation() {
     const container = document.getElementById('board-container');
     if (!container) { resetCamera(); return; }
 
-    const bcr      = container.getBoundingClientRect();
+    const bcr = container.getBoundingClientRect();
     const isMobile = bcr.width < 768 && bcr.width < bcr.height;
 
     if (!isMobile || !State.cellSize) { resetCamera(); return; }
@@ -163,84 +174,28 @@ function startCameraEntranceAnimation() {
     const boardW = State.gridCols * State.cellSize;
     const boardH = State.gridRows * State.cellSize;
 
-    // Fit scale: show entire board inside the board-container viewport.
-    // The bars are separate flex items (not overlaying the canvas), so bcr is
-    // already the pure board area — use 0.92 vertically for a small breathing
-    // margin rather than the old 0.76 which was designed for floating overlays.
-    //   • 0.94 horizontal → ~3 % breathing room each side
-    //   • 0.92 vertical   → ~4 % breathing room top and bottom
-    const fitZoomX = (bcr.width  * 0.94) / boardW;
-    const fitZoomY = (bcr.height * 0.92) / boardH;
-    const fitZoom  = Math.min(fitZoomX, fitZoomY, 1.0);  // never zoom in beyond 1×
+    let topBarH = 0;
+    let bottomBarH = 0;
+    const header = document.getElementById('game-header');
+    const footer = document.getElementById('game-controls');
+    if (header) topBarH = header.getBoundingClientRect().height;
+    if (footer) bottomBarH = footer.getBoundingClientRect().height;
+
+    const availW = bcr.width;
+    const availH = bcr.height - topBarH - bottomBarH;
+
+    // Use a small safe padding (6%) so edges never touch borders
+    const fitZoomX = (availW * 0.94) / boardW;
+    const fitZoomY = (availH * 0.94) / boardH;
+    const fitZoom = Math.min(fitZoomX, fitZoomY, 1.0);  // never zoom in beyond 1×
 
     // Allow zooming out to 40 % of the fit view (more freedom than the overview)
     State.minZoom = Math.max(fitZoom * 0.40, 0.08);
 
-    if (fitZoom >= 0.96) {
-        // Board comfortably fits at full zoom — no intro animation needed
-        State.minZoom = 0.25;
-        resetCamera();
-        return;
-    }
-
-    // ── Step 1: snap to fit position ─────────────────────────────────────────
+    // Snap directly to the fit position per user request (Option A)
+    // We remove the animation completely for large boards so they stay fully visible.
     State.cssZoom = fitZoom;
-    State.matE    = 0;
-    State.matF    = 0;
-    applyBoardTransform();          // sets matE/F to properly centred values
-
-    const startZ = State.cssZoom;
-    const startE = State.matE;
-    const startF = State.matF;
-
-    // ── Step 2 target: normal gameplay position ───────────────────────────────
-    const targetZ = 1.0;
-    const targetE = 0.0;
-    const targetF = 0.0;
-
-    const HOLD_MS = 600;   // time to show the full-board overview
-    const ANIM_MS = 1100;  // zoom-in duration
-    const t0      = performance.now();
-
-    function step(now) {
-        const elapsed = now - t0;
-
-        if (elapsed < HOLD_MS) {
-            // Still in the hold phase — keep the overview visible
-            window.cameraAnimReq = requestAnimationFrame(step);
-            return;
-        }
-
-        let p = (elapsed - HOLD_MS) / ANIM_MS;
-
-        if (p >= 1.0) {
-            // Animation complete — snap to exact target and re-apply clamping
-            State.cssZoom = targetZ;
-            State.matE    = targetE;
-            State.matF    = targetF;
-            applyBoardTransform();
-            window.cameraAnimReq = null;
-            return;
-        }
-
-        // Cubic ease-in-out
-        const t = p < 0.5
-            ? 4 * p * p * p
-            : 1 - Math.pow(-2 * p + 2, 3) / 2;
-
-        State.cssZoom = startZ + (targetZ - startZ) * t;
-        State.matE    = startE + (targetE - startE) * t;
-        State.matF    = startF + (targetF - startF) * t;
-
-        // Write the transform directly — skip applyBoardTransform clamping so
-        // the lerp is smooth even through intermediate zoom levels.
-        canvas.style.transform =
-            `matrix(${State.cssZoom},0,0,${State.cssZoom},${State.matE},${State.matF})`;
-
-        window.cameraAnimReq = requestAnimationFrame(step);
-    }
-
-    window.cameraAnimReq = requestAnimationFrame(step);
+    applyBoardTransform(); // This correctly centers the board within the available area
 }
 
 window.addEventListener('resize', () => {
