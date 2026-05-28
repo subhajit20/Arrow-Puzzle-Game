@@ -1,3 +1,184 @@
+// Feature flag — set to false to fall back to the old cell-based engine instantly
+const USE_EDGE_GEN = true;
+
+// -----------------------------------------------------------------------------
+// getSizesForLevel
+// Returns the pool of {rows, cols} sizes valid for the given level.
+// Notation: cols×rows (width × height) — all portrait/vertical boards.
+// -----------------------------------------------------------------------------
+function getSizesForLevel(level) {
+    if (level <=  5) return [
+        { rows:  8, cols:  6 },
+        { rows:  8, cols:  8 },
+        { rows: 10, cols:  8 },
+        { rows: 10, cols: 10 },
+        { rows: 12, cols: 10 },
+    ];
+    if (level <= 10) return [
+        { rows: 10, cols:  8 },
+        { rows: 10, cols: 10 },
+        { rows: 12, cols: 10 },
+        { rows: 14, cols: 10 },
+        { rows: 14, cols: 12 },
+    ];
+    if (level <= 15) return [
+        { rows: 14, cols: 12 },
+        { rows: 16, cols: 12 },
+        { rows: 16, cols: 14 },
+    ];
+    if (level <= 20) return [
+        { rows: 16, cols: 12 },
+        { rows: 16, cols: 14 },
+        { rows: 18, cols: 14 },
+    ];
+    if (level <= 30) return [
+        { rows: 18, cols: 14 },
+        { rows: 18, cols: 16 },
+        { rows: 20, cols: 16 },
+    ];
+    if (level <= 40) return [
+        { rows: 20, cols: 16 },
+        { rows: 20, cols: 18 },
+        { rows: 24, cols: 18 },
+    ];
+    if (level <= 50) return [
+        { rows: 20, cols: 18 },
+        { rows: 24, cols: 18 },
+        { rows: 24, cols: 20 },
+    ];
+    if (level <= 75) return [
+        { rows: 24, cols: 18 },
+        { rows: 24, cols: 20 },
+        { rows: 26, cols: 20 },
+    ];
+    return [
+        { rows: 26, cols: 20 },
+    ];
+}
+
+// =============================================================================
+// Edge-based board generation pipeline (wired in Step 14)
+// =============================================================================
+function _build100PackedLevelEdge(forceNewGeneration) {
+    if (!forceNewGeneration && Persistence.loadState()) {
+        State.levelStartScore = State.score;
+        resizeCanvas();
+        updateDomUI();
+        startPathRevealAnimation();
+        return;
+    }
+
+    const sizes   = getSizesForLevel(State.level);
+    const size    = sizes[Math.floor(Math.random() * sizes.length)];
+    State.gridRows  = size.rows;
+    State.gridCols  = size.cols;
+    State.gridSize  = size.rows;
+    State.shapeName = 'Lattice';
+    State.gridMask  = Array.from({ length: size.rows }, () => new Array(size.cols).fill(1));
+
+    resetCamera();
+    resizeCanvas();
+
+    const rows  = State.gridRows;
+    const cols  = State.gridCols;
+    const level = State.level;
+
+    const targetTier       = selectTargetDifficulty(level, State.recentDifficulties || []);
+    const candidatesByTier = {};
+    let validResult = null;
+    let chosenTier  = 'NORMAL';
+
+    // 2× target gives each trail ~2 fragments; short enough to force varied starts
+    const maxTrailLen = Math.max(10, getTargetLength(level, rows, cols) * 2);
+
+    for (let attempt = 0; attempt < 20; attempt++) {
+        const graph = buildEdgeGraph(rows, cols);
+        const { trails } = generateTrails(graph, maxTrailLen);
+        const paths = fragmentAllTrails(trails, level, graph);
+        assignHeadings(paths, graph);
+        buildDAGHeadings(paths, graph);
+        runUnjammingPass(paths, graph);
+
+        if (!isBoardFullySolvable(paths, graph)) continue;
+
+        const cx   = evaluateBoardComplexity(paths, graph);
+        const tier = getDifficultyTier(cx.score);
+
+        if (!candidatesByTier[tier]) candidatesByTier[tier] = { paths, graph };
+
+        if (tier === targetTier) {
+            validResult = { paths, graph };
+            chosenTier  = tier;
+            break;
+        }
+    }
+
+    if (!validResult) {
+        const order = [targetTier, 'HARD', 'EXPERT', 'TITAN', 'NORMAL', 'EASY'];
+        for (const t of order) {
+            if (candidatesByTier[t]) {
+                validResult = candidatesByTier[t];
+                chosenTier  = t;
+                break;
+            }
+        }
+    }
+
+    // Hard fallback: same 26×20 grid, retry with relaxed constraints
+    // Hard fallback: small grid guaranteed to converge
+    if (!validResult) {
+        const FB_R = 10, FB_C = 12;
+        State.gridRows = FB_R; State.gridCols = FB_C; State.gridSize = FB_C;
+        State.gridMask = Array.from({ length: FB_R }, () => new Array(FB_C).fill(1));
+        resetCamera(); resizeCanvas();
+        const fbMaxTrailLen = Math.max(10, getTargetLength(level, FB_R, FB_C) * 2);
+
+        for (let attempt = 0; attempt < 10; attempt++) {
+            const graph = buildEdgeGraph(FB_R, FB_C);
+            const { trails: fbTrails } = generateTrails(graph, fbMaxTrailLen);
+            const paths = fragmentAllTrails(fbTrails, level, graph);
+            assignHeadings(paths, graph);
+            buildDAGHeadings(paths, graph);
+            runUnjammingPass(paths, graph);
+            if (!isBoardFullySolvable(paths, graph)) continue;
+            const cx = evaluateBoardComplexity(paths, graph);
+            validResult = { paths, graph };
+            chosenTier  = getDifficultyTier(cx.score);
+            break;
+        }
+    }
+
+    if (validResult) {
+        State.paths = validResult.paths;
+        State.hEdge = validResult.graph.hEdge;
+        State.vEdge = validResult.graph.vEdge;
+        State.boardDifficulty = chosenTier;
+
+        // Build nodeOwner from final paths for runtime collision detection
+        const _W = validResult.graph.cols + 1;
+        State.nodeOwner = new Int32Array((validResult.graph.rows + 1) * _W).fill(-1);
+        for (const p of State.paths)
+            for (const { r, c } of p.nodes)
+                State.nodeOwner[r * _W + c] = p.id;
+    } else {
+        State.paths = [];
+        State.hEdge = null;
+        State.vEdge = null;
+        State.nodeOwner = null;
+        State.boardDifficulty = 'NORMAL';
+    }
+
+    if (!State.recentDifficulties) State.recentDifficulties = [];
+    State.recentDifficulties.push(State.boardDifficulty);
+    if (State.recentDifficulties.length > 5) State.recentDifficulties.shift();
+
+    State.levelStartScore = State.score;
+    State.lives = 3;
+    Persistence.saveState();
+    updateDomUI();
+    startPathRevealAnimation();
+}
+
 function getTrackPoint(trackList, d) {
     if (d <= 0) return trackList[0];
     if (d >= trackList.length - 1) return trackList[trackList.length - 1];
@@ -999,7 +1180,7 @@ function canPathEscapeVirtual(p, activePaths, rows, cols) {
     return true;
 }
 
-function isBoardFullySolvable(paths, rows, cols) {
+function _cellIsBoardSolvable(paths, rows, cols) {
     let occupancy = Array(rows).fill().map(() => Array(cols).fill(-1));
     paths.forEach(p => {
         p.points.forEach(pt => { occupancy[pt.r][pt.c] = p.id; });
@@ -1496,7 +1677,7 @@ function getAdaptiveTargetLen(level) {
 //   • Create crossing corridors: high adjacency to neighbouring paths
 //   • Create choke points: split boundary in a region shared by many paths
 //
-// Each split is validated (full validatePaths + isBoardFullySolvable check)
+// Each split is validated (full validatePaths + _cellIsBoardSolvable check)
 // before being committed. Failed splits are rolled back via snapshot.
 // The board always exits this function in a fully valid solvable state.
 // ---------------------------------------------------------------------------
@@ -1666,7 +1847,7 @@ function densityOptimizerPass(paths, level) {
         const valid =
             !hasAnyDoubleSelfCollidingPath(paths, rows, cols) &&
             validatePaths(paths, State.gridMask, rows, cols) &&
-            isBoardFullySolvable(paths, rows, cols);
+            _cellIsBoardSolvable(paths, rows, cols);
 
         if (valid) {
             splitsApplied++;
@@ -1685,6 +1866,8 @@ function densityOptimizerPass(paths, level) {
 }
 
 function build100PackedLevel(forceNewGeneration = false) {
+    if (USE_EDGE_GEN) { _build100PackedLevelEdge(forceNewGeneration); return; }
+
     if (!forceNewGeneration && Persistence.loadState()) {
         State.levelStartScore = State.score;
         resizeCanvas();
@@ -1757,7 +1940,7 @@ function build100PackedLevel(forceNewGeneration = false) {
             runUnjammingSolvabilityTweak(candidate.paths, State.gridRows, State.gridCols, candidate.gridOwnership);
             fixVisualSelfIntersections(candidate.paths, State.gridRows, State.gridCols);
             if (!hasAnyDoubleSelfCollidingPath(candidate.paths, State.gridRows, State.gridCols) &&
-                isBoardFullySolvable(candidate.paths, State.gridRows, State.gridCols)) {
+                _cellIsBoardSolvable(candidate.paths, State.gridRows, State.gridCols)) {
 
                 // Phase 2 density optimization: split fat paths to create
                 // interaction density, dependency chains, and choke points.
@@ -1768,7 +1951,7 @@ function build100PackedLevel(forceNewGeneration = false) {
                 // accidental interactions into deliberate dependency chains —
                 // the core technique used by professional puzzle games to
                 // ensure every tap feels logically forced.
-                buildDAGHeadings(candidate.paths, State.gridRows, State.gridCols);
+                _cellBuildDAGHeadings(candidate.paths, State.gridRows, State.gridCols);
 
                 // Re-run unjammer after DAG flips to resolve any new deadlocks
                 // introduced by the heading changes (unjammer will flip back any
@@ -1777,7 +1960,7 @@ function build100PackedLevel(forceNewGeneration = false) {
                 fixVisualSelfIntersections(candidate.paths, State.gridRows, State.gridCols);
 
                 // Evaluate puzzle complexity (reflects the optimized board)
-                const complexity = evaluateBoardComplexity(candidate.paths, State.gridRows, State.gridCols);
+                const complexity = _cellEvalComplexity(candidate.paths, State.gridRows, State.gridCols);
                 let tier = "NORMAL";
                 if (complexity.score < 6) tier = "EASY";
                 else if (complexity.score < 13) tier = "NORMAL";
@@ -1832,15 +2015,15 @@ function build100PackedLevel(forceNewGeneration = false) {
                 runUnjammingSolvabilityTweak(fb.paths, FB_ROWS, FB_COLS, fb.gridOwnership);
                 fixVisualSelfIntersections(fb.paths, FB_ROWS, FB_COLS);
                 if (!hasAnyDoubleSelfCollidingPath(fb.paths, FB_ROWS, FB_COLS) &&
-                    isBoardFullySolvable(fb.paths, FB_ROWS, FB_COLS)) {
+                    _cellIsBoardSolvable(fb.paths, FB_ROWS, FB_COLS)) {
 
                     // Apply density optimizer + DAG builder on fallback too
                     densityOptimizerPass(fb.paths, State.level);
-                    buildDAGHeadings(fb.paths, FB_ROWS, FB_COLS);
+                    _cellBuildDAGHeadings(fb.paths, FB_ROWS, FB_COLS);
                     runUnjammingSolvabilityTweak(fb.paths, FB_ROWS, FB_COLS, null);
                     fixVisualSelfIntersections(fb.paths, FB_ROWS, FB_COLS);
 
-                    const complexity = evaluateBoardComplexity(fb.paths, FB_ROWS, FB_COLS);
+                    const complexity = _cellEvalComplexity(fb.paths, FB_ROWS, FB_COLS);
                     if (complexity.score < 6) fbDifficulty = "EASY";
                     else if (complexity.score < 13) fbDifficulty = "NORMAL";
                     else if (complexity.score < 22) fbDifficulty = "HARD";
@@ -1871,7 +2054,7 @@ function build100PackedLevel(forceNewGeneration = false) {
 }
 
 // ---------------------------------------------------------------------------
-// buildDAGHeadings
+// _cellBuildDAGHeadings
 //
 // DAG-first dependency construction pass.
 //
@@ -1891,7 +2074,7 @@ function build100PackedLevel(forceNewGeneration = false) {
 // Result: fewer freely-tappable paths, deeper dependency chains, forced
 // solve order — the "I can tap anything" problem is eliminated.
 // ---------------------------------------------------------------------------
-function buildDAGHeadings(paths, rows, cols) {
+function _cellBuildDAGHeadings(paths, rows, cols) {
     const DIR = { UP:[-1,0], DOWN:[1,0], LEFT:[0,-1], RIGHT:[0,1] };
 
     for (let pass = 0; pass < 6; pass++) {
@@ -1988,12 +2171,12 @@ function buildDAGHeadings(paths, rows, cols) {
 }
 
 // ---------------------------------------------------------------------------
-// evaluateBoardComplexity
+// _cellEvalComplexity
 //
 // Build the directed dependency graph (DAG) of direct path blockers, recursively
 // compute the maximum dependency depth, and return a comprehensive complexity score.
 // ---------------------------------------------------------------------------
-function evaluateBoardComplexity(paths, rows, cols) {
+function _cellEvalComplexity(paths, rows, cols) {
     let occupancy = Array(rows).fill().map(() => Array(cols).fill(-1));
     paths.forEach(p => {
         p.points.forEach(pt => { occupancy[pt.r][pt.c] = p.id; });

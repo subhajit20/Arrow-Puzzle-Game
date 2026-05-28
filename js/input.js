@@ -1,3 +1,53 @@
+// -----------------------------------------------------------------------------
+// findPathByEdgeTap
+// Edge-based path selection: find the path whose nearest edge midpoint is
+// within hitRadius canvas pixels of the tapped/hovered canvas coordinate.
+//
+// Each edge has a midpoint:
+//   hEdge[r][c]  →  pixel (ox + (c+0.5)×cSize,  oy + r×cSize)
+//   vEdge[r][c]  →  pixel (ox + c×cSize,          oy + (r+0.5)×cSize)
+//
+// Returns the nearest IDLE path within hitRadius, or null.
+// Falls back automatically when State.hEdge/vEdge are not yet available.
+// -----------------------------------------------------------------------------
+function findPathByEdgeTap(canvasX, canvasY, hitRadius) {
+    if (!State.hEdge || !State.vEdge) return null;
+
+    const cSize = State.cellSize;
+    const ox    = State.offsetX;
+    const oy    = State.offsetY;
+    const rows  = State.gridRows;
+    const cols  = State.gridCols;
+
+    let bestDist = hitRadius;
+    let bestId   = -1;
+
+    // Horizontal edges
+    for (let r = 0; r <= rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const owner = State.hEdge[r][c];
+            if (owner < 0) continue;
+            const d = Math.hypot(canvasX - (ox + (c + 0.5) * cSize),
+                                 canvasY - (oy + r * cSize));
+            if (d < bestDist) { bestDist = d; bestId = owner; }
+        }
+    }
+
+    // Vertical edges
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c <= cols; c++) {
+            const owner = State.vEdge[r][c];
+            if (owner < 0) continue;
+            const d = Math.hypot(canvasX - (ox + c * cSize),
+                                 canvasY - (oy + (r + 0.5) * cSize));
+            if (d < bestDist) { bestDist = d; bestId = owner; }
+        }
+    }
+
+    if (bestId < 0) return null;
+    return State.paths.find(p => p.id === bestId && p.state === "IDLE") ?? null;
+}
+
 function getCanvasCoords(clientX, clientY) {
     const boardBcr = document.getElementById('board-container').getBoundingClientRect();
     const canvasX = (clientX - boardBcr.left - State.matE) / State.cssZoom;
@@ -103,13 +153,19 @@ canvas.addEventListener('touchend', (e) => {
 
         if (!ignoreTap && duration < 250 && distMoved < 15) {
             const cSize = State.cellSize;
-            let clickedR = Math.floor((touchStartCoords.y - State.offsetY) / cSize);
-            let clickedC = Math.floor((touchStartCoords.x - State.offsetX) / cSize);
+            const hitR  = cSize * 0.7;
 
-            let selected = State.paths.find(p => {
-                if (p.state !== "IDLE") return false;
-                return p.points.some(pt => pt.r === clickedR && pt.c === clickedC);
-            });
+            let selected = findPathByEdgeTap(touchStartCoords.x, touchStartCoords.y, hitR);
+
+            if (!selected) {
+                // Cell-based fallback (old engine)
+                let clickedR = Math.floor((touchStartCoords.y - State.offsetY) / cSize);
+                let clickedC = Math.floor((touchStartCoords.x - State.offsetX) / cSize);
+                selected = State.paths.find(p => {
+                    if (p.state !== "IDLE") return false;
+                    return p.points?.some(pt => pt.r === clickedR && pt.c === clickedC);
+                }) ?? null;
+            }
 
             if (selected) {
                 AudioEngine.tap();
@@ -155,14 +211,20 @@ canvas.addEventListener('mousemove', (e) => {
     if (State.isWinState || State.isFailState) return;
 
     const coords = getCanvasCoords(e.clientX, e.clientY);
-    const cSize = State.cellSize;
-    let hoveredR = Math.floor((coords.y - State.offsetY) / cSize);
-    let hoveredC = Math.floor((coords.x - State.offsetX) / cSize);
+    const cSize  = State.cellSize;
 
-    let hovered = State.paths.find(p => {
-        if (p.state !== "IDLE") return false;
-        return p.points.some(pt => pt.r === hoveredR && pt.c === hoveredC);
-    });
+    let hovered = findPathByEdgeTap(coords.x, coords.y, cSize * 0.6);
+
+    if (!hovered) {
+        // Cell-based fallback (old engine)
+        let hoveredR = Math.floor((coords.y - State.offsetY) / cSize);
+        let hoveredC = Math.floor((coords.x - State.offsetX) / cSize);
+        hovered = State.paths.find(p => {
+            if (p.state !== "IDLE") return false;
+            return p.points?.some(pt => pt.r === hoveredR && pt.c === hoveredC);
+        }) ?? null;
+    }
+
     State.selectedPath = hovered || null;
 
     if (isMouseDown) {
@@ -181,13 +243,19 @@ window.addEventListener('mouseup', (e) => {
         isMouseDown = false;
         if (Date.now() - mouseDownTime < 250) {
             const cSize = State.cellSize;
-            let clickedR = Math.floor((mouseDownCoords.y - State.offsetY) / cSize);
-            let clickedC = Math.floor((mouseDownCoords.x - State.offsetX) / cSize);
+            const hitR  = cSize * 0.7;
 
-            let selected = State.paths.find(p => {
-                if (p.state !== "IDLE") return false;
-                return p.points.some(pt => pt.r === clickedR && pt.c === clickedC);
-            });
+            let selected = findPathByEdgeTap(mouseDownCoords.x, mouseDownCoords.y, hitR);
+
+            if (!selected) {
+                // Cell-based fallback (old engine)
+                let clickedR = Math.floor((mouseDownCoords.y - State.offsetY) / cSize);
+                let clickedC = Math.floor((mouseDownCoords.x - State.offsetX) / cSize);
+                selected = State.paths.find(p => {
+                    if (p.state !== "IDLE") return false;
+                    return p.points?.some(pt => pt.r === clickedR && pt.c === clickedC);
+                }) ?? null;
+            }
 
             if (selected) {
                 AudioEngine.tap();

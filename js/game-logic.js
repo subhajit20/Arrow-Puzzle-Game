@@ -1,5 +1,6 @@
 function getPathOccupiedCells(p) {
     if (p.state === "CLEARED") return [];
+    if (p.nodes) return p.nodes; // edge-based path — nodes serve as occupied positions
     if (p.state === "IDLE") return p.points;
 
     const cells = [];

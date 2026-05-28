@@ -8,6 +8,9 @@ const State = {
     gridSize: 8,
     gridMask: [],
     shapeName: "Square Matrix",
+    hEdge: null,      // edge-based: (rows+1) × cols  Int32Array[]
+    vEdge: null,      // edge-based: rows × (cols+1) Int32Array[]
+    nodeOwner: null,  // flat Int32Array (rows+1)*(cols+1) — rebuilt from paths, not persisted
     paths: [],
     particles: [],
     selectedPath: null,

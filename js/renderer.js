@@ -89,13 +89,27 @@ function drawEngine() {
     const rows = State.gridRows;
     const cols = State.gridCols;
 
-    // Board background: plain white — no grid lines or cell shading
+    // Board background: white fill + grid lines
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(ox, oy, cols * cSize, rows * cSize);
 
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 0.5;
+    for (let r = 0; r <= rows; r++) {
+        ctx.beginPath(); ctx.moveTo(ox, oy + r * cSize); ctx.lineTo(ox + cols * cSize, oy + r * cSize); ctx.stroke();
+    }
+    for (let c = 0; c <= cols; c++) {
+        ctx.beginPath(); ctx.moveTo(ox + c * cSize, oy); ctx.lineTo(ox + c * cSize, oy + rows * cSize); ctx.stroke();
+    }
+
+    // Expand clip by enough to show full arrowheads and line widths on the
+    // boundary nodes — without padding, edge paths are half-clipped.
+    const clipPad = Math.ceil(cSize * 0.6);
     ctx.save();
     ctx.beginPath();
-    ctx.rect(ox, oy, cols * cSize, rows * cSize);
+    ctx.rect(ox - clipPad, oy - clipPad,
+             cols * cSize + clipPad * 2,
+             rows * cSize + clipPad * 2);
     ctx.clip();
 
     State.paths.forEach((p, idx) => {
@@ -125,16 +139,18 @@ function drawEngine() {
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
 
-        let fullTrack = [];
-        p.points.forEach(pt => {
-            fullTrack.push({
-                x: ox + pt.c * cSize + cSize / 2,
-                y: oy + pt.r * cSize + cSize / 2
-            });
-        });
+        // Edge-based paths use p.nodes (intersection coords, no center offset).
+        // Cell-based paths use p.points (cell centers, +cSize/2 offset).
+        const pts      = p.nodes ?? p.points;
+        const pxOff    = p.nodes ? 0 : cSize / 2;
 
-        let len = p.points.length;
-        let lastPt = p.points[len - 1];
+        const fullTrack = pts.map(pt => ({
+            x: ox + pt.c * cSize + pxOff,
+            y: oy + pt.r * cSize + pxOff
+        }));
+
+        let len = pts.length;
+        let lastPt = pts[len - 1];
         let dr = 0, dc = 0;
         if (p.heading === "UP") dr = -1;
         if (p.heading === "DOWN") dr = 1;
@@ -143,8 +159,8 @@ function drawEngine() {
 
         for (let j = 1; j <= Math.max(State.gridRows, State.gridCols) + 2; j++) {
             fullTrack.push({
-                x: ox + (lastPt.c + dc * j) * cSize + cSize / 2,
-                y: oy + (lastPt.r + dr * j) * cSize + cSize / 2
+                x: ox + (lastPt.c + dc * j) * cSize + pxOff,
+                y: oy + (lastPt.r + dr * j) * cSize + pxOff
             });
         }
 
@@ -190,18 +206,22 @@ function drawEngine() {
             ctx.restore();
 
             if (p.state === "IDLE" && !State.revealActive) {
-                const headCell = p.points[p.points.length - 1];
+                const headPt = pts[len - 1];
+                // Edge paths: boundary is (rows+1)×(cols+1) nodes; cell paths: rows×cols cells
+                const maxR = p.nodes ? State.gridRows     : State.gridRows - 1;
+                const maxC = p.nodes ? State.gridCols     : State.gridCols - 1;
                 let steps = 0;
-                let cr = headCell.r + dr;
-                let cc = headCell.c + dc;
-                while (cr >= 0 && cr < State.gridRows && cc >= 0 && cc < State.gridCols && State.gridMask[cr]?.[cc] !== -1) {
+                let cr = headPt.r + dr;
+                let cc = headPt.c + dc;
+                while (cr >= 0 && cr <= maxR && cc >= 0 && cc <= maxC) {
+                    if (!p.nodes && State.gridMask[cr]?.[cc] === -1) break;
                     steps++;
                     cr += dr;
                     cc += dc;
                 }
                 if (steps > 0) {
-                    const hx = ox + headCell.c * cSize + cSize / 2;
-                    const hy = oy + headCell.r * cSize + cSize / 2;
+                    const hx = ox + headPt.c * cSize + pxOff;
+                    const hy = oy + headPt.r * cSize + pxOff;
                     ctx.save();
                     ctx.setLineDash([Math.max(2, cSize * 0.18), Math.max(2, cSize * 0.14)]);
                     ctx.lineWidth = Math.max(0.75, cSize * 0.045);
@@ -252,31 +272,64 @@ function animationUpdateTick() {
             State.animatingCount++;
             p.animProgress += 0.26;
 
-            let head = p.points[p.points.length - 1];
-            let dr = 0, dc = 0;
-            if (p.heading === "UP") dr = -1;
-            if (p.heading === "DOWN") dr = 1;
-            if (p.heading === "LEFT") dc = -1;
-            if (p.heading === "RIGHT") dc = 1;
+            if (p.nodes && State.nodeOwner) {
+                // ── Node-based collision (node-Hamiltonian model) ─────────────
+                const head = p.nodes[p.nodes.length - 1];
+                let dr = 0, dc = 0;
+                if (p.heading === "UP")    dr = -1;
+                if (p.heading === "DOWN")  dr =  1;
+                if (p.heading === "LEFT")  dc = -1;
+                if (p.heading === "RIGHT") dc =  1;
 
-            let leadingGridR = Math.round(head.r + dr * p.animProgress);
-            let leadingGridC = Math.round(head.c + dc * p.animProgress);
+                const steps = Math.round(p.animProgress);
+                const leadR = head.r + dr * (steps + 1);
+                const leadC = head.c + dc * (steps + 1);
+                const _W    = State.gridCols + 1;
 
-            if (leadingGridR >= 0 && leadingGridR < State.gridRows && leadingGridC >= 0 && leadingGridC < State.gridCols) {
-                let hit = State.paths.some(other => {
-                    if (other.id === p.id || other.state === "CLEARED" || other.state === "MOVING") return false;
-                    let occupied = getPathOccupiedCells(other);
-                    return occupied.some(opt => opt.r === leadingGridR && opt.c === leadingGridC);
-                });
+                if (leadR >= 0 && leadR <= State.gridRows &&
+                    leadC >= 0 && leadC <= State.gridCols) {
+                    const ownerId = State.nodeOwner[leadR * _W + leadC];
+                    if (ownerId >= 0 && ownerId !== p.id) {
+                        const ownerPath = State.paths.find(o => o.id === ownerId);
+                        if (ownerPath &&
+                            ownerPath.state !== "CLEARED" &&
+                            ownerPath.state !== "MOVING") {
+                            p.state = "CRASHING";
+                            p.crashFlashFrames = 8;
+                            AudioEngine.crash();
+                            triggerCameraShake();
+                            processFailurePenalty();
+                        }
+                    }
+                }
+            } else {
+                // ── Cell-based collision (legacy / fallback) ──────────────────
+                let head = p.points[p.points.length - 1];
+                let dr = 0, dc = 0;
+                if (p.heading === "UP") dr = -1;
+                if (p.heading === "DOWN") dr = 1;
+                if (p.heading === "LEFT") dc = -1;
+                if (p.heading === "RIGHT") dc = 1;
 
-                let hitWall = (State.gridMask[leadingGridR]?.[leadingGridC] === -1);
+                let leadingGridR = Math.round(head.r + dr * p.animProgress);
+                let leadingGridC = Math.round(head.c + dc * p.animProgress);
 
-                if (hit || hitWall) {
-                    p.state = "CRASHING";
-                    p.crashFlashFrames = 8;
-                    AudioEngine.crash();
-                    triggerCameraShake();
-                    processFailurePenalty();
+                if (leadingGridR >= 0 && leadingGridR < State.gridRows && leadingGridC >= 0 && leadingGridC < State.gridCols) {
+                    let hit = State.paths.some(other => {
+                        if (other.id === p.id || other.state === "CLEARED" || other.state === "MOVING") return false;
+                        let occupied = getPathOccupiedCells(other);
+                        return occupied.some(opt => opt.r === leadingGridR && opt.c === leadingGridC);
+                    });
+
+                    let hitWall = (State.gridMask[leadingGridR]?.[leadingGridC] === -1);
+
+                    if (hit || hitWall) {
+                        p.state = "CRASHING";
+                        p.crashFlashFrames = 8;
+                        AudioEngine.crash();
+                        triggerCameraShake();
+                        processFailurePenalty();
+                    }
                 }
             }
 
