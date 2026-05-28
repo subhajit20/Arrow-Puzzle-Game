@@ -113,7 +113,7 @@ canvas.addEventListener('touchend', (e) => {
 
             if (selected) {
                 AudioEngine.tap();
-                selected.state = "MOVING";
+                attemptReleasePath(selected);
             }
         }
     }
@@ -191,7 +191,7 @@ window.addEventListener('mouseup', (e) => {
 
             if (selected) {
                 AudioEngine.tap();
-                selected.state = "MOVING";
+                attemptReleasePath(selected);
             }
         }
     }

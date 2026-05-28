@@ -22,6 +22,7 @@ function updateDomUI() {
             el.style.transform = "scale(0.85)";
         }
     }
+
 }
 
 function drawChevronArrowHead(x, y, heading, size, isSelected, pState) {
@@ -85,13 +86,25 @@ function drawEngine() {
     const cSize = State.cellSize;
     const ox = State.offsetX;
     const oy = State.offsetY;
-
     const rows = State.gridRows;
     const cols = State.gridCols;
 
-    // Board background: plain white — no grid lines or cell shading
+    // Board background
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(ox, oy, cols * cSize, rows * cSize);
+
+    // Dot grid — one dot per playable cell
+    const dotR = Math.max(1, cSize * 0.07);
+    ctx.fillStyle = "#c0c4cc";
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            if (State.gridMask[r]?.[c] === 1) {
+                ctx.beginPath();
+                ctx.arc(ox + c * cSize + cSize / 2, oy + r * cSize + cSize / 2, dotR, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    }
 
     ctx.save();
     ctx.beginPath();
@@ -101,21 +114,19 @@ function drawEngine() {
     State.paths.forEach((p, idx) => {
         if (p.state === "CLEARED") return;
 
-        let isSelected = (State.selectedPath && State.selectedPath.id === p.id) || (State.hintPathId === p.id);
+        const isSelected = (State.selectedPath && State.selectedPath.id === p.id) || (State.hintPathId === p.id);
 
         let strokeColor = "#112540";
-        let activeColor = "#3b82f6";
-
         if (p.state === "CRASHING") {
             strokeColor = "#ef4444";
         } else if (isSelected) {
-            strokeColor = activeColor;
+            strokeColor = "#3b82f6";
         }
 
         if (p.state === "CRASHING" && (p.crashFlashFrames || 0) > 0) {
             ctx.fillStyle = "rgba(239, 68, 68, 0.35)";
-            getPathOccupiedCells(p).forEach(pt => {
-                if (pt.r >= 0 && pt.r < State.gridRows && pt.c >= 0 && pt.c < State.gridCols) {
+            p.points.forEach(pt => {
+                if (pt.r >= 0 && pt.r < rows && pt.c >= 0 && pt.c < cols) {
                     ctx.fillRect(ox + pt.c * cSize, oy + pt.r * cSize, cSize, cSize);
                 }
             });
@@ -125,52 +136,33 @@ function drawEngine() {
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
 
-        let fullTrack = [];
-        p.points.forEach(pt => {
-            fullTrack.push({
-                x: ox + pt.c * cSize + cSize / 2,
-                y: oy + pt.r * cSize + cSize / 2
-            });
-        });
-
-        let len = p.points.length;
-        let lastPt = p.points[len - 1];
+        const len = p.points.length;
         let dr = 0, dc = 0;
-        if (p.heading === "UP") dr = -1;
-        if (p.heading === "DOWN") dr = 1;
-        if (p.heading === "LEFT") dc = -1;
-        if (p.heading === "RIGHT") dc = 1;
+        if (p.heading === "UP")    dr = -1;
+        if (p.heading === "DOWN")  dr =  1;
+        if (p.heading === "LEFT")  dc = -1;
+        if (p.heading === "RIGHT") dc =  1;
 
-        for (let j = 1; j <= Math.max(State.gridRows, State.gridCols) + 2; j++) {
-            fullTrack.push({
-                x: ox + (lastPt.c + dc * j) * cSize + cSize / 2,
-                y: oy + (lastPt.r + dr * j) * cSize + cSize / 2
-            });
-        }
+        let fullTrack = p.points.map(pt => ({
+            x: ox + pt.c * cSize + cSize / 2,
+            y: oy + pt.r * cSize + cSize / 2
+        }));
 
-        let drawPoints = [];
-        let totalSegLen = len - 1;
-
+        let drawPoints;
         if (State.revealActive) {
             const N = State.paths.length;
-            const staggerFactor = 0.4; // 40% of duration for delay stagger
+            const staggerFactor = 0.4;
             const startRatio = N > 1 ? (idx / (N - 1)) * staggerFactor : 0.0;
             const durationRatio = 1.0 - staggerFactor;
-            
             let pProgress = 0.0;
             if (State.revealProgress > startRatio) {
                 pProgress = Math.min(1.0, (State.revealProgress - startRatio) / durationRatio);
             }
-            
-            if (pProgress > 0.0) {
-                drawPoints = getSubTrackPoints(fullTrack, 0, pProgress * totalSegLen);
-            }
-        } else if (p.state === "IDLE") {
-            drawPoints = fullTrack.slice(0, len);
+            drawPoints = pProgress > 0.0
+                ? getSubTrackPoints(fullTrack, 0, pProgress * (len - 1))
+                : [];
         } else {
-            let dStart = p.animProgress;
-            let dEnd = totalSegLen + p.animProgress;
-            drawPoints = getSubTrackPoints(fullTrack, dStart, dEnd);
+            drawPoints = fullTrack;
         }
 
         if (drawPoints.length >= 2) {
@@ -179,7 +171,6 @@ function drawEngine() {
                 ctx.shadowBlur = 8;
                 ctx.shadowColor = "rgba(59, 130, 246, 0.4)";
             }
-
             ctx.beginPath();
             ctx.moveTo(drawPoints[0].x, drawPoints[0].y);
             for (let i = 1; i < drawPoints.length; i++) {
@@ -190,11 +181,11 @@ function drawEngine() {
             ctx.restore();
 
             if (p.state === "IDLE" && !State.revealActive) {
-                const headCell = p.points[p.points.length - 1];
+                const headCell = p.points[len - 1];
                 let steps = 0;
                 let cr = headCell.r + dr;
                 let cc = headCell.c + dc;
-                while (cr >= 0 && cr < State.gridRows && cc >= 0 && cc < State.gridCols && State.gridMask[cr]?.[cc] !== -1) {
+                while (cr >= 0 && cr < rows && cc >= 0 && cc < cols && State.gridMask[cr]?.[cc] === 1) {
                     steps++;
                     cr += dr;
                     cc += dc;
@@ -218,9 +209,8 @@ function drawEngine() {
                 }
             }
 
-            let headPos = drawPoints[drawPoints.length - 1];
-            let pyramidSize = Math.max(3.0, cSize * 0.32);
-            drawChevronArrowHead(headPos.x, headPos.y, p.heading, pyramidSize, isSelected, p.state);
+            const headPos = drawPoints[drawPoints.length - 1];
+            drawChevronArrowHead(headPos.x, headPos.y, p.heading, Math.max(3.0, cSize * 0.32), isSelected, p.state);
         }
     });
 
@@ -248,62 +238,13 @@ function animationUpdateTick() {
     State.animatingCount = 0;
 
     State.paths.forEach(p => {
-        if (p.state === "MOVING") {
-            State.animatingCount++;
-            p.animProgress += 0.26;
-
-            let head = p.points[p.points.length - 1];
-            let dr = 0, dc = 0;
-            if (p.heading === "UP") dr = -1;
-            if (p.heading === "DOWN") dr = 1;
-            if (p.heading === "LEFT") dc = -1;
-            if (p.heading === "RIGHT") dc = 1;
-
-            let leadingGridR = Math.round(head.r + dr * p.animProgress);
-            let leadingGridC = Math.round(head.c + dc * p.animProgress);
-
-            if (leadingGridR >= 0 && leadingGridR < State.gridRows && leadingGridC >= 0 && leadingGridC < State.gridCols) {
-                let hit = State.paths.some(other => {
-                    if (other.id === p.id || other.state === "CLEARED" || other.state === "MOVING") return false;
-                    let occupied = getPathOccupiedCells(other);
-                    return occupied.some(opt => opt.r === leadingGridR && opt.c === leadingGridC);
-                });
-
-                let hitWall = (State.gridMask[leadingGridR]?.[leadingGridC] === -1);
-
-                if (hit || hitWall) {
-                    p.state = "CRASHING";
-                    p.crashFlashFrames = 8;
-                    AudioEngine.crash();
-                    triggerCameraShake();
-                    processFailurePenalty();
-                }
-            }
-
-            if (p.animProgress > Math.max(State.gridRows, State.gridCols) * 1.5) {
-                p.state = "CLEARED";
-                AudioEngine.clear();
-
-                if (State.dailyPuzzleMode) {
-                    State.dailyScore += 10;
-                } else {
-                    State.score += 10;
-                    Persistence.saveState();
-                }
-
-                updateDomUI();
-                checkVictoryConditionStates();
-            }
-        } else if (p.state === "CRASHING") {
+        if (p.state === "CRASHING") {
             State.animatingCount++;
             if ((p.crashFlashFrames || 0) > 0) {
                 p.crashFlashFrames--;
             } else {
-                p.animProgress -= 0.16;
-                if (p.animProgress <= 0) {
-                    p.animProgress = 0;
-                    p.state = "IDLE";
-                }
+                p.animProgress = 0;
+                p.state = "IDLE";
             }
         }
     });
