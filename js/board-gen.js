@@ -394,7 +394,7 @@ function countSegmentTurns(hamiltonPath, from, len) {
 
 function splitPathIntoSegments(hamiltonPath, startId, level) {
     const targetLen = getAdaptiveTargetLen(level);
-    const minLen    = 2;
+    const minLen    = 3;
     const rows = State.gridRows;
     const cols = State.gridCols;
     const dMoves = [[-1,0],[1,0],[0,-1],[0,1]];
@@ -453,25 +453,15 @@ function splitPathIntoSegments(hamiltonPath, startId, level) {
                     && committed[br * cols + bc] >= 0) adjScore++;
             }
 
-            // Factor 2: SHAPE SCORE — rewards complex winding shapes.
-            //
-            // Near-loop (U/C/spiral): end cell is physically close to start cell
-            // despite the path being long → the path doubles back on itself.
-            // This is the dominant shape in high-quality commercial puzzles.
-            //
-            // Scoring (highest → lowest):
-            //   near-loop (U/C/spiral)  → +2.5
-            //   S/Z/hook (2+ turns)     → +2.0
-            //   L-shape (1 turn)        → +1.5
-            //   straight line (0 turns) → −1.5  (penalised — discouraged)
-            const turns     = countSegmentTurns(hamiltonPath, pos, len);
-            const seg0      = hamiltonPath[pos];
-            const segEnd    = hamiltonPath[pos + len - 1];
-            const directDist = Math.abs(seg0.r - segEnd.r) + Math.abs(seg0.c - segEnd.c);
-            const isNearLoop = len >= 4 && directDist < len * 0.5;
-            const turnScore  = isNearLoop  ? 2.5 :
-                               turns > 1   ? 2.0 :
-                               turns === 1 ? 1.5 : -1.5;
+            // Factor 2: TURN COUNT — direction changes inside this segment.
+            // L-shapes (1 turn) are visually clear and rewarded.
+            // S/Z/hook shapes (2+ turns) are now also rewarded to increase
+            // vector complexity and reduce corridor dominance.
+            // 0 turns = straight line → no bonus
+            // 1 turn  = L-shape       → +2.0
+            // 2+ turns = S/Z/hook     → +1.5
+            const turns    = countSegmentTurns(hamiltonPath, pos, len);
+            const turnScore = turns === 1 ? 2.0 : turns > 1 ? 1.5 : 0;
 
             // Factor 3: prefer lengths close to targetLen
             const lenScore = 1.0 - Math.abs(len - targetLen) / (targetLen + 2);
@@ -503,128 +493,6 @@ function splitPathIntoSegments(hamiltonPath, startId, level) {
 }
 
 // ---------------------------------------------------------------------------
-// buildMazeLikePath
-//
-// Randomised DFS with backtracking — primary path builder replacing Warnsdorff.
-//
-// Unlike Warnsdorff (lowest-degree-first), DFS picks a RANDOM unvisited
-// neighbour at every step.  When it hits a dead-end it backtracks up to
-// maxBacktrack steps, trying a different branch.  This backtrack-and-retry
-// motion is exactly what produces U-shapes, C-shapes and spiral hooks — the
-// dominant shapes visible in high-quality commercial arrow puzzles.
-//
-// Zone awareness is preserved:
-//   KNOT     → pure random (maximum turning)
-//   VERTICAL → prefer vertical moves before horizontal
-//   CORRIDOR → mild same-direction preference
-//   MIXED    → pure random (default)
-//
-// Pocket priority: while inside a maze pocket cell, prefer other pocket cells
-// first (exhausts the pocket before leaving — produces dense local tangles).
-//
-// Falls back to Warnsdorff if every attempt fails to cover all cells.
-// ---------------------------------------------------------------------------
-function buildMazeLikePath(component, rows, cols, zoneMap, pockets) {
-    const dMoves = [[-1,0],[1,0],[0,-1],[0,1]];
-    const total  = component.length;
-    if (total <= 1) return component.slice();
-
-    const inComp = new Uint8Array(rows * cols);
-    component.forEach(cell => { inComp[cell.r * cols + cell.c] = 1; });
-
-    const pocketCellSet = new Set();
-    if (pockets) pockets.forEach(pk => pk.cells.forEach(k => pocketCellSet.add(k)));
-
-    const maxBacktrack = Math.floor(total * 0.20); // 20 % of grid cells
-
-    for (let attempt = 0; attempt < 10; attempt++) {
-        const visited = new Uint8Array(rows * cols);
-        const path    = [];
-
-        // Random start each attempt for variety
-        const start = component[Math.floor(Math.random() * total)];
-        visited[start.r * cols + start.c] = 1;
-        path.push(start);
-
-        // Returns shuffled + zone-biased unvisited neighbours of `cell`
-        function nextNeighbours(cell) {
-            const raw = [];
-            for (const [dr, dc] of dMoves) {
-                const nr = cell.r + dr, nc = cell.c + dc;
-                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols
-                    && inComp[nr * cols + nc] && !visited[nr * cols + nc])
-                    raw.push({ r: nr, c: nc });
-            }
-
-            // Fisher-Yates shuffle (pure random — key difference from Warnsdorff)
-            for (let i = raw.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [raw[i], raw[j]] = [raw[j], raw[i]];
-            }
-
-            // Pocket priority: exhaust pocket cells before leaving the pocket
-            if (pocketCellSet.size > 0 && pocketCellSet.has(cell.r * cols + cell.c)) {
-                const inP  = raw.filter(n => pocketCellSet.has(n.r * cols + n.c));
-                const outP = raw.filter(n => !pocketCellSet.has(n.r * cols + n.c));
-                if (inP.length > 0) return [...inP, ...outP];
-            }
-
-            // Zone-aware reordering (hard boundaries)
-            if (zoneMap) {
-                const zone = zoneMap[cell.r][cell.c];
-                if (zone === 'VERTICAL' && Math.random() < 0.65) {
-                    const vert  = raw.filter(n => n.r !== cell.r);
-                    const horiz = raw.filter(n => n.r === cell.r);
-                    if (vert.length > 0) return [...vert, ...horiz];
-                }
-                // CORRIDOR: 40 % chance to keep same direction first
-                if (zone === 'CORRIDOR' && path.length >= 2 && Math.random() < 0.40) {
-                    const prev  = path[path.length - 2];
-                    const dr    = cell.r - prev.r, dc = cell.c - prev.c;
-                    const same  = raw.filter(n => n.r - cell.r === dr && n.c - cell.c === dc);
-                    const other = raw.filter(n => !(n.r - cell.r === dr && n.c - cell.c === dc));
-                    if (same.length > 0) return [...same, ...other];
-                }
-            }
-
-            return raw; // KNOT + MIXED: pure random
-        }
-
-        // DFS stack: { cell, neighbours[], idx }
-        const stack = [{ cell: start, nbrs: nextNeighbours(start), idx: 0 }];
-        let backtracks = 0;
-
-        while (path.length < total && stack.length > 0) {
-            const top = stack[stack.length - 1];
-
-            // Advance past any neighbours visited since we pushed this frame
-            while (top.idx < top.nbrs.length
-                && visited[top.nbrs[top.idx].r * cols + top.nbrs[top.idx].c])
-                top.idx++;
-
-            if (top.idx < top.nbrs.length) {
-                const next = top.nbrs[top.idx++];
-                visited[next.r * cols + next.c] = 1;
-                path.push(next);
-                stack.push({ cell: next, nbrs: nextNeighbours(next), idx: 0 });
-            } else if (backtracks < maxBacktrack) {
-                // Backtrack: unvisit the dead-end cell, remove from path
-                const dead = path.pop();
-                visited[dead.r * cols + dead.c] = 0;
-                stack.pop();
-                backtracks++;
-            } else {
-                break; // Backtrack budget exhausted — give up this attempt
-            }
-        }
-
-        if (path.length === total) return path;
-    }
-
-    return null; // All attempts failed — caller falls back to Warnsdorff
-}
-
-// ---------------------------------------------------------------------------
 // tryHamiltonianBoard
 // Orchestrates the Hamiltonian generation pipeline.  Returns a valid
 // { paths, gridOwnership } result on success, or null on failure.
@@ -644,10 +512,8 @@ function tryHamiltonianBoard(zoneMap, pockets) {
     for (const component of components) {
         if (component.length < 2) continue; // single isolated cell — skip
 
-        // Step 2: maze-like DFS path first; Warnsdorff as fallback
-        let hamiltonPath = buildMazeLikePath(component, rows, cols, zoneMap, pockets);
-        if (!hamiltonPath || hamiltonPath.length !== component.length)
-            hamiltonPath = buildWarnsdorffPath(component, rows, cols, zoneMap, pockets);
+        // Step 2: Warnsdorff space-filling path through this island
+        const hamiltonPath = buildWarnsdorffPath(component, rows, cols, zoneMap, pockets);
         if (!hamiltonPath || hamiltonPath.length !== component.length) return null;
 
         // Step 3: split into short puzzle-path segments
@@ -1695,8 +1561,9 @@ function densityOptimizerPass(paths, level) {
         const go = buildGridOwnership(paths);
 
         // ── 4. Score every candidate split index ────────────────────────────
-        // Hard floor: every sub-path must be at least 2 cells.
-        const minHalf = 2;
+        // Hard floor: every sub-path must be at least 3 cells (minimum for a
+        // readable path with a body and a head). No 2-cell stubs from splitting.
+        const minHalf = 3;
 
         let bestIdx = -1;
         let bestScore = -Infinity;

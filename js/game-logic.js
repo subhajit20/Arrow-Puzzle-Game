@@ -1,51 +1,31 @@
 function getPathOccupiedCells(p) {
     if (p.state === "CLEARED") return [];
-    return p.points;
-}
+    if (p.state === "IDLE") return p.points;
 
-function attemptReleasePath(p) {
-    if (p.state !== "IDLE") return;
-
-    let head = p.points[p.points.length - 1];
+    const cells = [];
+    const len = p.points.length;
+    const lastPt = p.points[len - 1];
     let dr = 0, dc = 0;
-    if (p.heading === "UP")    dr = -1;
-    if (p.heading === "DOWN")  dr =  1;
-    if (p.heading === "LEFT")  dc = -1;
-    if (p.heading === "RIGHT") dc =  1;
+    if (p.heading === "UP") dr = -1;
+    if (p.heading === "DOWN") dr = 1;
+    if (p.heading === "LEFT") dc = -1;
+    if (p.heading === "RIGHT") dc = 1;
 
-    let cr = head.r + dr;
-    let cc = head.c + dc;
-    let blocked = false;
+    const startIdx = Math.floor(p.animProgress);
+    const endIdx = Math.ceil((len - 1) + p.animProgress);
 
-    while (cr >= 0 && cr < State.gridRows && cc >= 0 && cc < State.gridCols) {
-        if (State.gridMask[cr]?.[cc] === -1) { blocked = true; break; }
-        let hit = State.paths.some(other => {
-            if (other.id === p.id || other.state === "CLEARED") return false;
-            return other.points.some(pt => pt.r === cr && pt.c === cc);
-        });
-        if (hit) { blocked = true; break; }
-        cr += dr;
-        cc += dc;
-    }
-
-    if (!blocked) {
-        p.state = "CLEARED";
-        AudioEngine.clear();
-        if (State.dailyPuzzleMode) {
-            State.dailyScore += 10;
+    for (let i = startIdx; i <= endIdx; i++) {
+        if (i < len) {
+            cells.push(p.points[i]);
         } else {
-            State.score += 10;
-            Persistence.saveState();
+            const j = i - (len - 1);
+            cells.push({
+                r: lastPt.r + dr * j,
+                c: lastPt.c + dc * j
+            });
         }
-        updateDomUI();
-        checkVictoryConditionStates();
-    } else {
-        p.state = "CRASHING";
-        p.crashFlashFrames = 10;
-        AudioEngine.crash();
-        triggerCameraShake();
-        processFailurePenalty();
     }
+    return cells;
 }
 
 function getUnblockedPaths() {
