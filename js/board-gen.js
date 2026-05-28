@@ -254,7 +254,7 @@ function findConnectedComponents() {
 // Returns the complete path array (one cell object per playable cell in the
 // component) on success, or null if every start position gets stuck.
 // ---------------------------------------------------------------------------
-function buildWarnsdorffPath(component, rows, cols) {
+function buildWarnsdorffPath(component, rows, cols, zoneMap, pockets) {
     const dMoves = [[-1,0],[1,0],[0,-1],[0,1]];
     const total = component.length;
     if (total <= 1) return component.slice();
@@ -273,6 +273,10 @@ function buildWarnsdorffPath(component, rows, cols) {
         }
         return d;
     }
+
+    // Pre-compute flat pocket cell set for O(1) membership lookup inside sort
+    const pocketCellSet = new Set();
+    if (pockets) pockets.forEach(pk => pk.cells.forEach(k => pocketCellSet.add(k)));
 
     // Prefer low-degree start cells (corners / edges) — they get stuck fastest
     // if left for later, so Warnsdorff works best starting from them.
@@ -310,17 +314,42 @@ function buildWarnsdorffPath(component, rows, cols) {
             if (nbrs.length === 0) break; // stuck
 
             // Primary sort: Warnsdorff degree (ascending — fewest exits first).
-            // Tiebreaker when degrees are equal or within 1: PREFER A TURN.
-            // Continuing straight produces boustrophedon (row-by-row serpentine)
-            // which yields all-straight cuts. A turn preference makes the path
-            // winding so ~60-70% of cut segments become L- or S-shaped.
+            // Near-tie tiebreaker: zone-aware turn/straight weights (hard boundary).
+            //   KNOT     → strongly prefer turns  (dense knotted cluster)
+            //   CORRIDOR → mildly prefer straight (warp notches handle bending)
+            //   VERTICAL → mild turn pref + vertical move bonus
+            //   MIXED    → balanced default (current behaviour)
+            // Pocket priority: while inside a maze pocket, exhaust pocket cells first.
             nbrs.sort((a, b) => {
                 const degDiff = a.d - b.d;
-                if (Math.abs(degDiff) >= 2) return degDiff; // clear winner — degree only
-                // Near-tie: favour the neighbour that requires a direction change
-                const aTurn = (a.dr !== lastDr || a.dc !== lastDc) ? -0.5 : 0.4;
-                const bTurn = (b.dr !== lastDr || b.dc !== lastDc) ? -0.5 : 0.4;
-                return degDiff + aTurn - bTurn + (Math.random() - 0.5) * 0.25;
+
+                // Pocket priority — hard override before degree tiebreaking
+                if (pocketCellSet.size > 0) {
+                    const curInPocket = pocketCellSet.has(cur.r * cols + cur.c);
+                    if (curInPocket) {
+                        const aIn = pocketCellSet.has(a.r * cols + a.c);
+                        const bIn = pocketCellSet.has(b.r * cols + b.c);
+                        if (aIn !== bIn) return aIn ? -1 : 1;
+                    }
+                }
+
+                if (Math.abs(degDiff) >= 2) return degDiff;
+
+                // Hard-boundary zone weights
+                const zone = zoneMap ? zoneMap[cur.r][cur.c] : 'MIXED';
+                let tw, sw;
+                if      (zone === 'KNOT')     { tw = -1.2; sw =  0.6; }
+                else if (zone === 'CORRIDOR') { tw =  0.3; sw = -0.8; }
+                else                          { tw = -0.5; sw =  0.4; } // MIXED + VERTICAL
+
+                const aTurn = (a.dr !== lastDr || a.dc !== lastDc) ? tw : sw;
+                const bTurn = (b.dr !== lastDr || b.dc !== lastDc) ? tw : sw;
+
+                // VERTICAL zone: pull toward vertical (dr≠0) moves
+                const aVert = (zone === 'VERTICAL' && a.dr !== 0) ? -0.3 : 0;
+                const bVert = (zone === 'VERTICAL' && b.dr !== 0) ? -0.3 : 0;
+
+                return degDiff + aTurn - bTurn + aVert - bVert + (Math.random() - 0.5) * 0.25;
             });
             const next = nbrs[0];
             lastDr = next.r - cur.r;
@@ -425,20 +454,23 @@ function splitPathIntoSegments(hamiltonPath, startId, level) {
             }
 
             // Factor 2: TURN COUNT — direction changes inside this segment.
-            // Premium puzzle games (Flow Free, AHA Games) use predominantly
-            // straight lines and L-shapes. Z/S/N shapes (2+ turns) feel chaotic
-            // and are avoided in professional titles.
+            // L-shapes (1 turn) are visually clear and rewarded.
+            // S/Z/hook shapes (2+ turns) are now also rewarded to increase
+            // vector complexity and reduce corridor dominance.
             // 0 turns = straight line → no bonus
-            // 1 turn  = L-shape / U-shape → strong bonus (~70% target)
-            // 2+ turns = Z/S shape → slight penalty (discouraged)
+            // 1 turn  = L-shape       → +2.0
+            // 2+ turns = S/Z/hook     → +1.5
             const turns    = countSegmentTurns(hamiltonPath, pos, len);
-            const turnScore = turns === 1 ? 2.5 : turns > 1 ? -1.0 : 0;
+            const turnScore = turns === 1 ? 2.0 : turns > 1 ? 1.5 : 0;
 
             // Factor 3: prefer lengths close to targetLen
             const lenScore = 1.0 - Math.abs(len - targetLen) / (targetLen + 2);
 
-            // Factor 4: small random jitter for board variety
-            const score = adjScore * 2.5 + turnScore + lenScore * 1.5 + Math.random() * 0.4;
+            // Factor 4: encirclement — reward segments that wrap around other paths
+            const encScore = computeEncirclement(hamiltonPath, pos, len, committed, rows, cols);
+
+            // Factor 5: small random jitter for board variety
+            const score = adjScore * 2.5 + turnScore + lenScore * 1.5 + encScore * 1.2 + Math.random() * 0.4;
             if (score > bestScore) { bestScore = score; bestLen = len; }
         }
 
@@ -465,7 +497,7 @@ function splitPathIntoSegments(hamiltonPath, startId, level) {
 // Orchestrates the Hamiltonian generation pipeline.  Returns a valid
 // { paths, gridOwnership } result on success, or null on failure.
 // ---------------------------------------------------------------------------
-function tryHamiltonianBoard() {
+function tryHamiltonianBoard(zoneMap, pockets) {
     const rows  = State.gridRows;
     const cols  = State.gridCols;
     const level = State.level || 1;
@@ -481,7 +513,7 @@ function tryHamiltonianBoard() {
         if (component.length < 2) continue; // single isolated cell — skip
 
         // Step 2: Warnsdorff space-filling path through this island
-        const hamiltonPath = buildWarnsdorffPath(component, rows, cols);
+        const hamiltonPath = buildWarnsdorffPath(component, rows, cols, zoneMap, pockets);
         if (!hamiltonPath || hamiltonPath.length !== component.length) return null;
 
         // Step 3: split into short puzzle-path segments
@@ -511,8 +543,8 @@ function tryHamiltonianBoard() {
 // Tries Hamiltonian generation first.  Falls back to the original greedy
 // crawler when Warnsdorff cannot find a Hamiltonian path (rare exotic shapes).
 // ---------------------------------------------------------------------------
-function tryGenerateBoard() {
-    const hamiltonResult = tryHamiltonianBoard();
+function tryGenerateBoard(zoneMap, pockets) {
+    const hamiltonResult = tryHamiltonianBoard(zoneMap, pockets);
     if (hamiltonResult) return hamiltonResult;
     return tryGreedyCrawlerBoard();
 }
@@ -1180,6 +1212,249 @@ function buildGridOwnership(paths) {
 }
 
 // ---------------------------------------------------------------------------
+// isMaskConnected
+// BFS flood-fill: verifies all playable cells (mask===1) are reachable from
+// one seed. Used to gate every mask mutation so connectivity is never broken.
+// ---------------------------------------------------------------------------
+function isMaskConnected(rows, cols) {
+    const dMoves = [[-1,0],[1,0],[0,-1],[0,1]];
+    let start = null, total = 0;
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            if (State.gridMask[r][c] === 1) {
+                total++;
+                if (!start) start = { r, c };
+            }
+        }
+    }
+    if (!start || total === 0) return true;
+    const visited = new Uint8Array(rows * cols);
+    const queue = [start];
+    visited[start.r * cols + start.c] = 1;
+    let reached = 1;
+    while (queue.length > 0) {
+        const { r, c } = queue.shift();
+        for (const [dr, dc] of dMoves) {
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols
+                && State.gridMask[nr][nc] === 1 && !visited[nr * cols + nc]) {
+                visited[nr * cols + nc] = 1;
+                reached++;
+                queue.push({ r: nr, c: nc });
+            }
+        }
+    }
+    return reached === total;
+}
+
+// ---------------------------------------------------------------------------
+// mutateMaskWithPseudoLoops
+// Carves 2–4 rectangular ring-corridor voids into the playable mask. Each ring
+// keeps its border cells playable and sets its interior to void (mask=0).
+// This adds topological loops that force paths to route around them.
+// Every carve is connectivity-checked; failed carves are fully reverted.
+// ---------------------------------------------------------------------------
+function mutateMaskWithPseudoLoops(rows, cols) {
+    const numRings = rows >= 48 ? 4 : rows >= 32 ? 3 : 2;
+    let placed = 0;
+
+    for (let attempt = 0; attempt < numRings * 10 && placed < numRings; attempt++) {
+        // Interior: 2–3 rows tall, 2–4 cols wide
+        const intH = 2 + Math.floor(Math.random() * 2);
+        const intW = 2 + Math.floor(Math.random() * 3);
+        const ringH = intH + 2;
+        const ringW = intW + 2;
+
+        if (ringH + 2 > rows || ringW + 2 > cols) continue;
+        const r0 = 1 + Math.floor(Math.random() * (rows - ringH - 2));
+        const c0 = 1 + Math.floor(Math.random() * (cols - ringW - 2));
+
+        // All cells in the ring footprint must be playable
+        let allPlayable = true;
+        for (let r = r0; r < r0 + ringH && allPlayable; r++)
+            for (let c = c0; c < c0 + ringW && allPlayable; c++)
+                if (State.gridMask[r][c] !== 1) allPlayable = false;
+        if (!allPlayable) continue;
+
+        // Carve interior to void
+        const carved = [];
+        for (let r = r0 + 1; r < r0 + ringH - 1; r++)
+            for (let c = c0 + 1; c < c0 + ringW - 1; c++) {
+                carved.push({ r, c });
+                State.gridMask[r][c] = 0;
+            }
+
+        if (isMaskConnected(rows, cols)) {
+            placed++;
+        } else {
+            carved.forEach(({ r, c }) => { State.gridMask[r][c] = 1; });
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// buildEntropyZoneMap
+// Divides the grid into 2–4 hard-boundary horizontal strips, each assigned one
+// entropy type used by buildWarnsdorffPath to alter its directional bias:
+//   VERTICAL  — extra weight toward vertical (dr≠0) moves
+//   KNOT      — strong turn preference, produces maze-like knotted clusters
+//   CORRIDOR  — mild straight preference; mask also gets notched by notchCorridorMask
+//   MIXED     — balanced default (current Warnsdorff behaviour)
+// Every board is guaranteed at least one KNOT strip.
+// ---------------------------------------------------------------------------
+function buildEntropyZoneMap(rows, cols) {
+    const zoneMap = Array.from({ length: rows }, () => new Array(cols).fill('MIXED'));
+    const types = ['VERTICAL', 'KNOT', 'CORRIDOR', 'MIXED'];
+    const numStrips = rows >= 48 ? 4 : rows >= 28 ? 3 : 2;
+    const stripH = Math.floor(rows / numStrips);
+
+    // Guarantee KNOT appears; fill remaining strips randomly
+    const assigned = ['KNOT'];
+    while (assigned.length < numStrips)
+        assigned.push(types[Math.floor(Math.random() * types.length)]);
+
+    // Fisher-Yates shuffle
+    for (let i = assigned.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [assigned[i], assigned[j]] = [assigned[j], assigned[i]];
+    }
+
+    for (let s = 0; s < numStrips; s++) {
+        const startR = s * stripH;
+        const endR   = s === numStrips - 1 ? rows : startR + stripH;
+        const zone   = assigned[s];
+        for (let r = startR; r < endR; r++)
+            for (let c = 0; c < cols; c++)
+                zoneMap[r][c] = zone;
+    }
+    return zoneMap;
+}
+
+// ---------------------------------------------------------------------------
+// notchCorridorMask
+// Punches sparse single-cell void notches into CORRIDOR-zone playable cells.
+// Budget: ~6% of CORRIDOR cells. Each notch is connectivity-checked first;
+// any notch that would disconnect the mask is silently skipped.
+// ---------------------------------------------------------------------------
+function notchCorridorMask(rows, cols, zoneMap) {
+    const candidates = [];
+    for (let r = 1; r < rows - 1; r++)
+        for (let c = 1; c < cols - 1; c++)
+            if (State.gridMask[r][c] === 1 && zoneMap[r][c] === 'CORRIDOR')
+                candidates.push({ r, c });
+
+    // Fisher-Yates shuffle
+    for (let i = candidates.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+
+    const budget = Math.max(1, Math.floor(candidates.length * 0.06));
+    let placed = 0;
+    for (const { r, c } of candidates) {
+        if (placed >= budget) break;
+        State.gridMask[r][c] = 0;
+        if (isMaskConnected(rows, cols)) {
+            placed++;
+        } else {
+            State.gridMask[r][c] = 1;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// planMazePockets
+// Identifies 2–4 small contiguous KNOT-zone regions (4–12 cells each) as
+// "maze pockets". buildWarnsdorffPath uses these to switch to pocket-first
+// ordering — the crawler exhausts each pocket before leaving, creating dense
+// locally knotted sub-clusters. Returns [{ cells: Set<r*cols+c> }, …].
+// ---------------------------------------------------------------------------
+function planMazePockets(rows, cols, zoneMap) {
+    const pockets = [];
+    const numPockets = rows >= 48 ? 4 : rows >= 32 ? 3 : 2;
+    const occupiedByPocket = new Set();
+    const dMoves = [[-1,0],[1,0],[0,-1],[0,1]];
+
+    for (let attempt = 0; attempt < numPockets * 8 && pockets.length < numPockets; attempt++) {
+        // Collect unoccupied playable KNOT cells as seeds
+        const seeds = [];
+        for (let r = 1; r < rows - 1; r++)
+            for (let c = 1; c < cols - 1; c++) {
+                const key = r * cols + c;
+                if (State.gridMask[r][c] === 1 && zoneMap[r][c] === 'KNOT' && !occupiedByPocket.has(key))
+                    seeds.push({ r, c, key });
+            }
+        if (seeds.length === 0) break;
+
+        const start = seeds[Math.floor(Math.random() * seeds.length)];
+        const targetSize = 4 + Math.floor(Math.random() * 9); // 4–12
+        const cells = new Set([start.key]);
+        const frontier = [{ r: start.r, c: start.c }];
+
+        while (frontier.length > 0 && cells.size < targetSize) {
+            const idx = Math.floor(Math.random() * frontier.length);
+            const { r, c } = frontier.splice(idx, 1)[0];
+            for (const [dr, dc] of dMoves) {
+                const nr = r + dr, nc = c + dc;
+                const nk = nr * cols + nc;
+                if (nr >= 1 && nr < rows - 1 && nc >= 1 && nc < cols - 1
+                    && State.gridMask[nr][nc] === 1 && zoneMap[nr][nc] === 'KNOT'
+                    && !cells.has(nk) && !occupiedByPocket.has(nk)
+                    && cells.size < targetSize) {
+                    cells.add(nk);
+                    frontier.push({ r: nr, c: nc });
+                }
+            }
+        }
+
+        if (cells.size < 4) continue;
+        cells.forEach(k => occupiedByPocket.add(k));
+        pockets.push({ cells });
+    }
+    return pockets;
+}
+
+// ---------------------------------------------------------------------------
+// computeEncirclement
+// Scores how much a candidate segment wraps around already-committed paths.
+// For each committed cell inside the segment bounding box, counts how many of
+// its orthogonal neighbours belong to the segment. Normalised to [0, 1].
+// High score → segment forms a C/U/hook around other paths (rewards near-loops).
+// ---------------------------------------------------------------------------
+function computeEncirclement(hamiltonPath, from, len, committed, rows, cols) {
+    if (len < 4) return 0;
+    const segSet = new Set();
+    let minR = rows, maxR = 0, minC = cols, maxC = 0;
+    for (let i = from; i < from + len; i++) {
+        const { r, c } = hamiltonPath[i];
+        segSet.add(r * cols + c);
+        if (r < minR) minR = r;
+        if (r > maxR) maxR = r;
+        if (c < minC) minC = c;
+        if (c > maxC) maxC = c;
+    }
+    if ((maxR - minR + 1) * (maxC - minC + 1) <= len) return 0;
+
+    const dMoves = [[-1,0],[1,0],[0,-1],[0,1]];
+    let score = 0, checked = 0;
+    for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+            if (segSet.has(r * cols + c)) continue;
+            if (committed[r * cols + c] <= 0) continue;
+            let segNbrs = 0;
+            for (const [dr, dc] of dMoves) {
+                const nr = r + dr, nc = c + dc;
+                if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && segSet.has(nr * cols + nc))
+                    segNbrs++;
+            }
+            score += segNbrs / 4;
+            checked++;
+        }
+    }
+    return checked > 0 ? score / checked : 0;
+}
+
+// ---------------------------------------------------------------------------
 // getAdaptiveTargetLen
 // Returns the target maximum path length used by the density optimizer.
 // Lower = denser board. Scales with board dimensions and level progression.
@@ -1197,12 +1472,13 @@ function getAdaptiveTargetLen(level) {
     //  maxDim 10–13               → base 7  → level 22: ~5 cells/path
     //  maxDim  <10                → base 6
     let base;
-    if (maxDim >= 40) base = 6;
-    else if (maxDim >= 30) base = 7;
-    else if (maxDim >= 18) base = 8;
-    else if (maxDim >= 14) base = 8;
-    else if (maxDim >= 10) base = 7;
-    else base = 6;
+    if (maxDim >= 48) base = 5;
+    else if (maxDim >= 36) base = 5;
+    else if (maxDim >= 28) base = 6;
+    else if (maxDim >= 20) base = 6;
+    else if (maxDim >= 14) base = 7;
+    else if (maxDim >= 10) base = 6;
+    else base = 5;
     if (level > 25) return Math.max(3, Math.floor(base * 0.55));
     if (level > 10) return Math.max(3, Math.floor(base * 0.68));
     return base;
@@ -1450,15 +1726,33 @@ function build100PackedLevel(forceNewGeneration = false) {
     resetCamera();
     resizeCanvas();
 
+    // ── Hybrid topology pre-processing (runs once per board) ─────────────────
+    // Snapshot mask before mutations so we can roll back if too many cells carved
+    const _maskSnap = State.gridMask.map(row => row.slice());
+
+    const boardZoneMap = buildEntropyZoneMap(State.gridRows, State.gridCols);
+    mutateMaskWithPseudoLoops(State.gridRows, State.gridCols);
+    notchCorridorMask(State.gridRows, State.gridCols, boardZoneMap);
+
+    // Safety: if mutations left fewer than 10 playable cells, revert
+    let _postCount = 0;
+    for (let _r = 0; _r < State.gridRows; _r++)
+        for (let _c = 0; _c < State.gridCols; _c++)
+            if (State.gridMask[_r][_c] === 1) _postCount++;
+    if (_postCount < 10) State.gridMask = _maskSnap;
+
+    const boardPockets = planMazePockets(State.gridRows, State.gridCols, boardZoneMap);
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Determine target difficulty based on level and sliding pacing history
     const targetTier = selectTargetDifficulty(State.level, State.recentDifficulties || []);
-    
+
     let validResult = null;
     let chosenDifficulty = "NORMAL";
     const candidatesByTier = {};
 
     for (let attempt = 0; attempt < 20; attempt++) {
-        let candidate = tryGenerateBoard();
+        let candidate = tryGenerateBoard(boardZoneMap, boardPockets);
         if (candidate && candidate.paths && candidate.paths.length > 0) {
             runUnjammingSolvabilityTweak(candidate.paths, State.gridRows, State.gridCols, candidate.gridOwnership);
             fixVisualSelfIntersections(candidate.paths, State.gridRows, State.gridCols);
@@ -1533,7 +1827,7 @@ function build100PackedLevel(forceNewGeneration = false) {
         let fbDifficulty = "NORMAL";
 
         for (let attempt = 0; attempt < 10; attempt++) {
-            let fb = tryGenerateBoard();
+            let fb = tryGenerateBoard(null, null);
             if (fb && fb.paths && fb.paths.length > 0) {
                 runUnjammingSolvabilityTweak(fb.paths, FB_ROWS, FB_COLS, fb.gridOwnership);
                 fixVisualSelfIntersections(fb.paths, FB_ROWS, FB_COLS);

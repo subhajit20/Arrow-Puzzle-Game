@@ -2,29 +2,27 @@ function generateRandomGridDimensions(preset, level) {
     let rows, cols;
 
     if (preset === "Auto") {
-        // Auto mode: boards scale with level and become tall portrait puzzles at
-        // high levels. Density (short paths) creates difficulty — NOT board size
-        // alone. But larger boards give more room for complex dependency chains.
+        // Auto mode: boards graduate toward the four target sizes as level rises.
+        // Portrait orientation enforced (rows >= cols). Col hard cap raised to 36.
         //
-        // Column range stays 18-20 from level 16+ so the board is always
-        // comfortably wide. Row count grows to create tall scrollable puzzles.
-        //
-        // Level  1–3  :  8–12 rows × 8–10 cols   (intro)
-        // Level  4–6  : 10–16 rows × 10–12 cols   (easy)
-        // Level  7–10 : 12–20 rows × 10–14 cols   (normal)
-        // Level 11–15 : 14–26 rows × 12–18 cols   (hard)
-        // Level 16–20 : 18–32 rows × 16–20 cols   (hard+)
-        // Level 21–30 : 24–42 rows × 18–20 cols   (expert)
-        // Level 31+   : 32–50 rows × 18–20 cols   (titan)
+        // Level  1–3  :  8–12  rows ×  6–8  cols  (intro)
+        // Level  4–6  : 10–16  rows ×  8–12 cols  (easy)
+        // Level  7–10 : 14–22  rows × 10–16 cols  (normal)
+        // Level 11–15 : 20–28  rows × 16–22 cols  (hard)      → toward 36×24
+        // Level 16–22 : 28–36  rows × 20–26 cols  (hard+)     → 36×24
+        // Level 23–30 : 34–40  rows × 24–30 cols  (expert)    → 40×28
+        // Level 31–38 : 40–48  rows × 28–34 cols  (titan)     → 48×32
+        // Level 39+   : 48–56  rows × 32–36 cols  (titan+)    → 56×36
         let minRows, maxRows, minCols, maxCols;
 
-        if (level <= 3)       { minRows = 8;  maxRows = 12; minCols = 8;  maxCols = 10; }
-        else if (level <= 6)  { minRows = 10; maxRows = 16; minCols = 10; maxCols = 12; }
-        else if (level <= 10) { minRows = 12; maxRows = 20; minCols = 10; maxCols = 14; }
-        else if (level <= 15) { minRows = 14; maxRows = 26; minCols = 12; maxCols = 18; }
-        else if (level <= 20) { minRows = 18; maxRows = 32; minCols = 16; maxCols = 20; }
-        else if (level <= 30) { minRows = 24; maxRows = 42; minCols = 18; maxCols = 20; }
-        else                  { minRows = 32; maxRows = 50; minCols = 18; maxCols = 20; }
+        if (level <= 3)       { minRows =  8; maxRows = 12; minCols =  6; maxCols =  8; }
+        else if (level <= 6)  { minRows = 10; maxRows = 16; minCols =  8; maxCols = 12; }
+        else if (level <= 10) { minRows = 14; maxRows = 22; minCols = 10; maxCols = 16; }
+        else if (level <= 15) { minRows = 20; maxRows = 28; minCols = 16; maxCols = 22; }
+        else if (level <= 22) { minRows = 28; maxRows = 36; minCols = 20; maxCols = 26; }
+        else if (level <= 30) { minRows = 34; maxRows = 40; minCols = 24; maxCols = 30; }
+        else if (level <= 38) { minRows = 40; maxRows = 48; minCols = 28; maxCols = 34; }
+        else                  { minRows = 48; maxRows = 56; minCols = 32; maxCols = 36; }
 
         rows = minRows + Math.floor(Math.random() * (maxRows - minRows + 1));
         cols = minCols + Math.floor(Math.random() * (maxCols - minCols + 1));
@@ -38,12 +36,12 @@ function generateRandomGridDimensions(preset, level) {
             }
         }
 
-        // Always portrait (rows >= cols)
+        // Always portrait (rows >= cols) — larger number is always rows
         if (cols > rows) { let tmp = rows; rows = cols; cols = tmp; }
 
-        // Safety clamps
-        rows = Math.max(8, Math.min(50, rows));
-        cols = Math.max(6, Math.min(20, cols));
+        // Safety clamps — col cap raised to 36 for new large boards
+        rows = Math.max(8, Math.min(56, rows));
+        cols = Math.max(6, Math.min(36, cols));
 
     } else {
         // Preset modes: compact near-square boards (fixed manual selections).
