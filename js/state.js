@@ -3,9 +3,16 @@ const State = {
     level: 1,
     score: 0,
     lives: 3,
+    // Root grid — visual layout and screen fitting (from getSizesForLevel)
+    rootRows:    0,
+    rootCols:    0,
+    // Micro routing grid — rootRows × subdivFactor (actual path traversal space)
     gridRows: 8,
     gridCols: 8,
     gridSize: 8,
+    // Subdivision
+    subdivFactor: 2,      // each root-cell axis splits into this many micro-units
+    subCellSize:  0,      // pixel pitch of micro-grid nodes = cellSize / subdivFactor
     gridMask: [],
     shapeName: "Square Matrix",
     hEdge: null,      // edge-based: (rows+1) × cols  Int32Array[]

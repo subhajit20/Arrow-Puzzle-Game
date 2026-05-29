@@ -209,24 +209,27 @@ function walkWarnsdorff(graph, startNode, pathId, maxLen, maxStraight) {
 //
 // Returns { trails, nextId }.
 // -----------------------------------------------------------------------------
-function generateTrails(graph, maxTrailLen) {
+// subdivFactor scales maxStraight so turn frequency is the same in root-cell
+// terms regardless of micro-grid resolution.  Default 1 = no subdivision.
+function generateTrails(graph, maxTrailLen, subdivFactor) {
     const { nodeOwner, rows, cols } = graph;
     const W = cols + 1;
     const trails = [];
     let nextId = 0;
+    const f = subdivFactor || 1;
 
     while (true) {
         const start = findConstrainedStart(graph);
         if (!start) break;
 
         // Per-trail style assignment — produces the target shape distribution:
-        //   10% STRAIGHT (maxStraight=99): mild straight bias, no forced turns
-        //   20% L/U      (maxStraight=4) : forced turn every 4 steps → 1 turn per fragment
-        //   70% COMPLEX  (maxStraight=2) : forced turn every 2 steps → 2+ turns per fragment
+        //   10% STRAIGHT (maxStraight=99*f): mild straight bias, no forced turns
+        //   20% L/U      (maxStraight=4*f) : forced turn every 4 root cells
+        //   70% COMPLEX  (maxStraight=2*f) : forced turn every 2 root cells
         const rnd = Math.random();
-        const maxStraight = rnd < 0.10 ? 99   // STRAIGHT
-                          : rnd < 0.30 ?  4   // L / U
-                          :               2;  // COMPLEX
+        const maxStraight = rnd < 0.10 ? 99       // STRAIGHT: effectively no cap
+                          : rnd < 0.30 ?  4 * f   // L / U
+                          :               2 * f;  // COMPLEX
 
         const nodes = walkWarnsdorff(graph, start, nextId, maxTrailLen, maxStraight);
         trails.push({ id: nextId, nodes });
@@ -300,6 +303,10 @@ function countSegmentTurns(nodes, from, len) {
 // getTargetLength
 // Level- and grid-size-aware target path length in nodes.
 // Higher levels → shorter paths → more paths → denser, harder board.
+//
+// rows/cols are ROOT-CELL dimensions (from getSizesForLevel), NOT micro-grid.
+// The caller multiplies the return value by subdivFactor to get the micro-node
+// target count.
 // -----------------------------------------------------------------------------
 function getTargetLength(level, rows, cols) {
     const maxDim = Math.max(rows, cols);
@@ -328,9 +335,12 @@ function getTargetLength(level, rows, cols) {
 // Returns array of node-arrays (each ≥ 3 nodes).
 // -----------------------------------------------------------------------------
 function fragmentTrail(nodes, level, rows, cols) {
-    const n         = nodes.length;
-    const targetLen = getTargetLength(level, rows, cols);
-    const minLen    = 3;
+    const n  = nodes.length;
+    const f  = State.subdivFactor || 1;
+    // rows/cols are micro-grid; getTargetLength expects root-cell dimensions.
+    // Divide by f to recover root dims, then multiply result back to micro-nodes.
+    const targetLen = getTargetLength(level, Math.ceil(rows / f), Math.ceil(cols / f)) * f;
+    const minLen    = Math.max(3, 3 * f);
     const segments  = [];
     let pos         = 0;
 
@@ -388,12 +398,15 @@ function fragmentTrail(nodes, level, rows, cols) {
 function fragmentAllTrails(trails, level, graph) {
     const paths = [];
     const W     = graph.cols + 1;
+    const f     = State.subdivFactor || 1;
     let id      = 0;
 
     for (const trail of trails) {
         if (trail.nodes.length < 2) continue;
 
-        const segs = trail.nodes.length < 6
+        // Short-trail threshold scales with subdivFactor — a 6-root-cell trail
+        // is the minimum worth fragmenting; below that, keep it as one path.
+        const segs = trail.nodes.length < 6 * f
             ? [trail.nodes]
             : fragmentTrail(trail.nodes, level, graph.rows, graph.cols);
 

@@ -7,52 +7,50 @@ const USE_EDGE_GEN = true;
 // Notation: cols×rows (width × height) — all portrait/vertical boards.
 // -----------------------------------------------------------------------------
 function getSizesForLevel(level) {
-    if (level <=  5) return [
-        { rows:  8, cols:  6 },
-        { rows:  8, cols:  8 },
-        { rows: 10, cols:  8 },
-        { rows: 10, cols: 10 },
-        { rows: 12, cols: 10 },
-    ];
+    // Levels 1–5: fixed tutorial grids — one specific size per level
+    if (level === 1) return [{ rows:  1, cols:  2 }];  // 2×1  →  8 subcells
+    if (level === 2) return [{ rows:  2, cols:  3 }];  // 3×2  → 24 subcells
+    if (level === 3) return [{ rows:  3, cols:  4 }];  // 4×3  → 48 subcells
+    if (level === 4) return [{ rows:  4, cols:  4 }];  // 4×4  → 64 subcells
+    if (level === 5) return [{ rows:  4, cols:  6 }];  // 6×4  → 96 subcells
+
     if (level <= 10) return [
-        { rows: 10, cols:  8 },
-        { rows: 10, cols: 10 },
-        { rows: 12, cols: 10 },
-        { rows: 14, cols: 10 },
-        { rows: 14, cols: 12 },
-    ];
-    if (level <= 15) return [
-        { rows: 14, cols: 12 },
-        { rows: 16, cols: 12 },
-        { rows: 16, cols: 14 },
+        { rows:  8, cols:  6 },   // 6×8
+        { rows: 10, cols:  8 },   // 8×10
+        { rows: 12, cols:  8 },   // 8×12
+        { rows: 12, cols: 10 },   // 10×12
     ];
     if (level <= 20) return [
-        { rows: 16, cols: 12 },
-        { rows: 16, cols: 14 },
-        { rows: 18, cols: 14 },
+        { rows: 12, cols: 10 },   // 10×12
+        { rows: 14, cols: 10 },   // 10×14
+        { rows: 14, cols: 12 },   // 12×14
+        { rows: 16, cols: 12 },   // 12×16
     ];
-    if (level <= 30) return [
-        { rows: 18, cols: 14 },
-        { rows: 18, cols: 16 },
-        { rows: 20, cols: 16 },
+    if (level <= 45) return [
+        { rows: 18, cols: 12 },   // 12×18
+        { rows: 20, cols: 14 },   // 14×20
+        { rows: 22, cols: 16 },   // 16×22
+        { rows: 24, cols: 18 },   // 18×24
     ];
-    if (level <= 40) return [
-        { rows: 20, cols: 16 },
-        { rows: 20, cols: 18 },
-        { rows: 24, cols: 18 },
+    if (level <= 70) return [
+        { rows: 24, cols: 18 },   // 18×24
+        { rows: 26, cols: 18 },   // 18×26
+        { rows: 26, cols: 20 },   // 20×26
+        { rows: 28, cols: 20 },   // 20×28
     ];
-    if (level <= 50) return [
-        { rows: 20, cols: 18 },
-        { rows: 24, cols: 18 },
-        { rows: 24, cols: 20 },
+    if (level <= 99) return [
+        { rows: 28, cols: 20 },   // 20×28
+        { rows: 28, cols: 22 },   // 22×28
+        { rows: 30, cols: 22 },   // 22×30
+        { rows: 30, cols: 24 },   // 24×30
     ];
-    if (level <= 75) return [
-        { rows: 24, cols: 18 },
-        { rows: 24, cols: 20 },
-        { rows: 26, cols: 20 },
+    if (level === 100) return [
+        { rows: 32, cols: 24 },   // 24×32 — boss level
     ];
     return [
-        { rows: 26, cols: 20 },
+        { rows: 30, cols: 22 },   // 22×30
+        { rows: 30, cols: 24 },   // 24×30
+        { rows: 32, cols: 24 },   // 24×32
     ];
 }
 
@@ -70,14 +68,25 @@ function _build100PackedLevelEdge(forceNewGeneration) {
 
     const sizes   = getSizesForLevel(State.level);
     const size    = sizes[Math.floor(Math.random() * sizes.length)];
-    State.gridRows  = size.rows;
-    State.gridCols  = size.cols;
+    State.rootRows  = size.rows;
+    State.rootCols  = size.cols;
+    State.gridRows  = size.rows * State.subdivFactor;
+    State.gridCols  = size.cols * State.subdivFactor;
     State.gridSize  = size.rows;
     State.shapeName = 'Lattice';
     State.gridMask  = Array.from({ length: size.rows }, () => new Array(size.cols).fill(1));
 
     resetCamera();
     resizeCanvas();
+
+    const dots = (State.gridRows + 1) * (State.gridCols + 1);
+    console.log(
+        `[Board] L${State.level} | root ${State.rootRows}×${State.rootCols}` +
+        ` → micro ${State.gridRows}×${State.gridCols}` +
+        ` | dots: ${dots}` +
+        ` | cellSize: ${State.cellSize.toFixed(1)}px` +
+        ` | subCellSize: ${State.subCellSize.toFixed(1)}px`
+    );
 
     const rows  = State.gridRows;
     const cols  = State.gridCols;
@@ -88,15 +97,22 @@ function _build100PackedLevelEdge(forceNewGeneration) {
     let validResult = null;
     let chosenTier  = 'NORMAL';
 
-    // 2× target gives each trail ~2 fragments; short enough to force varied starts
-    const maxTrailLen = Math.max(10, getTargetLength(level, rows, cols) * 2);
+    // Target length is in root-cell units; multiply by subdivFactor for micro-node count
+    const maxTrailLen = Math.max(
+        10 * State.subdivFactor,
+        getTargetLength(level, State.rootRows, State.rootCols) * State.subdivFactor * 2
+    );
 
     for (let attempt = 0; attempt < 20; attempt++) {
         const graph = buildEdgeGraph(rows, cols);
-        const { trails } = generateTrails(graph, maxTrailLen);
+        const { trails } = generateTrails(graph, maxTrailLen, State.subdivFactor);
         const paths = fragmentAllTrails(trails, level, graph);
         assignHeadings(paths, graph);
-        buildDAGHeadings(paths, graph);
+        // DAG heading optimization creates dependency chains → raises complexity score.
+        // Skip it when targeting EASY/NORMAL so small boards don't score HARD artificially.
+        if (targetTier !== 'EASY' && targetTier !== 'NORMAL') {
+            buildDAGHeadings(paths, graph);
+        }
         runUnjammingPass(paths, graph);
 
         if (!isBoardFullySolvable(paths, graph)) continue;
@@ -114,8 +130,11 @@ function _build100PackedLevelEdge(forceNewGeneration) {
     }
 
     if (!validResult) {
-        const order = [targetTier, 'HARD', 'EXPERT', 'TITAN', 'NORMAL', 'EASY'];
-        for (const t of order) {
+        // Build fallback order: target first, then other allowed tiers, then anything
+        const allowedAtLevel = getAllowedTiersForLevel(level);
+        const fallbackOrder  = [targetTier, ...allowedAtLevel.filter(t => t !== targetTier),
+                                'HARD', 'EXPERT', 'TITAN', 'NORMAL', 'EASY'];
+        for (const t of fallbackOrder) {
             if (candidatesByTier[t]) {
                 validResult = candidatesByTier[t];
                 chosenTier  = t;
@@ -124,21 +143,33 @@ function _build100PackedLevelEdge(forceNewGeneration) {
         }
     }
 
-    // Hard fallback: same 26×20 grid, retry with relaxed constraints
-    // Hard fallback: small grid guaranteed to converge
+    // Hard fallback: level-appropriate grid guaranteed to converge
     if (!validResult) {
-        const FB_R = 10, FB_C = 12;
-        State.gridRows = FB_R; State.gridCols = FB_C; State.gridSize = FB_C;
-        State.gridMask = Array.from({ length: FB_R }, () => new Array(FB_C).fill(1));
+        // For tutorial levels use a slightly larger version of the intended size.
+        // For all other levels use 10×12 which reliably converges.
+        let FB_ROOT_R, FB_ROOT_C;
+        if      (level === 1) { FB_ROOT_R = 2; FB_ROOT_C = 3; }
+        else if (level === 2) { FB_ROOT_R = 3; FB_ROOT_C = 4; }
+        else if (level <= 5)  { FB_ROOT_R = 4; FB_ROOT_C = 6; }
+        else                  { FB_ROOT_R = 10; FB_ROOT_C = 12; }
+
+        const FB_R = FB_ROOT_R * State.subdivFactor;
+        const FB_C = FB_ROOT_C * State.subdivFactor;
+        State.rootRows = FB_ROOT_R; State.rootCols = FB_ROOT_C;
+        State.gridRows = FB_R; State.gridCols = FB_C; State.gridSize = FB_ROOT_R;
+        State.gridMask = Array.from({ length: FB_ROOT_R }, () => new Array(FB_ROOT_C).fill(1));
         resetCamera(); resizeCanvas();
-        const fbMaxTrailLen = Math.max(10, getTargetLength(level, FB_R, FB_C) * 2);
+        const fbMaxTrailLen = Math.max(
+            10 * State.subdivFactor,
+            getTargetLength(level, FB_ROOT_R, FB_ROOT_C) * State.subdivFactor * 2
+        );
 
         for (let attempt = 0; attempt < 10; attempt++) {
             const graph = buildEdgeGraph(FB_R, FB_C);
-            const { trails: fbTrails } = generateTrails(graph, fbMaxTrailLen);
+            const { trails: fbTrails } = generateTrails(graph, fbMaxTrailLen, State.subdivFactor);
             const paths = fragmentAllTrails(fbTrails, level, graph);
             assignHeadings(paths, graph);
-            buildDAGHeadings(paths, graph);
+            if (level > 5) buildDAGHeadings(paths, graph);
             runUnjammingPass(paths, graph);
             if (!isBoardFullySolvable(paths, graph)) continue;
             const cx = evaluateBoardComplexity(paths, graph);
@@ -153,6 +184,7 @@ function _build100PackedLevelEdge(forceNewGeneration) {
         State.hEdge = validResult.graph.hEdge;
         State.vEdge = validResult.graph.vEdge;
         State.boardDifficulty = chosenTier;
+        console.log(`[Board] L${State.level} → difficulty: ${chosenTier} | paths: ${State.paths.length}`);
 
         // Build nodeOwner from final paths for runtime collision detection
         const _W = validResult.graph.cols + 1;
@@ -2273,46 +2305,73 @@ function _cellEvalComplexity(paths, rows, cols) {
 }
 
 // ---------------------------------------------------------------------------
+// getAllowedTiersForLevel
+// Returns the tiers that have non-zero probability at a given level.
+// Used by the fallback selector to avoid promoting forbidden tiers.
+// ---------------------------------------------------------------------------
+function getAllowedTiersForLevel(level) {
+    if (level === 100)  return ['TITAN'];
+    if (level <= 10)    return ['EASY', 'NORMAL'];
+    if (level <= 20)    return ['EASY', 'NORMAL', 'HARD'];
+    if (level <= 45)    return ['NORMAL', 'HARD'];
+    if (level <= 70)    return ['NORMAL', 'HARD', 'EXPERT'];
+    if (level <= 99)    return ['NORMAL', 'HARD', 'EXPERT'];
+    return ['NORMAL', 'HARD', 'EXPERT', 'TITAN'];
+}
+
 // selectTargetDifficulty
 //
 // Resolve weighted probabilities based on level ranges, overriding targets
 // using history pacing rules (prevent streaks, inject Easy/Normal relief).
 // ---------------------------------------------------------------------------
 function selectTargetDifficulty(level, history) {
-    let probs = { EASY: 0.60, NORMAL: 0.30, HARD: 0.09, EXPERT: 0.01 };
-    
-    if (level > 40) {
-        probs = { EASY: 0.05, NORMAL: 0.15, HARD: 0.50, EXPERT: 0.30 };
-    } else if (level > 20) {
-        probs = { EASY: 0.10, NORMAL: 0.20, HARD: 0.50, EXPERT: 0.20 };
-    } else if (level > 10) {
-        probs = { EASY: 0.20, NORMAL: 0.45, HARD: 0.30, EXPERT: 0.05 };
+    // Level 100 is always a guaranteed Titan board
+    if (level === 100) return 'TITAN';
+
+    let probs;
+    if (level <= 10) {
+        probs = { EASY: 0.60, NORMAL: 0.40, HARD: 0.00, EXPERT: 0.00, TITAN: 0.00 };
+    } else if (level <= 20) {
+        probs = { EASY: 0.15, NORMAL: 0.75, HARD: 0.10, EXPERT: 0.00, TITAN: 0.00 };
+    } else if (level <= 45) {
+        probs = { EASY: 0.00, NORMAL: 0.35, HARD: 0.65, EXPERT: 0.00, TITAN: 0.00 };
+    } else if (level <= 70) {
+        probs = { EASY: 0.00, NORMAL: 0.20, HARD: 0.60, EXPERT: 0.20, TITAN: 0.00 };
+    } else if (level <= 99) {
+        probs = { EASY: 0.00, NORMAL: 0.05, HARD: 0.50, EXPERT: 0.45, TITAN: 0.00 };
+    } else {
+        probs = { EASY: 0.00, NORMAL: 0.10, HARD: 0.40, EXPERT: 0.35, TITAN: 0.15 };
     }
+
+    // Allowed tiers at this level — pacing rules must not promote a tier with 0% base weight
+    const allowed = new Set(Object.keys(probs).filter(t => probs[t] > 0));
 
     const last1 = history[history.length - 1];
     const last2 = history[history.length - 2];
 
-    // Pacing Override Rules
-    if (last1 === "EXPERT" && last2 === "EXPERT") {
-        probs.EXPERT = 0.0;
-        probs.NORMAL = 0.8;
-    }
-    if (last1 === "EASY" && last2 === "EASY") {
+    // Two easy in a row → push to HARD if available, else NORMAL
+    if (last1 === 'EASY' && last2 === 'EASY') {
         probs.EASY = 0.0;
-        probs.HARD = 0.6;
+        const boost = allowed.has('HARD') ? 'HARD' : 'NORMAL';
+        if (allowed.has(boost)) probs[boost] = Math.min(1.0, probs[boost] + 0.5);
     }
-    if ((last1 === "EXPERT" || last1 === "HARD") && (last2 === "EXPERT" || last2 === "HARD")) {
-        probs.EASY = 0.4;
-        probs.NORMAL = 0.6;
-        probs.HARD = 0.0;
+
+    // Two hard+ in a row → relief: drop EXPERT/TITAN, boost softest available tier
+    if ((last1 === 'HARD' || last1 === 'EXPERT' || last1 === 'TITAN') &&
+        (last2 === 'HARD' || last2 === 'EXPERT' || last2 === 'TITAN')) {
         probs.EXPERT = 0.0;
+        probs.TITAN  = 0.0;
+        if (allowed.has('HARD')) probs.HARD = Math.min(probs.HARD, 0.3);
+        const relief = allowed.has('EASY') ? 'EASY' : 'NORMAL';
+        if (allowed.has(relief))    probs[relief]    = Math.max(probs[relief],    0.5);
+        if (allowed.has('NORMAL'))  probs['NORMAL']  = Math.max(probs['NORMAL'],  0.4);
     }
 
     const roll = Math.random();
     let sum = 0;
-    for (let tier in probs) {
+    for (const tier in probs) {
         sum += probs[tier];
         if (roll <= sum) return tier;
     }
-    return "NORMAL";
+    return [...allowed][0] || 'NORMAL';
 }

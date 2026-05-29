@@ -82,6 +82,11 @@ function drawEngine() {
 
     ctx.save();
 
+    // Apply zoom and pan via context transforms so the canvas re-renders at full
+    // resolution — CSS transform on canvas upsamples the bitmap and causes blur.
+    ctx.translate(State.matE  || 0, State.matF   || 0);
+    ctx.scale    (State.cssZoom || 1, State.cssZoom || 1);
+
     const cSize = State.cellSize;
     const ox = State.offsetX;
     const oy = State.offsetY;
@@ -89,27 +94,32 @@ function drawEngine() {
     const rows = State.gridRows;
     const cols = State.gridCols;
 
-    // Board background: white fill + grid lines
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(ox, oy, cols * cSize, rows * cSize);
+    // subCellSize is the micro-grid pixel pitch; fall back to cellSize before SD-3 wires it
+    const sCS = State.subCellSize || State.cellSize;
 
-    ctx.strokeStyle = '#e2e8f0';
-    ctx.lineWidth = 0.5;
+    // Board background fill — root-cell dimensions keep the visual board the same size
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(ox, oy, (State.rootCols || cols) * State.cellSize, (State.rootRows || rows) * State.cellSize);
+
+    // Dot at every micro-node intersection (replaces grid lines)
+    const dotR = Math.max(0.8, sCS * 0.07);
+    ctx.fillStyle = "#cbd5e1";
     for (let r = 0; r <= rows; r++) {
-        ctx.beginPath(); ctx.moveTo(ox, oy + r * cSize); ctx.lineTo(ox + cols * cSize, oy + r * cSize); ctx.stroke();
-    }
-    for (let c = 0; c <= cols; c++) {
-        ctx.beginPath(); ctx.moveTo(ox + c * cSize, oy); ctx.lineTo(ox + c * cSize, oy + rows * cSize); ctx.stroke();
+        for (let c = 0; c <= cols; c++) {
+            ctx.beginPath();
+            ctx.arc(ox + c * sCS, oy + r * sCS, dotR, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
 
     // Expand clip by enough to show full arrowheads and line widths on the
     // boundary nodes — without padding, edge paths are half-clipped.
-    const clipPad = Math.ceil(cSize * 0.6);
+    const clipPad = Math.ceil(sCS * 0.6);
     ctx.save();
     ctx.beginPath();
     ctx.rect(ox - clipPad, oy - clipPad,
-             cols * cSize + clipPad * 2,
-             rows * cSize + clipPad * 2);
+             cols * sCS + clipPad * 2,
+             rows * sCS + clipPad * 2);
     ctx.clip();
 
     State.paths.forEach((p, idx) => {
@@ -130,23 +140,24 @@ function drawEngine() {
             ctx.fillStyle = "rgba(239, 68, 68, 0.35)";
             getPathOccupiedCells(p).forEach(pt => {
                 if (pt.r >= 0 && pt.r < State.gridRows && pt.c >= 0 && pt.c < State.gridCols) {
-                    ctx.fillRect(ox + pt.c * cSize, oy + pt.r * cSize, cSize, cSize);
+                    ctx.fillRect(ox + pt.c * sCS, oy + pt.r * sCS, sCS, sCS);
                 }
             });
         }
 
-        ctx.lineWidth = Math.max(1, cSize * 0.08);
+        ctx.lineWidth = Math.max(1, sCS * 0.08);
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
 
-        // Edge-based paths use p.nodes (intersection coords, no center offset).
-        // Cell-based paths use p.points (cell centers, +cSize/2 offset).
+        // Edge paths: micro-grid nodes at sCS pitch, no center offset.
+        // Cell paths (legacy): root-grid cells at cSize pitch, +cSize/2 center offset.
         const pts      = p.nodes ?? p.points;
+        const pixScale = p.nodes ? sCS : cSize;
         const pxOff    = p.nodes ? 0 : cSize / 2;
 
         const fullTrack = pts.map(pt => ({
-            x: ox + pt.c * cSize + pxOff,
-            y: oy + pt.r * cSize + pxOff
+            x: ox + pt.c * pixScale + pxOff,
+            y: oy + pt.r * pixScale + pxOff
         }));
 
         let len = pts.length;
@@ -159,8 +170,8 @@ function drawEngine() {
 
         for (let j = 1; j <= Math.max(State.gridRows, State.gridCols) + 2; j++) {
             fullTrack.push({
-                x: ox + (lastPt.c + dc * j) * cSize + pxOff,
-                y: oy + (lastPt.r + dr * j) * cSize + pxOff
+                x: ox + (lastPt.c + dc * j) * pixScale + pxOff,
+                y: oy + (lastPt.r + dr * j) * pixScale + pxOff
             });
         }
 
@@ -205,41 +216,9 @@ function drawEngine() {
             ctx.stroke();
             ctx.restore();
 
-            if (p.state === "IDLE" && !State.revealActive) {
-                const headPt = pts[len - 1];
-                // Edge paths: boundary is (rows+1)×(cols+1) nodes; cell paths: rows×cols cells
-                const maxR = p.nodes ? State.gridRows     : State.gridRows - 1;
-                const maxC = p.nodes ? State.gridCols     : State.gridCols - 1;
-                let steps = 0;
-                let cr = headPt.r + dr;
-                let cc = headPt.c + dc;
-                while (cr >= 0 && cr <= maxR && cc >= 0 && cc <= maxC) {
-                    if (!p.nodes && State.gridMask[cr]?.[cc] === -1) break;
-                    steps++;
-                    cr += dr;
-                    cc += dc;
-                }
-                if (steps > 0) {
-                    const hx = ox + headPt.c * cSize + pxOff;
-                    const hy = oy + headPt.r * cSize + pxOff;
-                    ctx.save();
-                    ctx.setLineDash([Math.max(2, cSize * 0.18), Math.max(2, cSize * 0.14)]);
-                    ctx.lineWidth = Math.max(0.75, cSize * 0.045);
-                    ctx.lineCap = "round";
-                    ctx.strokeStyle = isSelected
-                        ? "rgba(59, 130, 246, 0.55)"
-                        : "rgba(17, 37, 64, 0.22)";
-                    ctx.beginPath();
-                    ctx.moveTo(hx, hy);
-                    ctx.lineTo(hx + dc * steps * cSize, hy + dr * steps * cSize);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                    ctx.restore();
-                }
-            }
 
             let headPos = drawPoints[drawPoints.length - 1];
-            let pyramidSize = Math.max(3.0, cSize * 0.32);
+            let pyramidSize = Math.max(3.0, sCS * 0.32);
             drawChevronArrowHead(headPos.x, headPos.y, p.heading, pyramidSize, isSelected, p.state);
         }
     });
@@ -270,7 +249,7 @@ function animationUpdateTick() {
     State.paths.forEach(p => {
         if (p.state === "MOVING") {
             State.animatingCount++;
-            p.animProgress += 0.26;
+            p.animProgress += 0.26 * (State.subdivFactor || 1);
 
             if (p.nodes && State.nodeOwner) {
                 // ── Node-based collision (node-Hamiltonian model) ─────────────
@@ -352,7 +331,7 @@ function animationUpdateTick() {
             if ((p.crashFlashFrames || 0) > 0) {
                 p.crashFlashFrames--;
             } else {
-                p.animProgress -= 0.16;
+                p.animProgress -= 0.16 * (State.subdivFactor || 1);
                 if (p.animProgress <= 0) {
                     p.animProgress = 0;
                     p.state = "IDLE";

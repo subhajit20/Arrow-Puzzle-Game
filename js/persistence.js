@@ -1,13 +1,16 @@
 const Persistence = {
     _KEY_V2: 'vecto_colossal_mosaic_save_v2',
     _KEY_V3: 'vecto_colossal_mosaic_save_v3',
+    _KEY_V4: 'vecto_colossal_mosaic_save_v4',
 
     // ── Public API ────────────────────────────────────────────────────────────
 
     saveState() {
         if (State.dailyPuzzleMode) return;
         try {
-            if (State.hEdge && State.vEdge) {
+            if (State.rootRows) {
+                this._saveV4();
+            } else if (State.hEdge && State.vEdge) {
                 this._saveV3();
             } else {
                 this._saveV2();
@@ -18,15 +21,15 @@ const Persistence = {
     },
 
     loadState() {
-        // V3 always takes priority; V2 is the fallback for the legacy engine.
-        // Once the edge engine saves a V3, the old V2 is silently abandoned.
-        if (this._loadV3()) return true;
-        return this._loadV2();
+        // V4 is the current format (subdivision-aware).
+        // V3 and V2 are silently discarded — incompatible node coordinate space.
+        return this._loadV4();
     },
 
     clearState() {
         localStorage.removeItem(this._KEY_V2);
         localStorage.removeItem(this._KEY_V3);
+        localStorage.removeItem(this._KEY_V4);
     },
 
     // ── V3 — edge-based format ────────────────────────────────────────────────
@@ -111,6 +114,91 @@ const Persistence = {
             return true;
         } catch (e) {
             console.error("Failed to rehydrate V3 data store:", e);
+            return false;
+        }
+    },
+
+    // ── V4 — subdivision-aware format ────────────────────────────────────────
+
+    _saveV4() {
+        const data = {
+            version:            4,
+            rootRows:           State.rootRows,
+            rootCols:           State.rootCols,
+            subdivFactor:       State.subdivFactor,
+            gridRows:           State.gridRows,
+            gridCols:           State.gridCols,
+            level:              State.level,
+            score:              State.score,
+            lives:              State.lives,
+            gridSize:           State.gridSize,
+            shapeName:          State.shapeName,
+            gridSizePreset:     State.gridSizePreset,
+            boardDifficulty:    State.boardDifficulty,
+            recentDifficulties: State.recentDifficulties,
+            hEdge: State.hEdge.map(row => Array.from(row)),
+            vEdge: State.vEdge.map(row => Array.from(row)),
+            paths: State.paths.map(p => ({
+                id:            p.id,
+                nodes:         p.nodes,
+                heading:       p.heading,
+                state:         p.state,
+                animProgress:  p.animProgress,
+                originalNodes: p.originalNodes
+            }))
+        };
+        localStorage.setItem(this._KEY_V4, JSON.stringify(data));
+    },
+
+    _loadV4() {
+        const raw = localStorage.getItem(this._KEY_V4);
+        if (!raw) return false;
+        try {
+            const s = JSON.parse(raw);
+
+            if (s.version !== 4)            return false;
+            if (!s.rootRows || !s.rootCols) return false;
+            if (!s.subdivFactor)            return false;
+            if (!s.hEdge || !s.vEdge)       return false;
+            if (!s.paths || !s.paths.every(p => Array.isArray(p.nodes))) return false;
+
+            State.rootRows           = s.rootRows;
+            State.rootCols           = s.rootCols;
+            State.subdivFactor       = s.subdivFactor;
+            State.gridRows           = s.rootRows * s.subdivFactor;
+            State.gridCols           = s.rootCols * s.subdivFactor;
+            State.gridSize           = s.gridSize           || s.rootRows;
+            State.level              = s.level              || 1;
+            State.score              = s.score              || 0;
+            State.lives              = s.lives !== undefined ? s.lives : 3;
+            State.shapeName          = s.shapeName          || "Square Matrix";
+            State.gridSizePreset     = s.gridSizePreset     || "Auto";
+            State.boardDifficulty    = s.boardDifficulty    || "NORMAL";
+            State.recentDifficulties = s.recentDifficulties || [];
+
+            State.hEdge = s.hEdge.map(row => new Int32Array(row));
+            State.vEdge = s.vEdge.map(row => new Int32Array(row));
+
+            State.paths = s.paths.map(p => ({
+                id:               p.id,
+                nodes:            p.nodes,
+                heading:          p.heading,
+                state:            p.state || "IDLE",
+                animProgress:     0,
+                originalNodes:    p.originalNodes || p.nodes.slice(),
+                crashFlashFrames: 0
+            }));
+
+            // Rebuild nodeOwner from restored paths (not persisted, derived on load)
+            const _W = State.gridCols + 1;
+            State.nodeOwner = new Int32Array((State.gridRows + 1) * _W).fill(-1);
+            for (const p of State.paths)
+                for (const { r, c } of p.nodes)
+                    State.nodeOwner[r * _W + c] = p.id;
+
+            return true;
+        } catch (e) {
+            console.error("Failed to rehydrate V4 data store:", e);
             return false;
         }
     },

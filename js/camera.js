@@ -21,8 +21,8 @@ function applyBoardTransform() {
         const bcr     = container.getBoundingClientRect();
         const isMobile = bcr.width < 768 && bcr.width < bcr.height;
 
-        const boardW  = State.gridCols * State.cellSize;
-        const boardH  = State.gridRows * State.cellSize;
+        const boardW  = State.rootCols * State.cellSize;
+        const boardH  = State.rootRows * State.cellSize;
 
         const scaledBoardW = boardW * State.cssZoom;
         const scaledBoardH = boardH * State.cssZoom;
@@ -57,8 +57,8 @@ function applyBoardTransform() {
         }
     }
 
-    canvas.style.transform =
-        `matrix(${State.cssZoom},0,0,${State.cssZoom},${State.matE},${State.matF})`;
+    // Zoom/pan applied via ctx transforms in drawEngine — no CSS transform needed.
+    canvas.style.transform = 'none';
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +122,11 @@ function resizeCanvas() {
 // below the viewport edge.
 // ---------------------------------------------------------------------------
 function calculateMetrics(w, h) {
+    // Shim: rootRows/rootCols are 0 until SD-3 wires board generation.
+    // Fall back to gridRows/gridCols so the game works before that step.
+    if (!State.rootRows) State.rootRows = State.gridRows;
+    if (!State.rootCols) State.rootCols = State.gridCols;
+
     const isMobile = w < 768 && w < h;
 
     if (isMobile) {
@@ -137,12 +142,12 @@ function calculateMetrics(w, h) {
         const availH = Math.max(20, window.innerHeight - topBarH - botBarH - PAD * 2);
 
         // Use the SMALLER ratio — guarantees the full board fits in both axes
-        const cellByWidth  = availW / State.gridCols;
-        const cellByHeight = availH / State.gridRows;
+        const cellByWidth  = availW / State.rootCols;
+        const cellByHeight = availH / State.rootRows;
         State.cellSize = Math.max(1, Math.min(cellByWidth, cellByHeight));
 
-        const boardW = State.gridCols * State.cellSize;
-        const boardH = State.gridRows * State.cellSize;
+        const boardW = State.rootCols * State.cellSize;
+        const boardH = State.rootRows * State.cellSize;
 
         State.canvasW = w;
         State.canvasH = h;
@@ -156,16 +161,18 @@ function calculateMetrics(w, h) {
         State.offsetY  = Math.max(PAD, (visibleH - boardH) / 2);
     } else {
         // Desktop: container is explicitly size-constrained by CSS — use its BCR.
-        State.cellSize = Math.min(w / State.gridCols, h / State.gridRows);
+        State.cellSize = Math.min(w / State.rootCols, h / State.rootRows);
 
-        const boardW = State.gridCols * State.cellSize;
-        const boardH = State.gridRows * State.cellSize;
+        const boardW = State.rootCols * State.cellSize;
+        const boardH = State.rootRows * State.cellSize;
 
         State.canvasW = w;
         State.canvasH = h;
         State.offsetX = (w - boardW) / 2;
         State.offsetY = (h - boardH) / 2;
     }
+
+    State.subCellSize = State.cellSize / (State.subdivFactor || 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -214,8 +221,8 @@ function startCameraEntranceAnimation() {
     const usableW  = bcr.width - PAD * 2;
     const usableH  = Math.max(20, visibleH - botBarH - PAD * 2);
 
-    const boardW = State.gridCols * State.cellSize;
-    const boardH = State.gridRows * State.cellSize;
+    const boardW = State.rootCols * State.cellSize;
+    const boardH = State.rootRows * State.cellSize;
 
     // fitZoom: show the full board at 88 % fill — gives a clear overview margin
     const fitZoomX = (usableW * 0.88) / boardW;
@@ -298,10 +305,7 @@ function startCameraEntranceAnimation() {
         State.matE    = startE + (targetE - startE) * t;
         State.matF    = startF + (targetF - startF) * t;
 
-        // Write the transform directly — skip applyBoardTransform clamping so
-        // the lerp is smooth even through intermediate zoom levels.
-        canvas.style.transform =
-            `matrix(${State.cssZoom},0,0,${State.cssZoom},${State.matE},${State.matF})`;
+        // State updated — drawEngine picks up cssZoom/matE/matF on next frame.
 
         window.cameraAnimReq = requestAnimationFrame(step);
     }
@@ -352,8 +356,8 @@ function startPathRevealAnimation() {
     const usableW  = bcr.width - PAD * 2;
     const usableH  = Math.max(20, visibleH - botBarH - PAD * 2);
 
-    const boardW = State.gridCols * State.cellSize;
-    const boardH = State.gridRows * State.cellSize;
+    const boardW = State.rootCols * State.cellSize;
+    const boardH = State.rootRows * State.cellSize;
 
     const fitZoomX = (usableW * 0.88) / boardW;
     const fitZoomY = (usableH * 0.88) / boardH;

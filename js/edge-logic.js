@@ -425,10 +425,9 @@ function getDifficultyTier(score) {
 // level.  Boards scoring below this are rejected and regenerated (Step 14).
 // -----------------------------------------------------------------------------
 function getMinScoreForLevel(level) {
-    if (level > 40) return 22; // EXPERT+ at high levels
-    if (level > 25) return 13; // HARD+
-    if (level > 10) return 6;  // NORMAL+
-    return 0;                  // any score accepted early
+    if (level === 100) return 29; // TITAN guaranteed
+    if (level >= 21)  return 6;  // EASY permanently removed at L21+
+    return 0;                    // EASY still possible at L1-20
 }
 
 // =============================================================================

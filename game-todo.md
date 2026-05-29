@@ -271,6 +271,442 @@ These two models are mathematically incompatible in a rectangular grid (interior
 
 ---
 
+---
+
+# SUBCELL SUBDIVISION PLAN
+
+**Design principle:** Root grid defines visual layout and screen fitting. Micro-grid (root × subdivFactor) is the actual path routing space. The board occupies the same physical screen rectangle — only internal routing resolution increases. Paths can make tighter turns, produce richer shapes, at the same visual board size.
+
+**Key scalars:**
+- `State.rootRows / rootCols` — from `getSizesForLevel`, visual grid, used for screen fitting
+- `State.subdivFactor = 2` — constant; each root axis is split into 2 micro-units
+- `State.gridRows = rootRows × subdivFactor` — micro routing grid
+- `State.gridCols = rootCols × subdivFactor`
+- `State.cellSize` — root cell pixel size, screen-fitting unchanged
+- `State.subCellSize = cellSize / subdivFactor` — micro-node pixel pitch used by renderer and input
+
+Each step requires explicit approval before starting.
+
+---
+
+## STEP SD-1 — Add Subdivision Scalars to State
+**File:** `js/state.js`
+
+Add four new fields to the `State` object:
+
+```js
+rootRows:    0,   // root grid rows — visual grid (from getSizesForLevel)
+rootCols:    0,   // root grid cols — visual grid
+subdivFactor: 2,  // subdivision per root-cell axis; 2 → 2×2 micro-cells per root cell
+subCellSize:  0,  // pixel pitch of micro-grid nodes = cellSize / subdivFactor
+```
+
+- `gridRows` and `gridCols` semantics change: they now hold the **micro-grid** dimensions (`rootRows × subdivFactor`). Document this in a comment.
+- No other logic changes in this step.
+
+**Test:** Open game, verify no JS errors on load.
+
+**Approval required before SD-2**
+
+---
+
+## STEP SD-2 — Fix Screen Fitting in Camera
+**File:** `js/camera.js`
+
+Three functions reference `State.gridCols / gridRows` for board pixel dimensions. All must switch to `rootCols / rootRows` so the visual board stays the same size after `gridRows/Cols` doubles.
+
+### `calculateMetrics(w, h)`
+Currently:
+```js
+const cellByWidth  = availW / State.gridCols;
+const cellByHeight = availH / State.gridRows;
+```
+Change to:
+```js
+const cellByWidth  = availW / State.rootCols;
+const cellByHeight = availH / State.rootRows;
+```
+Also add at the end of `calculateMetrics` (after `cellSize` is set):
+```js
+State.subCellSize = State.cellSize / (State.subdivFactor || 1);
+```
+This makes `subCellSize` auto-update on every resize.
+
+### `applyBoardTransform()`
+Change:
+```js
+const boardW = State.gridCols * State.cellSize;
+const boardH = State.gridRows * State.cellSize;
+```
+To:
+```js
+const boardW = State.rootCols * State.cellSize;
+const boardH = State.rootRows * State.cellSize;
+```
+
+### `startCameraEntranceAnimation()`
+Same change: `gridCols/gridRows * cellSize` → `rootCols/rootRows * cellSize` in the `boardW/boardH` computation.
+
+### `startPathRevealAnimation()`
+Same change in its `boardW/boardH` computation.
+
+**Guard:** Both desktop and mobile branches of `calculateMetrics` need the fix. Desktop branch:
+```js
+State.cellSize = Math.min(w / State.rootCols, h / State.rootRows);
+```
+
+**Test:** Confirm board still fills screen correctly before any generation change is wired. Temporarily hardcode `State.rootRows = State.gridRows; State.rootCols = State.gridCols` at the top of `calculateMetrics` as a no-op shim to verify rendering is unchanged.
+
+**Approval required before SD-3**
+
+---
+
+## STEP SD-3 — Wire Board Generation
+**File:** `js/board-gen.js`
+
+### `_build100PackedLevelEdge`
+
+**1. After `getSizesForLevel` pick**, replace the current assignments:
+```js
+// Before:
+State.gridRows = size.rows;
+State.gridCols = size.cols;
+
+// After:
+State.rootRows  = size.rows;
+State.rootCols  = size.cols;
+State.gridRows  = size.rows * State.subdivFactor;
+State.gridCols  = size.cols * State.subdivFactor;
+State.gridSize  = size.rows;  // unchanged — cosmetic only
+```
+
+Also update `gridMask` to use root dimensions (edge engine ignores it, but keep it consistent):
+```js
+State.gridMask = Array.from({ length: size.rows }, () => new Array(size.cols).fill(1));
+```
+
+**2. `maxTrailLen` calculation.** Currently:
+```js
+const maxTrailLen = Math.max(10, getTargetLength(level, rows, cols) * 2);
+```
+`rows/cols` are now micro-grid. Pass root dimensions and multiply by `subdivFactor`:
+```js
+const maxTrailLen = Math.max(
+    10 * State.subdivFactor,
+    getTargetLength(level, State.rootRows, State.rootCols) * State.subdivFactor * 2
+);
+```
+
+**3. Pass `subdivFactor` to `generateTrails`:**
+```js
+const { trails } = generateTrails(graph, maxTrailLen, State.subdivFactor);
+```
+
+**4. Hard fallback block.** Root dimensions are `FB_R = 10, FB_C = 12`. Micro dimensions are `FB_R * subdivFactor` etc:
+```js
+const FB_ROOT_R = 10, FB_ROOT_C = 12;
+const FB_R = FB_ROOT_R * State.subdivFactor;
+const FB_C = FB_ROOT_C * State.subdivFactor;
+State.rootRows = FB_ROOT_R; State.rootCols = FB_ROOT_C;
+State.gridRows = FB_R; State.gridCols = FB_C;
+State.gridSize = FB_ROOT_R;
+State.gridMask = Array.from({ length: FB_ROOT_R }, () => new Array(FB_ROOT_C).fill(1));
+```
+Update `fbMaxTrailLen` similarly using root dimensions.
+
+**5. After `resizeCanvas()` call** (which now computes `cellSize` from rootRows/Cols), set:
+```js
+// subCellSize is set inside calculateMetrics, but ensure it's available immediately
+// (calculateMetrics already does this after SD-2)
+```
+No extra code needed — `calculateMetrics` handles it.
+
+**Test:** Open game, advance levels 1-10. Board should generate without JS errors. Micro-grid is 2× larger but board appears same size. Path shapes should be visibly finer.
+
+**Approval required before SD-4**
+
+---
+
+## STEP SD-4 — Fix Generator Style Scaling
+**File:** `js/edge-gen.js`
+
+### `generateTrails(graph, maxTrailLen, subdivFactor)`
+Add `subdivFactor` parameter (default 1 for backward compatibility).
+
+Scale `maxStraight` by `subdivFactor` so turn frequency stays the same in physical (root-cell) terms:
+```js
+const f = subdivFactor || 1;
+const maxStraight = rnd < 0.10 ? 99       // STRAIGHT: effectively no cap
+                  : rnd < 0.30 ? 4 * f   // L/U: forced turn every 4 root cells
+                  :               2 * f; // COMPLEX: forced turn every 2 root cells
+```
+Without this, every path would be forced to turn every micro-step (every half root cell), making all paths look like dense zigzags.
+
+### `getTargetLength(level, rows, cols)`
+Add a documentation comment: `rows/cols` are **root-cell dimensions**, not micro-grid. The caller in `board-gen.js` multiplies the result by `subdivFactor` to get the micro-node target.
+
+No logic change in the function body.
+
+**Test:** Generate 20 boards at level 5 and level 20. Shape distribution should visually match the 70/20/10 complex/L-U/straight target. Shapes should not all be dense zigzags.
+
+**Approval required before SD-5**
+
+---
+
+## STEP SD-5 — Renderer: Dot Grid + subCellSize
+**File:** `js/renderer.js`
+
+This is the largest change. Every pixel calculation that uses `State.cellSize` for path/node positioning must switch to `State.subCellSize`. The board background rectangle stays in root-cell units.
+
+### Replace grid line block with dot grid
+
+Remove:
+```js
+ctx.strokeStyle = '#e2e8f0';
+ctx.lineWidth = 0.5;
+for (let r = 0; r <= rows; r++) { ... }
+for (let c = 0; c <= cols; c++) { ... }
+```
+
+Replace with:
+```js
+// Background fill uses root-cell dimensions (visual board size unchanged)
+ctx.fillStyle = "#ffffff";
+ctx.fillRect(ox, oy, State.rootCols * State.cellSize, State.rootRows * State.cellSize);
+
+// Dot at every micro-node intersection
+const sCS  = State.subCellSize;
+const dotR = Math.max(0.8, sCS * 0.07);
+ctx.fillStyle = "#cbd5e1";
+for (let r = 0; r <= State.gridRows; r++) {
+    for (let c = 0; c <= State.gridCols; c++) {
+        ctx.beginPath();
+        ctx.arc(ox + c * sCS, oy + r * sCS, dotR, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+```
+
+### Update all path pixel calculations
+
+Replace all occurrences of `cSize` (which was `State.cellSize`) with `sCS` (`State.subCellSize`) in:
+
+- `fullTrack` pixel coords: `ox + pt.c * sCS` / `oy + pt.r * sCS`
+- `pxOff` for node-based paths: remains `0` (nodes are at intersections, not centers)
+- Line width: `Math.max(1, sCS * 0.08)`
+- Arrowhead `pyramidSize`: `Math.max(3.0, sCS * 0.32)`
+- Clip padding: `Math.ceil(sCS * 0.6)`
+- Dashed preview line dash params: `sCS * 0.18`, `sCS * 0.14`
+- Dashed preview line endpoint: `hx + dc * steps * sCS`, `hy + dr * steps * sCS`
+- Crash flash rect: `ox + pt.c * sCS, oy + pt.r * sCS, sCS, sCS`
+- Tail extension `fullTrack.push` coords: `(lastPt.c + dc * j) * sCS`
+
+### `maxR / maxC` bounds for IDLE forward steps
+These already use `State.gridRows / gridCols` which are now micro-grid — correct, no change needed.
+
+### Board white fill
+Change the board background fill line (above the grid loop) to use root dimensions:
+```js
+ctx.fillRect(ox, oy, State.rootCols * State.cellSize, State.rootRows * State.cellSize);
+```
+(The dot loop replaces the old grid line loop, so `cols * cSize` for the fill must become `rootCols * cellSize`.)
+
+**Test:** Open game, verify:
+- Board same physical screen size as before
+- Dot grid visible instead of grid lines
+- Paths draw at finer resolution (more turns visible in same space)
+- Arrowheads correct size, not oversized
+
+**Approval required before SD-6**
+
+---
+
+## STEP SD-6 — Fix Input Detection
+**File:** `js/input.js`
+
+### `findPathByEdgeTap(canvasX, canvasY, hitRadius)`
+
+Edge midpoint pixel positions use `cSize = State.cellSize` — this must become `State.subCellSize`:
+
+```js
+// Before:
+const cSize = State.cellSize;
+// hEdge midpoint: ox + (c + 0.5) * cSize
+// vEdge midpoint: ox + c * cSize
+
+// After:
+const sCS = State.subCellSize;
+// hEdge midpoint: ox + (c + 0.5) * sCS
+// vEdge midpoint: ox + c * sCS
+```
+
+The function iterates `r ∈ [0, rows]` and `c ∈ [0, cols]` where `rows/cols = State.gridRows/gridCols` (micro). This is already correct — no change needed to the loop bounds.
+
+### Hit radius at call sites
+
+Three call sites pass `cSize * 0.7` or `cSize * 0.6` as `hitRadius`. These should stay in root-cell units (comfortable finger tap area):
+
+```js
+// touchend:
+const hitR = State.cellSize * 0.7;   // root-cell unit — unchanged
+
+// mouseup:
+const hitR = State.cellSize * 0.7;   // unchanged
+
+// mousemove hover:
+const hitR = State.cellSize * 0.6;   // unchanged
+```
+
+This keeps tap targets finger-sized even though the routing grid is finer.
+
+**Test:** Tap every path on a generated board. All paths should be selectable. No path should require precise micro-cell tapping to activate.
+
+**Approval required before SD-7**
+
+---
+
+## STEP SD-7 — Persistence V4
+**File:** `js/persistence.js`
+
+V3 saves are incompatible: V3 stored `gridRows/gridCols` as root-cell values. After subdivision, `gridRows/gridCols` are micro values. V3 `path.nodes` coordinates are root-cell space; V4 nodes are micro space. Silently discard V3 and V2.
+
+### New key
+```js
+_KEY_V4: 'vecto_colossal_mosaic_save_v4',
+```
+
+### `saveState()`
+Prefer V4 when `State.rootRows` is set:
+```js
+saveState() {
+    if (State.dailyPuzzleMode) return;
+    try {
+        if (State.rootRows) {
+            this._saveV4();
+        } else if (State.hEdge && State.vEdge) {
+            this._saveV3();
+        } else {
+            this._saveV2();
+        }
+    } catch (e) { ... }
+}
+```
+
+### `_saveV4()`
+Save `rootRows`, `rootCols`, `subdivFactor` in addition to all V3 fields. `gridRows/gridCols` = micro dimensions:
+```js
+_saveV4() {
+    const data = {
+        version:      4,
+        rootRows:     State.rootRows,
+        rootCols:     State.rootCols,
+        subdivFactor: State.subdivFactor,
+        gridRows:     State.gridRows,    // = rootRows * subdivFactor
+        gridCols:     State.gridCols,    // = rootCols * subdivFactor
+        level:        State.level,
+        score:        State.score,
+        lives:        State.lives,
+        gridSize:     State.gridSize,
+        shapeName:    State.shapeName,
+        gridSizePreset: State.gridSizePreset,
+        boardDifficulty: State.boardDifficulty,
+        recentDifficulties: State.recentDifficulties,
+        hEdge: State.hEdge.map(row => Array.from(row)),
+        vEdge: State.vEdge.map(row => Array.from(row)),
+        paths: State.paths.map(p => ({
+            id: p.id, nodes: p.nodes, heading: p.heading,
+            state: p.state, animProgress: p.animProgress,
+            originalNodes: p.originalNodes
+        }))
+    };
+    localStorage.setItem(this._KEY_V4, JSON.stringify(data));
+}
+```
+
+### `_loadV4()`
+Validate `rootRows/rootCols/subdivFactor`. Derive micro dimensions. Rebuild `nodeOwner`:
+```js
+_loadV4() {
+    const raw = localStorage.getItem(this._KEY_V4);
+    if (!raw) return false;
+    try {
+        const s = JSON.parse(raw);
+        if (s.version !== 4)          return false;
+        if (!s.rootRows || !s.rootCols) return false;
+        if (!s.subdivFactor)          return false;
+        if (!s.paths || !s.paths.every(p => Array.isArray(p.nodes))) return false;
+
+        State.rootRows    = s.rootRows;
+        State.rootCols    = s.rootCols;
+        State.subdivFactor = s.subdivFactor;
+        State.gridRows    = s.rootRows * s.subdivFactor;
+        State.gridCols    = s.rootCols * s.subdivFactor;
+        // ... restore all other fields ...
+
+        State.hEdge = s.hEdge.map(row => new Int32Array(row));
+        State.vEdge = s.vEdge.map(row => new Int32Array(row));
+        State.paths = s.paths.map(p => ({ ...p, animProgress: 0, crashFlashFrames: 0 }));
+
+        const _W = State.gridCols + 1;
+        State.nodeOwner = new Int32Array((State.gridRows + 1) * _W).fill(-1);
+        for (const p of State.paths)
+            for (const { r, c } of p.nodes)
+                State.nodeOwner[r * _W + c] = p.id;
+
+        return true;
+    } catch (e) { return false; }
+}
+```
+
+### `loadState()`
+```js
+loadState() {
+    if (this._loadV4()) return true;
+    // V3 and V2 silently discarded — incompatible node coordinate space
+    return false;
+}
+```
+
+**Test:**
+- Complete a level, reload page — board restored correctly
+- V3 save (if present) silently discarded, new game starts
+- `nodeOwner` correct after load, collisions work
+
+**Approval required before SD-8**
+
+---
+
+## STEP SD-8 — Integration Sweep
+**Files:** integration testing
+
+Verify the full system end-to-end with subdivision active.
+
+**Board size check:**
+- Levels 1-5 (root 8×6 to 12×10): board same physical size as pre-subdivision. Micro-grid 16×12 to 24×20.
+- Levels 50+ (root 24×18 to 26×20): micro-grid 48×36 to 52×40. Generation must complete in < 700ms.
+
+**Shape quality check:**
+- Paths must visibly route through sub-root-cell geometry — tight turns within a single root cell are now possible and should appear regularly.
+- 70/20/10 complex/L-U/straight distribution preserved.
+
+**Interaction check:**
+- Tap all paths on a board — correct selection, no dead zones.
+- Fire paths — correct crash detection and clear behaviour.
+- Pan and zoom — board dimensions and camera behaviour correct.
+
+**Persistence check:**
+- Save, reload, resume — V4 save/load works.
+- Old V3 save in localStorage — silently discarded, fresh generation starts.
+
+**Collision check:**
+- `State.nodeOwner` uses micro-grid coordinates. Confirm leading node check `head.r + dr * (steps+1)` resolves to micro-node boundaries, not root-cell boundaries.
+
+**Fix any issues found before declaring complete.**
+
+**Approval required before Step 15**
+
+---
+
 ## STATUS
 
 | Step | Description                        | Status  |
@@ -291,5 +727,13 @@ These two models are mathematically incompatible in a rectangular grid (interior
 | 14   | Wire Build Pipeline                | ✅ done  |
 | 14A  | Node-Hamiltonian Generation        | ✅ done  |
 | 14B  | State.nodeOwner + Runtime Fix      | ✅ done  |
+| SD-1 | State Subdivision Scalars          | ✅ done  |
+| SD-2 | Camera / Screen Fitting Fix        | ✅ done  |
+| SD-3 | Board Generation Wiring            | ✅ done  |
+| SD-4 | Generator Style Scaling            | ✅ done  |
+| SD-5 | Renderer: Dot Grid + subCellSize   | ✅ done  |
+| SD-6 | Input Detection Fix                | ✅ done  |
+| SD-7 | Persistence V4                     | ✅ done  |
+| SD-8 | Integration Sweep                  | pending |
 | 15   | Full Game Sweep                    | pending |
 | 16   | Cleanup + Final                    | pending |

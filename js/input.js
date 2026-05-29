@@ -13,7 +13,9 @@
 function findPathByEdgeTap(canvasX, canvasY, hitRadius) {
     if (!State.hEdge || !State.vEdge) return null;
 
-    const cSize = State.cellSize;
+    // Edge midpoints are at micro-grid pitch; hit radius stays in root-cell
+    // units (State.cellSize * 0.6–0.7) so tap targets remain finger-sized.
+    const sCS = State.subCellSize || State.cellSize;
     const ox    = State.offsetX;
     const oy    = State.offsetY;
     const rows  = State.gridRows;
@@ -27,8 +29,8 @@ function findPathByEdgeTap(canvasX, canvasY, hitRadius) {
         for (let c = 0; c < cols; c++) {
             const owner = State.hEdge[r][c];
             if (owner < 0) continue;
-            const d = Math.hypot(canvasX - (ox + (c + 0.5) * cSize),
-                                 canvasY - (oy + r * cSize));
+            const d = Math.hypot(canvasX - (ox + (c + 0.5) * sCS),
+                                 canvasY - (oy + r * sCS));
             if (d < bestDist) { bestDist = d; bestId = owner; }
         }
     }
@@ -38,8 +40,8 @@ function findPathByEdgeTap(canvasX, canvasY, hitRadius) {
         for (let c = 0; c <= cols; c++) {
             const owner = State.vEdge[r][c];
             if (owner < 0) continue;
-            const d = Math.hypot(canvasX - (ox + c * cSize),
-                                 canvasY - (oy + (r + 0.5) * cSize));
+            const d = Math.hypot(canvasX - (ox + c * sCS),
+                                 canvasY - (oy + (r + 0.5) * sCS));
             if (d < bestDist) { bestDist = d; bestId = owner; }
         }
     }
