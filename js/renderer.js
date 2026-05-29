@@ -145,7 +145,7 @@ function drawEngine() {
             });
         }
 
-        ctx.lineWidth = Math.max(1, sCS * 0.08);
+        ctx.lineWidth = Math.max(2, sCS * 0.40);
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
 
