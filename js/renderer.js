@@ -84,8 +84,8 @@ function drawEngine() {
 
     // Apply zoom and pan via context transforms so the canvas re-renders at full
     // resolution — CSS transform on canvas upsamples the bitmap and causes blur.
-    ctx.translate(State.matE  || 0, State.matF   || 0);
-    ctx.scale    (State.cssZoom || 1, State.cssZoom || 1);
+    ctx.translate(State.matE || 0, State.matF || 0);
+    ctx.scale(State.cssZoom || 1, State.cssZoom || 1);
 
     const cSize = State.cellSize;
     const ox = State.offsetX;
@@ -118,8 +118,8 @@ function drawEngine() {
     ctx.save();
     ctx.beginPath();
     ctx.rect(ox - clipPad, oy - clipPad,
-             cols * sCS + clipPad * 2,
-             rows * sCS + clipPad * 2);
+        cols * sCS + clipPad * 2,
+        rows * sCS + clipPad * 2);
     ctx.clip();
 
     State.paths.forEach((p, idx) => {
@@ -145,15 +145,15 @@ function drawEngine() {
             });
         }
 
-        ctx.lineWidth = Math.max(2, sCS * 0.40);
+        ctx.lineWidth = Math.max(2, sCS * 0.15);
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
 
         // Edge paths: micro-grid nodes at sCS pitch, no center offset.
         // Cell paths (legacy): root-grid cells at cSize pitch, +cSize/2 center offset.
-        const pts      = p.nodes ?? p.points;
+        const pts = p.nodes ?? p.points;
         const pixScale = p.nodes ? sCS : cSize;
-        const pxOff    = p.nodes ? 0 : cSize / 2;
+        const pxOff = p.nodes ? 0 : cSize / 2;
 
         const fullTrack = pts.map(pt => ({
             x: ox + pt.c * pixScale + pxOff,
@@ -183,12 +183,12 @@ function drawEngine() {
             const staggerFactor = 0.4; // 40% of duration for delay stagger
             const startRatio = N > 1 ? (idx / (N - 1)) * staggerFactor : 0.0;
             const durationRatio = 1.0 - staggerFactor;
-            
+
             let pProgress = 0.0;
             if (State.revealProgress > startRatio) {
                 pProgress = Math.min(1.0, (State.revealProgress - startRatio) / durationRatio);
             }
-            
+
             if (pProgress > 0.0) {
                 drawPoints = getSubTrackPoints(fullTrack, 0, pProgress * totalSegLen);
             }
@@ -255,15 +255,15 @@ function animationUpdateTick() {
                 // ── Node-based collision (node-Hamiltonian model) ─────────────
                 const head = p.nodes[p.nodes.length - 1];
                 let dr = 0, dc = 0;
-                if (p.heading === "UP")    dr = -1;
-                if (p.heading === "DOWN")  dr =  1;
-                if (p.heading === "LEFT")  dc = -1;
-                if (p.heading === "RIGHT") dc =  1;
+                if (p.heading === "UP") dr = -1;
+                if (p.heading === "DOWN") dr = 1;
+                if (p.heading === "LEFT") dc = -1;
+                if (p.heading === "RIGHT") dc = 1;
 
                 const steps = Math.round(p.animProgress);
                 const leadR = head.r + dr * (steps + 1);
                 const leadC = head.c + dc * (steps + 1);
-                const _W    = State.gridCols + 1;
+                const _W = State.gridCols + 1;
 
                 if (leadR >= 0 && leadR <= State.gridRows &&
                     leadC >= 0 && leadC <= State.gridCols) {
