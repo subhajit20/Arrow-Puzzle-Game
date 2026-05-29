@@ -737,3 +737,179 @@ Verify the full system end-to-end with subdivision active.
 | SD-8 | Integration Sweep                  | pending |
 | 15   | Full Game Sweep                    | pending |
 | 16   | Cleanup + Final                    | pending |
+| OA-1 | Explicit Length Tier Distribution  | ✅ done  |
+| OA-2 | Trail Personality Object           | ✅ done  |
+| OA-3 | Phase Vocabulary + Rhythm Profiles | ✅ done  |
+| OA-4 | Handedness-Aware Turn Selection    | ✅ done  |
+| OA-5 | Momentum System                    | ✅ done  |
+| OA-6 | Axis Bias on Warnsdorff Ranking    | ✅ done  |
+| OA-7 | Aesthetic Scoring Filter           | ✅ done  |
+| OA-8 | Board Diversity Enforcement        | ✅ done  |
+
+---
+
+---
+
+# ORGANIC APPEARANCE SYSTEM (Stage 2 — Shape-Aware Traversal)
+
+Goal: evolve the router so paths feel artistically composed, not algorithmically generated.
+Implementation order: OA-1 → OA-3 → OA-4 → OA-5 → OA-6 → OA-2 → OA-7 → OA-8
+
+Each step requires explicit approval before starting.
+
+---
+
+## STEP OA-1 — Explicit Length Tier Distribution
+**File:** `js/board-gen.js`
+
+The #1 visible problem: all fragments land at roughly the same length, producing uniform visual weight across every board.
+
+**Changes:**
+- Define three length tiers: SHORT (4–8 subcells), MEDIUM (10–18 subcells), LONG (22–35 subcells)
+- Define a target distribution per board: ~25% short, ~50% medium, ~25% long
+- In `fragmentAllTrails` (or equivalent), assign each fragment a length tier from the distribution instead of all fragments targeting the same `getTargetLength` value
+- Tier assignment is pre-planned before fragmentation begins — not random per fragment
+
+**Visual result:** boards with clear size hierarchy — a few long anchor paths, majority medium paths, short connector paths filling gaps.
+
+**Approval required before OA-3**
+
+---
+
+## STEP OA-2 — Trail Personality Object
+**File:** `js/edge-gen.js`
+
+Package all per-trail state introduced in OA-3 through OA-6 into one clean object attached to each trail before `walkWarnsdorff` is called.
+
+**Object shape:**
+```js
+trailPersonality = {
+    axisBias:      'H' | 'V' | 'neutral',  // 40/40/20 split
+    handedness:    1 | -1,                  // clockwise / counterclockwise
+    rhythmProfile: 'sweep-hook' | 'coil' | 'breath' | 'staccato' | 'flow' | 'compress',
+    currentPhase:  0,                       // index into phase schedule
+    straightStreak: 0,                      // consecutive straight steps
+    turnStreak:    0,                       // consecutive turn steps
+    momentum:      0                        // net behavioral pressure scalar
+}
+```
+
+**Note:** Done AFTER OA-3 through OA-6 are working as loose parameters — this step is cleanup/formalization only.
+
+**Approval required before OA-7**
+
+---
+
+## STEP OA-3 — Phase Vocabulary + Rhythm Profiles
+**File:** `js/edge-gen.js`
+
+Replace the single fixed `maxStraight` / `turnBonus` per trail with a phase schedule that changes behavior over the trail's lifetime.
+
+**Phase constants:**
+- SWEEP: high maxStraight (6–10×f), weak turnBonus (0.3) → long arms and runs
+- COIL: low maxStraight (1–2×f), strong turnBonus (2.0) → tight winding sections
+- FLOW: very high maxStraight (99), near-zero turnBonus (0.1) → almost straight bridges
+- COMPRESS: medium maxStraight (3–5×f), moderate turnBonus (1.0) → transitional
+
+**Rhythm profiles (phase sequences):**
+- `staccato`: [COMPRESS] — single phase, current default behavior
+- `sweep-hook`: [SWEEP, COIL] — long run into tight end
+- `breath`: [FLOW, COIL, FLOW] — straight → complex middle → straight
+- `coil`: [COIL, COIL] — dense winding throughout
+- `flow`: [FLOW] — nearly straight bridge
+- `arm-cluster-arm`: [SWEEP, COIL, SWEEP] — run, cluster, run
+
+**Assignment by trail length:**
+- Short trails: `flow` or `staccato` only (single phase)
+- Medium trails: `sweep-hook`, `breath`, `staccato`
+- Long trails: `arm-cluster-arm`, `breath`, `sweep-hook`, `coil`
+
+**Phase transitions:** interpolate `maxStraight` and `turnBonus` over 2–3 nodes at each phase boundary — no hard switches.
+
+**Approval required before OA-4**
+
+---
+
+## STEP OA-4 — Handedness-Aware Turn Selection
+**File:** `js/edge-gen.js`
+
+Eliminate zigzag as the default output by biasing turn direction toward each trail's assigned handedness.
+
+**Changes inside `walkWarnsdorff`:**
+- Assign handedness (CW=1 / CCW=-1) to each trail at creation — 45/45/10 split (CW / CCW / neutral)
+- Track `lastTurnDirection` on the trail state (which way the last turn rotated the heading)
+- When choosing to turn, add a bonus weight to candidates that continue the preferred rotation direction
+- Handedness bonus strength: 0.6 (medium — visible curves but not forced spirals)
+
+**Visual result:** paths produce C-curves and arcs instead of Z-zigzags. Two adjacent paths with opposite handedness visually contrast each other.
+
+**Approval required before OA-5**
+
+---
+
+## STEP OA-5 — Momentum System
+**File:** `js/edge-gen.js`
+
+Replace stateless per-step decisions with momentum-driven decisions that create coherent sections within a path.
+
+**Changes inside `walkWarnsdorff`:**
+- Track `straightStreak` (increments each straight step, resets on turn)
+- Track `turnStreak` (increments each turn step, resets on straight)
+- Compute `momentum` scalar: positive = flowing (prefer straight), negative = turning (prefer turn)
+- Turn probability is a sigmoid curve of `straightStreak` vs current phase's `maxStraight` — not a hard cutoff
+- After `turnStreak` ≥ 3, strong pull back to straight regardless of phase
+- Phase `maxStraight` sets the envelope; momentum drives decisions within it
+
+**Visual result:** paths commit to directions, then change character — no rapid step-level oscillation. Sections cohere.
+
+**Approval required before OA-6**
+
+---
+
+## STEP OA-6 — Axis Bias on Warnsdorff Candidate Ranking
+**File:** `js/edge-gen.js`
+
+Give each trail a directional identity — H-biased paths feel horizontal, V-biased paths feel vertical.
+
+**Changes inside `walkWarnsdorff`:**
+- Assign `axisBias` ('H' / 'V' / 'neutral') to each trail — 40/40/20 split
+- When scoring candidate neighbors via Warnsdorff, add affinity weight to moves along preferred axis
+- H-biased: horizontal moves (dc=±1) get +0.4 weight
+- V-biased: vertical moves (dr=±1) get +0.4 weight
+- Neutral: no added weight
+- Does not override Warnsdorff correctness — only biases tie-breaking and near-tie-breaking
+
+**Visual result:** board develops cross-directional weave structure. H paths and V paths interleave visibly.
+
+**Approval required before OA-2**
+
+---
+
+## STEP OA-7 — Aesthetic Scoring Filter
+**File:** `js/board-gen.js`
+
+Add board-level quality scoring to the existing retry loop. Discard aesthetically poor boards the same way correctness failures are discarded.
+
+**Aesthetic metrics:**
+- **Length variance score**: stddev of path lengths across the board — low variance = bad (all paths same size)
+- **Turn distribution score**: are turns spread across the board or clustered in one region?
+- **Visual balance score**: are paths distributed across grid quadrants or bunched?
+
+**Threshold:** boards below composite aesthetic score get discarded and retried. Threshold tuned so ~30–40% of boards pass (aggressive filter without excessive generation cost).
+
+**Approval required before OA-8**
+
+---
+
+## STEP OA-8 — Board-Level Personality Diversity Enforcement
+**File:** `js/edge-gen.js`
+
+Ensure no single board accidentally over-produces one personality type due to random assignment.
+
+**Rules:**
+- Enforce 40/40/20 axis split (H / V / neutral) across all trails on a board — assigned in order, not randomly
+- Enforce ~45/45/10 handedness split (CW / CCW / neutral) — same approach
+- Ensure rhythm profile variety: no single profile used by more than 40% of trails on one board
+- Length tier distribution checked against OA-1 targets — if fragmentation drifted, re-balance
+
+**Visual result:** every board is guaranteed to have directional variety, handedness variety, and rhythm variety — not by chance but by design.

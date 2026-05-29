@@ -97,10 +97,18 @@ function _build100PackedLevelEdge(forceNewGeneration) {
     let validResult = null;
     let chosenTier  = 'NORMAL';
 
-    // Target length is in root-cell units; multiply by subdivFactor for micro-node count
+    // Aesthetic filter: track the best-scoring board for the target tier so we
+    // can fall back to it if no board clears the threshold within 20 attempts.
+    const AESTHETIC_THRESHOLD = 0.45;
+    let bestAestheticScore  = -1;
+    let bestAestheticResult = null;
+
+    // Target length is in root-cell units; multiply by subdivFactor for micro-node count.
+    // Floor of 20×subdivFactor guarantees trails can be long enough for LONG-tier paths
+    // (10–16 root cells) without capping them at the MEDIUM default.
     const maxTrailLen = Math.max(
-        8 * State.subdivFactor,
-        getTargetLength(level, State.rootRows, State.rootCols) * State.subdivFactor * 1.5
+        20 * State.subdivFactor,
+        getTargetLength(level, State.rootRows, State.rootCols) * State.subdivFactor * 2
     );
 
     for (let attempt = 0; attempt < 20; attempt++) {
@@ -117,16 +125,31 @@ function _build100PackedLevelEdge(forceNewGeneration) {
 
         if (!isBoardFullySolvable(paths, graph)) continue;
 
-        const cx   = evaluateBoardComplexity(paths, graph);
-        const tier = getDifficultyTier(cx.score);
+        const cx     = evaluateBoardComplexity(paths, graph);
+        const tier   = getDifficultyTier(cx.score);
+        const aScore = computeAestheticScore(paths, graph);
 
         if (!candidatesByTier[tier]) candidatesByTier[tier] = { paths, graph };
 
         if (tier === targetTier) {
-            validResult = { paths, graph };
-            chosenTier  = tier;
-            break;
+            // Always track the aesthetically best board for this tier
+            if (aScore > bestAestheticScore) {
+                bestAestheticScore  = aScore;
+                bestAestheticResult = { paths, graph };
+            }
+            // Accept immediately if aesthetic threshold is met
+            if (aScore >= AESTHETIC_THRESHOLD) {
+                validResult = { paths, graph };
+                chosenTier  = tier;
+                break;
+            }
         }
+    }
+
+    // If no board hit the threshold, accept the best aesthetic result we found
+    if (!validResult && bestAestheticResult) {
+        validResult = bestAestheticResult;
+        chosenTier  = targetTier;
     }
 
     if (!validResult) {
@@ -159,7 +182,7 @@ function _build100PackedLevelEdge(forceNewGeneration) {
         State.gridMask = Array.from({ length: FB_ROOT_R }, () => new Array(FB_ROOT_C).fill(1));
         resetCamera(); resizeCanvas();
         const fbMaxTrailLen = Math.max(
-            10 * State.subdivFactor,
+            20 * State.subdivFactor,
             getTargetLength(level, FB_ROOT_R, FB_ROOT_C) * State.subdivFactor * 2
         );
 
@@ -2310,6 +2333,68 @@ function _cellEvalComplexity(paths, rows, cols) {
         blockerRatio,
         initialEscapes
     };
+}
+
+// ---------------------------------------------------------------------------
+// computeAestheticScore
+// Scores a board on three aesthetic dimensions and returns a composite 0–1.
+//
+//   1. lengthVarScore  — stddev of path node counts normalised by mean.
+//                        Low variance = all paths same size = bad.
+//   2. turnDistScore   — evenness of turn counts across 4 grid quadrants.
+//                        Clustered turns = bad.
+//   3. balanceScore    — evenness of path centroids across 4 grid quadrants.
+//                        Bunched paths = bad.
+//
+// Threshold 0.45 targets ~30–40% pass rate (aggressive but not exhausting).
+// ---------------------------------------------------------------------------
+function computeAestheticScore(paths, graph) {
+    if (!paths || paths.length < 3) return 0;
+    const rows = graph.rows, cols = graph.cols;
+
+    // 1. Length variance
+    const lengths = paths.map(p => (p.nodes || p.points || []).length);
+    const meanLen = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+    const stddev  = Math.sqrt(
+        lengths.reduce((s, l) => s + (l - meanLen) ** 2, 0) / lengths.length
+    );
+    const lengthVarScore = Math.min(1.0, stddev / Math.max(1, meanLen * 0.5));
+
+    // 2. Turn distribution  3. Visual balance — both use quadrant analysis
+    const midR = rows / 2, midC = cols / 2;
+    const turnsByQuad = [0, 0, 0, 0];
+    const pathsByQuad = [0, 0, 0, 0];
+
+    for (const p of paths) {
+        const nodes = p.nodes || p.points || [];
+        if (nodes.length < 2) continue;
+
+        let turns = 0;
+        for (let i = 1; i < nodes.length - 1; i++) {
+            const dr1 = nodes[i].r - nodes[i-1].r, dc1 = nodes[i].c - nodes[i-1].c;
+            const dr2 = nodes[i+1].r - nodes[i].r, dc2 = nodes[i+1].c - nodes[i].c;
+            if (dr1 !== dr2 || dc1 !== dc2) turns++;
+        }
+        const centR = nodes.reduce((s, n) => s + n.r, 0) / nodes.length;
+        const centC = nodes.reduce((s, n) => s + n.c, 0) / nodes.length;
+        const qi    = (centR >= midR ? 2 : 0) + (centC >= midC ? 1 : 0);
+        turnsByQuad[qi] += turns;
+        pathsByQuad[qi]++;
+    }
+
+    // Evenness score: 1 = perfectly even across quadrants, 0 = all in one quadrant
+    function evenness(counts) {
+        const total = counts.reduce((a, b) => a + b, 0);
+        if (total === 0) return 0.5;
+        const fracs = counts.map(c => c / total);
+        const sd = Math.sqrt(fracs.reduce((s, f) => s + (f - 0.25) ** 2, 0) / 4);
+        return Math.max(0, 1 - sd / 0.25);
+    }
+
+    const turnDistScore = evenness(turnsByQuad);
+    const balanceScore  = evenness(pathsByQuad);
+
+    return lengthVarScore * 0.50 + turnDistScore * 0.25 + balanceScore * 0.25;
 }
 
 // ---------------------------------------------------------------------------
