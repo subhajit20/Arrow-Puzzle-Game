@@ -261,8 +261,8 @@ function animationUpdateTick() {
                 if (p.heading === "RIGHT") dc = 1;
 
                 const steps = Math.round(p.animProgress);
-                const leadR = head.r + dr * (steps + 1);
-                const leadC = head.c + dc * (steps + 1);
+                const leadR = head.r + dr * steps;
+                const leadC = head.c + dc * steps;
                 const _W = State.gridCols + 1;
 
                 if (leadR >= 0 && leadR <= State.gridRows &&

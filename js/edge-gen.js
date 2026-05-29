@@ -176,7 +176,7 @@ function walkWarnsdorff(graph, startNode, pathId, maxLen, maxStraight) {
             // STRAIGHT style: prefer straight, COMPLEX/LU: prefer turns
             const turnBonus = isStraightStyle
                 ? (goingStraight ? -0.3 :  0.3)
-                : (goingStraight ?  0.5 : -0.5);
+                : (goingStraight ?  1.5 : -1.5);
 
             const score = freeAfter + turnBonus + straightPenalty + Math.random() * 0.8;
             if (score < bestScore) { bestScore = score; best = nb; }
@@ -222,14 +222,19 @@ function generateTrails(graph, maxTrailLen, subdivFactor) {
         const start = findConstrainedStart(graph);
         if (!start) break;
 
-        // Per-trail style assignment — produces the target shape distribution:
-        //   10% STRAIGHT (maxStraight=99*f): mild straight bias, no forced turns
-        //   20% L/U      (maxStraight=4*f) : forced turn every 4 root cells
-        //   70% COMPLEX  (maxStraight=2*f) : forced turn every 2 root cells
+        // Per-trail style assignment:
+        //   12% STRAIGHT (maxStraight=99) : mild straight bias, no forced turns
+        //    8% L/U      (maxStraight=4*f): forced turn every 4 root cells
+        //   80% COMPLEX  (maxStraight=1–4*f randomly): variable density per trail
         const rnd = Math.random();
-        const maxStraight = rnd < 0.10 ? 99       // STRAIGHT: effectively no cap
-                          : rnd < 0.30 ?  4 * f   // L / U
-                          :               2 * f;  // COMPLEX
+        let maxStraight;
+        if (rnd < 0.12) {
+            maxStraight = 99;                                       // STRAIGHT
+        } else if (rnd < 0.20) {
+            maxStraight = 4 * f;                                    // L / U
+        } else {
+            maxStraight = (1 + Math.floor(Math.random() * 4)) * f; // COMPLEX: 1–4×f
+        }
 
         const nodes = walkWarnsdorff(graph, start, nextId, maxTrailLen, maxStraight);
         trails.push({ id: nextId, nodes });

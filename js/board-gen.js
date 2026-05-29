@@ -99,8 +99,8 @@ function _build100PackedLevelEdge(forceNewGeneration) {
 
     // Target length is in root-cell units; multiply by subdivFactor for micro-node count
     const maxTrailLen = Math.max(
-        10 * State.subdivFactor,
-        getTargetLength(level, State.rootRows, State.rootCols) * State.subdivFactor * 2
+        8 * State.subdivFactor,
+        getTargetLength(level, State.rootRows, State.rootCols) * State.subdivFactor * 1.5
     );
 
     for (let attempt = 0; attempt < 20; attempt++) {
@@ -130,10 +130,9 @@ function _build100PackedLevelEdge(forceNewGeneration) {
     }
 
     if (!validResult) {
-        // Build fallback order: target first, then other allowed tiers, then anything
+        // Only pick from tiers allowed at this level — never promote a forbidden difficulty
         const allowedAtLevel = getAllowedTiersForLevel(level);
-        const fallbackOrder  = [targetTier, ...allowedAtLevel.filter(t => t !== targetTier),
-                                'HARD', 'EXPERT', 'TITAN', 'NORMAL', 'EASY'];
+        const fallbackOrder  = [targetTier, ...allowedAtLevel.filter(t => t !== targetTier)];
         for (const t of fallbackOrder) {
             if (candidatesByTier[t]) {
                 validResult = candidatesByTier[t];
@@ -184,7 +183,16 @@ function _build100PackedLevelEdge(forceNewGeneration) {
         State.hEdge = validResult.graph.hEdge;
         State.vEdge = validResult.graph.vEdge;
         State.boardDifficulty = chosenTier;
-        console.log(`[Board] L${State.level} → difficulty: ${chosenTier} | paths: ${State.paths.length}`);
+
+        // Safety cap: badge must never show a tier forbidden at this level
+        const _tierOrder   = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'TITAN'];
+        const _allowedTiers = getAllowedTiersForLevel(level);
+        if (!_allowedTiers.includes(State.boardDifficulty)) {
+            State.boardDifficulty = [..._allowedTiers]
+                .sort((a, b) => _tierOrder.indexOf(b) - _tierOrder.indexOf(a))[0] || 'NORMAL';
+        }
+
+        console.log(`[Board] L${State.level} → difficulty: ${State.boardDifficulty} | paths: ${State.paths.length}`);
 
         // Build nodeOwner from final paths for runtime collision detection
         const _W = validResult.graph.cols + 1;
