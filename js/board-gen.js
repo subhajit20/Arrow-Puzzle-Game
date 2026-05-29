@@ -224,11 +224,7 @@ function _build100PackedLevelEdge(forceNewGeneration) {
             for (const { r, c } of p.nodes)
                 State.nodeOwner[r * _W + c] = p.id;
     } else {
-        State.paths = [];
-        State.hEdge = null;
-        State.vEdge = null;
-        State.nodeOwner = null;
-        State.boardDifficulty = 'NORMAL';
+        return false;
     }
 
     if (!State.recentDifficulties) State.recentDifficulties = [];
@@ -240,6 +236,7 @@ function _build100PackedLevelEdge(forceNewGeneration) {
     Persistence.saveState();
     updateDomUI();
     startPathRevealAnimation();
+    return true;
 }
 
 function getTrackPoint(trackList, d) {
@@ -1929,7 +1926,7 @@ function densityOptimizerPass(paths, level) {
 }
 
 function build100PackedLevel(forceNewGeneration = false) {
-    if (USE_EDGE_GEN) { _build100PackedLevelEdge(forceNewGeneration); return; }
+    if (USE_EDGE_GEN) { return _build100PackedLevelEdge(forceNewGeneration); }
 
     if (!forceNewGeneration && Persistence.loadState()) {
         State.levelStartScore = State.score;

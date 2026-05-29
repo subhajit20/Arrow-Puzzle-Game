@@ -163,37 +163,17 @@ const actions = {
         State.particles = [];
         State.animatingCount = 0;
 
-        Persistence.clearState();
+        let success = false;
         try {
-            build100PackedLevel(true);
+            success = build100PackedLevel(true);
         } catch (e) {
-            console.error("Level generation error, retrying with safe defaults:", e);
-            // Emergency fallback — use a small portrait board that always generates cleanly.
-            const EM_ROWS = 12, EM_COLS = 6;
-            State.gridSizePreset = "Standard";
-            State.shapeName = TOPOLOGIES.VERTICAL_RECT.name;
-            State.gridRows = EM_ROWS;
-            State.gridCols = EM_COLS;
-            State.gridSize = EM_ROWS;
-            State.gridMask = TOPOLOGIES.VERTICAL_RECT.makeMask(EM_ROWS, EM_COLS);
-            resetCamera();
-            resizeCanvas();
-            let emergencyPaths = null;
-            for (let attempt = 0; attempt < 10; attempt++) {
-                let result = tryGenerateBoard();
-                if (result && result.paths && result.paths.length > 0) {
-                    runUnjammingSolvabilityTweak(result.paths, EM_ROWS, EM_COLS, result.gridOwnership);
-                    fixVisualSelfIntersections(result.paths, EM_ROWS, EM_COLS);
-                    if (!hasAnyDoubleSelfCollidingPath(result.paths, EM_ROWS, EM_COLS) &&
-                        isBoardFullySolvable(result.paths, EM_ROWS, EM_COLS)) {
-                        emergencyPaths = result.paths;
-                        break;
-                    }
-                }
-            }
-            State.paths = emergencyPaths || [];
-            State.lives = 3;
-            updateDomUI();
+            console.error("Level generation error:", e);
+        }
+
+        if (!success) {
+            State.level--;
+            State.isWinState = true;
+            document.getElementById('win-overlay').classList.remove('opacity-0', 'pointer-events-none', 'scale-105');
         }
     },
     retryCurrentLevel() {
