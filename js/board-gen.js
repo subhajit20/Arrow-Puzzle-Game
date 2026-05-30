@@ -4,51 +4,52 @@
 // Notation: cols×rows (width × height) — all portrait/vertical boards.
 // -----------------------------------------------------------------------------
 function getSizesForLevel(level) {
-    // All sizes: rows = height (vertical), cols = width (horizontal).
-    // Portrait rule: rows > cols throughout. Target ratio rows/cols ≈ 1.5–1.75.
-    if (level === 1) return [{ rows:  3, cols:  2 }];  // ratio 1.50
-    if (level === 2) return [{ rows:  4, cols:  3 }];  // ratio 1.33
-    if (level === 3) return [{ rows:  5, cols:  3 }];  // ratio 1.67
-    if (level === 4) return [{ rows:  6, cols:  4 }];  // ratio 1.50
-    if (level === 5) return [{ rows:  7, cols:  4 }];  // ratio 1.75
+    // rows/cols ratio kept at 2.0–2.4 so the board is always height-constrained
+    // on mobile (screen ratio ≈ 1.85–1.90), leaving clear side margins that
+    // make the portrait shape visually obvious instead of filling edge-to-edge.
+    if (level === 1) return [{ rows:  6, cols:  3 }];  // ratio 2.00
+    if (level === 2) return [{ rows:  7, cols:  3 }];  // ratio 2.33
+    if (level === 3) return [{ rows:  8, cols:  4 }];  // ratio 2.00
+    if (level === 4) return [{ rows:  9, cols:  4 }];  // ratio 2.25
+    if (level === 5) return [{ rows: 10, cols:  4 }];  // ratio 2.50
 
     if (level <= 10) return [
-        { rows:  8, cols:  5 },   // ratio 1.60
-        { rows:  9, cols:  6 },   // ratio 1.50
-        { rows: 10, cols:  6 },   // ratio 1.67
-        { rows: 10, cols:  7 },   // ratio 1.43
+        { rows: 10, cols:  5 },   // ratio 2.00
+        { rows: 11, cols:  5 },   // ratio 2.20
+        { rows: 12, cols:  5 },   // ratio 2.40
+        { rows: 12, cols:  6 },   // ratio 2.00
     ];
     if (level <= 20) return [
-        { rows: 12, cols:  7 },   // ratio 1.71
-        { rows: 12, cols:  8 },   // ratio 1.50
-        { rows: 14, cols:  8 },   // ratio 1.75
-        { rows: 14, cols:  9 },   // ratio 1.56
+        { rows: 14, cols:  6 },   // ratio 2.33
+        { rows: 14, cols:  7 },   // ratio 2.00
+        { rows: 16, cols:  7 },   // ratio 2.29
+        { rows: 16, cols:  8 },   // ratio 2.00
     ];
     if (level <= 45) return [
-        { rows: 16, cols: 10 },   // ratio 1.60
-        { rows: 18, cols: 11 },   // ratio 1.64
-        { rows: 20, cols: 12 },   // ratio 1.67
-        { rows: 22, cols: 13 },   // ratio 1.69
+        { rows: 18, cols:  8 },   // ratio 2.25
+        { rows: 20, cols:  9 },   // ratio 2.22
+        { rows: 20, cols: 10 },   // ratio 2.00
+        { rows: 22, cols: 10 },   // ratio 2.20
     ];
     if (level <= 70) return [
-        { rows: 22, cols: 14 },   // ratio 1.57
-        { rows: 24, cols: 15 },   // ratio 1.60
-        { rows: 26, cols: 16 },   // ratio 1.63
-        { rows: 28, cols: 17 },   // ratio 1.65
+        { rows: 24, cols: 11 },   // ratio 2.18
+        { rows: 24, cols: 12 },   // ratio 2.00
+        { rows: 26, cols: 12 },   // ratio 2.17
+        { rows: 28, cols: 12 },   // ratio 2.33
     ];
     if (level <= 99) return [
-        { rows: 28, cols: 18 },   // ratio 1.56
-        { rows: 30, cols: 18 },   // ratio 1.67
-        { rows: 32, cols: 20 },   // ratio 1.60
-        { rows: 34, cols: 20 },   // ratio 1.70
+        { rows: 28, cols: 13 },   // ratio 2.15
+        { rows: 30, cols: 13 },   // ratio 2.31
+        { rows: 30, cols: 14 },   // ratio 2.14
+        { rows: 32, cols: 14 },   // ratio 2.29
     ];
     if (level === 100) return [
-        { rows: 36, cols: 22 },   // ratio 1.64 — boss level
+        { rows: 36, cols: 16 },   // ratio 2.25 — boss level
     ];
     return [
-        { rows: 34, cols: 20 },   // ratio 1.70
-        { rows: 36, cols: 22 },   // ratio 1.64
-        { rows: 38, cols: 24 },   // ratio 1.58
+        { rows: 34, cols: 15 },   // ratio 2.27
+        { rows: 36, cols: 16 },   // ratio 2.25
+        { rows: 38, cols: 17 },   // ratio 2.24
     ];
 }
 
