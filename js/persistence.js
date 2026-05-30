@@ -162,6 +162,14 @@ const Persistence = {
             if (!s.hEdge || !s.vEdge)       return false;
             if (!s.paths || !s.paths.every(p => Array.isArray(p.nodes))) return false;
 
+            // Dimension guard: discard saves whose board dimensions are not in
+            // the valid pool for the saved level. This silently drops fallback-
+            // grid saves from the old forward pipeline (which always fell to a
+            // fixed 10×12 root grid that matches no entry in getSizesForLevel).
+            const validSizes = getSizesForLevel(s.level || 1);
+            const dimOk = validSizes.some(sz => sz.rows === s.rootRows && sz.cols === s.rootCols);
+            if (!dimOk) return false;
+
             State.rootRows           = s.rootRows;
             State.rootCols           = s.rootCols;
             State.subdivFactor       = s.subdivFactor;

@@ -401,6 +401,56 @@
             animationUpdateTick();
             initDailySplash();
         };
+
+        // Dev helper — call from browser console to play any size + tier:
+        //   testBoard(24, 18, 'TITAN')
+        window.testBoard = function(rootRows, rootCols, tier) {
+            tier = tier || 'TITAN';
+            State.rootRows    = rootRows;
+            State.rootCols    = rootCols;
+            State.gridRows    = rootRows * State.subdivFactor;
+            State.gridCols    = rootCols * State.subdivFactor;
+            State.gridSize    = rootRows;
+            State.shapeName   = 'Test';
+            State.level       = 100;
+            State.dailyPuzzleMode = false;
+            resetCamera();
+            resizeCanvas();
+
+            const rows  = State.gridRows;
+            const cols  = State.gridCols;
+            const graph = buildEdgeGraph(rows, cols);
+            const { paths, cx } = rcConstructForTier(graph, tier, 6);
+
+            // Derive hEdge/vEdge
+            for (const p of paths) {
+                for (let i = 0; i < p.nodes.length - 1; i++) {
+                    const a = p.nodes[i], b = p.nodes[i + 1];
+                    reserveEdge(graph, a.r, a.c, b.r, b.c, p.id);
+                }
+                p.originalNodes = p.nodes.slice();
+            }
+
+            State.paths = paths;
+            State.hEdge = graph.hEdge;
+            State.vEdge = graph.vEdge;
+            State.boardDifficulty = cx.tier;
+            State.lives = 3;
+            State.animatingCount = 0;
+
+            const W = cols + 1;
+            State.nodeOwner = new Int32Array((rows + 1) * W).fill(-1);
+            for (const p of State.paths)
+                for (const { r, c } of p.nodes)
+                    State.nodeOwner[r * W + c] = p.id;
+
+            validateBoardAsserts(State.paths, graph);
+            const used = paths.reduce((s, p) => s + p.nodes.length, 0);
+            const cov  = Math.round(used / ((rows + 1) * (cols + 1)) * 100);
+            console.log(`[testBoard] ${rootRows}x${rootCols} ${cx.tier} | paths: ${paths.length} | coverage: ${cov}%`);
+            updateDomUI();
+            startPathRevealAnimation();
+        };
     </script>
 </body>
 

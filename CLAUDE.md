@@ -4,53 +4,84 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running the game
 
-Open `Arrow.html` directly in a browser — no build step, no server required. All dependencies (Tailwind CSS, Google Fonts) are loaded from CDN.
+Open `index.html` directly in a browser — no build step, no server required. All dependencies (Tailwind CSS, Google Fonts) are loaded from CDN.
 
 ## Architecture
 
-The entire game lives in one file: `Arrow.html`. It is structured as three sequential `<script>` blocks:
+The game is split across `index.html` (HTML/CSS shell + script tags) and modular JS files in `js/`:
 
-1. **`AudioEngine`** — Web Audio API synthesis. Five sound events: `tap`, `clear`, `crash`, `win`, and a generic `playTone`. Lazy-initializes `AudioContext` on first user gesture.
-
-2. **`State`** — Single global object holding all mutable game state: grid dimensions (`gridRows`, `gridCols`), `gridMask` (2D array: `1`=playable, `0`=void, `-1`=solid wall), `paths`, animation state (`animatingCount`), camera (`zoom`, `panX`, `panY`), lives, score, level, and UI helpers.
-
-3. **Core game controller** — Everything else: board generation, rendering, input handling, game logic.
+| File | Responsibility |
+|---|---|
+| `js/state.js` | Single `State` global — all mutable game state |
+| `js/edge-gen.js` | Graph construction + reverse-construction generator (RC) |
+| `js/edge-logic.js` | DAG complexity scoring, solvability assertion, collision |
+| `js/board-gen.js` | Level sizing, difficulty selection, generation orchestration |
+| `js/camera.js` | Zoom/pan, canvas resize, entrance animation |
+| `js/renderer.js` | Canvas 2D draw loop, arrowhead, confetti |
+| `js/input.js` | Tap/drag/pinch/scroll input → path selection |
+| `js/game-logic.js` | Collision detection, victory, lives, hint |
+| `js/audio.js` | Web Audio API procedural synthesis |
+| `js/persistence.js` | localStorage V4 save/load |
+| `js/topologies.js` | (legacy, unused by RC generator) |
+| `js/daily.js` | Daily puzzle — seeded PRNG, separate score |
 
 ## Key systems
 
-### Board generation pipeline (`build100PackedLevel`)
-1. Pick grid dimensions via `generateRandomGridDimensions` (respects the active `SIZING_PRESETS` mode).
-2. Pick a `TOPOLOGIES` shape (Square, Cross, Diamond, Donut, Octagon, Circle, Hourglass, Waves, Corner Castle, Hedge Gateway) to build `State.gridMask`.
-3. `tryGenerateBoard()` — greedy crawler fills all active cells with paths using four movement styles (Spiral, Serpentine, Staircase, Standard). Runs a gap-filling pass to ensure 100% coverage.
-4. `assignSmartHeadings()` — picks which endpoint becomes the arrowhead using the Chevron Self-Collision Guard (evaluates forward ray for self-intersection; picks safer end).
-5. `runUnjammingSolvabilityTweak()` — multi-pass unjammer that greedily clears escapable paths and flips headings to resolve deadlocks.
-6. Retries up to 20 times if any path has both endpoints self-colliding.
-7. `validatePaths()` enforces two hard invariants before accepting a board: every active cell covered exactly once, no diagonal steps between consecutive path points.
+### Board generation — Reverse Construction
+
+The generator builds boards **backwards**: place pieces one at a time; a piece is placed only when its head's straight ray to the board edge is currently clear of already-placed pieces. Solve order = reverse of placement order. Solvability is a property of construction, never a search.
+
+Pipeline in `_build100PackedLevelEdge` (`board-gen.js`):
+1. Pick grid size from `getSizesForLevel` (portrait 2:1 ratios, grows with level).
+2. Pick target difficulty tier with `selectTargetDifficulty` (anti-streak, level-gated).
+3. Up to 5 rounds: call `rcConstructForTier(graph, tier, batch)` → get `{paths, cx}`.
+4. Post-build assert: `isBoardFullySolvable` + `validateBoardAsserts` (should always pass).
+5. Derive `hEdge`/`vEdge` from node sequences via `reserveEdge`.
+6. Commit: set `State.paths`, `State.nodeOwner`, `State.hEdge/vEdge`, difficulty, lives, call `startPathRevealAnimation`.
+
+`rcConstructForTier` (`edge-gen.js`):
+- `rcBuildChain` — difficulty backbone: (chainDepth+1) right-pointing length-2 pieces, each placed while its exit ray is clear → forced dependency chain of depth = chainDepth.
+- `rcFillA` — main fill: winding self-avoiding walks, head-ray-clear test, difficulty bias on ray length.
+- `rcFillB` — gap fill: small pieces into empty pockets, both endpoints tried as head.
+- `rcFillC` — tail-append: isolated empty nodes appended to adjacent piece tails; validated with `rcBoardSolvable`, reverted LIFO if solvability breaks, `placeOrder` recomputed.
 
 ### Path data model
-Each path: `{ id, points: [{r,c}…], heading: "UP"|"DOWN"|"LEFT"|"RIGHT", state: "IDLE"|"MOVING"|"CRASHING"|"CLEARED", animProgress, originalPoints }`.
 
-`animProgress` is a float: during MOVING it increments 0.26/frame; the path body slides forward by `animProgress` cells. During CRASHING it decrements 0.16/frame back to 0.
+Each path: `{ id, nodes: [{r,c}…], heading: "UP"|"DOWN"|"LEFT"|"RIGHT", state: "IDLE"|"MOVING"|"CRASHING"|"CLEARED", animProgress, originalNodes, placeOrder }`.
 
-### Rendering (`drawEngine`)
-Canvas 2D. Each frame: clear → apply camera transform (`panX/Y`, `zoom`) → batch-draw grid cells by mask value → draw each non-CLEARED path as a polyline with `getSubTrackPoints` → draw 3D chevron arrowhead at head → draw confetti particles. Uses `requestAnimationFrame` loop via `animationUpdateTick`.
+- `nodes` are **micro-grid** intersection coordinates (root cell × `subdivFactor`).
+- `heading` is the terminal-segment direction set at placement, never changed after construction.
+- `animProgress` is a float: increments 0.26/frame while MOVING (the head slides forward); decrements 0.16/frame while CRASHING back to 0.
+
+### Subcell subdivision
+
+`subdivFactor = 2` — each root cell splits into a 2×2 micro routing grid.
+- `State.rootRows/rootCols` — visual grid dimensions (screen fitting).
+- `State.gridRows/gridCols = rootRows/rootCols × subdivFactor` — actual routing grid.
+- `State.subCellSize = cellSize / subdivFactor` — pixel pitch used by renderer and input.
+
+### Rendering (`drawEngine` in `renderer.js`)
+
+Canvas 2D. Each frame: clear → `ctx.translate(matE,matF)` + `ctx.scale(cssZoom)` → white board fill → dot grid at every micro-node → clip → draw each non-CLEARED path as a polyline with `getSubTrackPoints` sliding window → chevron arrowhead → restore clip → confetti particles.
 
 ### Collision detection
-During MOVING, the leading grid cell (rounded from `animProgress`) is checked against all other paths' `getPathOccupiedCells()`. A collision sets the path to CRASHING and decrements `State.lives`. `processFailurePenalty` triggers the fail overlay at 0 lives.
 
-### Persistence (`Persistence`)
-Saves/loads from `localStorage` key `vecto_colossal_mosaic_save_v2`. Stale saves containing obstacle pillars (`-1` in mask) or missing rectangular dimensions are silently discarded.
+`animationUpdateTick` (`renderer.js`): during MOVING, reads `State.nodeOwner[leadR * W + leadC]` one step ahead of the head. If owned by a different non-CLEARED path → CRASHING.
 
-### Input
-- **Click/tap**: selects the path under the cursor and sets it to MOVING.
-- **Drag / touch-pan**: pans the camera.
-- **Pinch / scroll wheel**: zooms the camera (range 0.5–6.0).
-- **Double tap**: resets camera to default.
-- **`actions` object**: `cycleMatrixSize`, `triggerNextLevel`, `retryCurrentLevel`, `skipLevel`, `useHint` — all called from inline `onclick` attributes.
+### Persistence
+
+V4 format in `localStorage`. `nodeOwner` is rebuilt from `paths.nodes` on load (not stored). V3/V2 saves are silently discarded (incompatible coordinate space). A dimension guard in `_loadV4` also discards saves whose `rootRows/rootCols` are not in `getSizesForLevel(level)` — this silently drops old forward-pipeline fallback saves that were saved with an incorrectly small board at high levels.
+
+### Regression tests
+
+- `test-regression.js` — 840 boards across all 27 unique sizes in `getSizesForLevel`; asserts 0 solvability failures, 0 diagonal/owner errors, 0 hard fallbacks. Run: `node test-regression.js`
+- `test-persistence.js` — 13 persistence scenarios (save/reload, nodeOwner rebuild, fallback guard, stale save discard). Run: `node test-persistence.js`
 
 ## Critical invariants
 
-- **Strictly orthogonal paths** — `validatePaths` rejects any path with a diagonal step (`|dr| + |dc| !== 1`). Never write code that places two path points diagonally adjacent.
-- **100% active-cell coverage** — every cell where `gridMask[r][c] === 1` must belong to exactly one path. The gap-filling and fallback-steal algorithms enforce this; don't bypass them.
-- **Solvability** — `isBoardFullySolvable` simulates a greedy solve. Boards that fail it are retried. Heading changes must preserve this guarantee.
-- **`gridOwnership` encoding**: `-1` = unassigned, `-2` = masked/void, `-3` = failed start (temporary), `≥1` = path ID.
+- **Strictly orthogonal paths** — consecutive nodes must differ by exactly 1 in r or c (`|dr| + |dc| === 1`). `validateBoardAsserts` logs an error on violation. Never place two path nodes diagonally adjacent.
+- **Single-owner nodes** — every micro-grid node is owned by at most one path. `nodeOwner` is the authoritative lookup; `validateBoardAsserts` checks consistency. Empty (unowned) nodes are valid and render as bare dots.
+- **Coverage floor ≥ 65%** — the RC generator achieves ~65–92% coverage (smaller boards pack more densely). `validateBoardAsserts` warns below 65% (genuinely degenerate board). The old strict 100%-coverage invariant is relaxed: solvability at large board sizes requires allowing up to ~35% empty nodes at the extremes.
+- **Solvability — guaranteed by construction** — `rcBuildChain` + `rcFillA/B/C` place each piece only when its head ray is clear, so reverse-order removal is always valid. `isBoardFullySolvable` is a post-build assertion (delegates to `rcBoardSolvable`); it should never fire.
+- **Heading is final at placement** — `p.heading` is set by the reverse constructor and never mutated after. `assignHeadings`, `buildDAGHeadings`, and `runUnjammingPass` are retired.
+- **`nodeOwner` encoding** — `-1` = empty node, `≥0` = path id. (Old `gridMask`/`gridOwnership` encoding is retired.)

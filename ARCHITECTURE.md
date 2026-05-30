@@ -1,17 +1,16 @@
 # Arrow Game — Technical Features Summary
 
-### Path Generation
-- Node-Hamiltonian graph model — each micro-grid intersection owned by exactly one path
-- Warnsdorff self-avoiding walk for trail generation
-- Trail fragmentation into puzzle-length segments with turn-scoring
-- Chevron Self-Collision Guard — forward ray evaluation for arrowhead endpoint selection
-- DAG dependency chain construction — headings flipped to create solve-order dependencies
-- Unjamming pass — resolves deadlock cycles in the dependency graph
-- Greedy solvability simulation — boards failing full solve are rejected and retried
-- Complexity scoring — `maxDepth × 3 + blockerRatio × 5.5 − freeRatio × 8`
-- Aesthetic scoring filter — length variance + turn distribution + visual balance composite score
-- Up to 20 generation attempts per board with hard fallback grid on total failure
-- Graceful failure recovery — on total generation failure, old board is preserved, level counter rolls back
+### Path Generation — Reverse Construction
+- **Solvability by construction** — boards built backwards: each piece placed only when its head's straight exit ray is clear; solve order = reverse of placement. No solvability search, no retries, no fallback grid.
+- Node-Hamiltonian model — each micro-grid intersection owned by at most one path; empty nodes are valid (~15–20% typical)
+- Chain backbone — `rcBuildChain` places (depth+1) right-pointing length-2 pieces left-to-right; each blocked by its right neighbour → forced dependency chain of depth = chainDepth. Controls difficulty tier deterministically.
+- Phase A fill — `rcFillA`: winding self-avoiding walks from interior-biased anchors, head-ray-clear test, difficulty bias on exit-ray length
+- Phase B gap fill — `rcFillB`: small new pieces into empty pockets, both endpoints tried as head
+- Phase C tail-append — `rcFillC`: isolated empty nodes appended to adjacent piece tails; each append validated with `rcBoardSolvable`, reverted LIFO if solvability breaks; `placeOrder` recomputed from fresh greedy clear
+- Difficulty tier steering — `chainDepth` knob maps EASY→TITAN; `evaluateBoardComplexity` measures (`maxDepth × 3 + blockerRatio × 5.5 − freeRatio × 8`) as a label only, not a gate
+- Aesthetic scoring — `computeAestheticScore`: length variance + turn distribution + visual balance; used as a soft accept criterion (≥0.40)
+- Coverage floor ≥ 80% — ~85% average achieved; strict 100% invariant relaxed (required for solvability at scale)
+- Post-build asserts — `validateBoardAsserts`: orthogonal-only steps, single-owner nodes, coverage floor; `isBoardFullySolvable` as a final guard (should never fire)
 
 ### Subcell Subdivision
 - `subdivFactor = 2` — each root cell splits into a 2×2 micro routing grid
@@ -19,7 +18,10 @@
 - `subCellSize = cellSize / subdivFactor` — pixel pitch of micro-node step, auto-recalculated on resize
 - All rendering, input, and collision operate on micro-grid coordinates
 
-### Organic Appearance System
+### Organic Appearance System (retained in `edge-gen.js`, not currently active)
+The Warnsdorff trail generator and its full personality system are preserved in `edge-gen.js`
+but are not wired into `_build100PackedLevelEdge` since the RC migration. They remain
+available as a future shape-enhancement layer that could be layered on top of RC paths.
 - Length tier queue — 25% SHORT / 50% MEDIUM / 25% LONG distribution per board, pre-planned
 - Phase vocabulary — SWEEP / COIL / FLOW / COMPRESS with distinct turn pressure per phase
 - Rhythm profiles — 6 named phase sequences assigned per trail (`flow`, `staccato`, `sweep-hook`, `breath`, `coil`, `arm-cluster-arm`)
@@ -29,11 +31,15 @@
 - Trail personality object — all per-trail parameters packaged before each Warnsdorff walk
 - Board-level diversity queues — guaranteed axis, handedness, and rhythm variety by design
 
+The RC constructor (`rcGrowWalk`) currently uses a simpler turn-preference walk (turns score 1.0,
+straights 0.4) without the full OA personality system.
+
 ### Difficulty & Level Progression
 - Five difficulty tiers — EASY / NORMAL / HARD / EXPERT / TITAN
-- Level-based tier caps — TITAN unlocks at 30+, EXPERT at 20+, HARD at 10+
-- Recent difficulty balancing — last 5 board tiers tracked to avoid streaks
-- Level-aware grid sizing — board dimensions grow from 8×6 at level 1 to 26×20 at high levels
+- Level-based tier caps — TITAN unlocks at L46+, EXPERT at L46+, HARD at L21+ (see `getAllowedTiersForLevel`)
+- Tier steering via `chainDepth` knob in the RC constructor; measured by `evaluateBoardComplexity`
+- Recent difficulty balancing — last 5 board tiers tracked to avoid streaks (`selectTargetDifficulty`)
+- Level-aware grid sizing — portrait boards (2:1 ratio), root dims grow from 6×3 at L1 to 36×16 at L100 (see `getSizesForLevel`)
 
 ### Rendering
 - Canvas 2D, no framework, no WebGL
@@ -74,6 +80,7 @@
 ### Persistence
 - V4 save format — subdivision-aware, survives reload
 - V3 / V2 silently discarded on load (incompatible coordinate space)
+- Dimension guard in `_loadV4` — saves with `rootRows/rootCols` outside `getSizesForLevel(level)` are discarded (catches old forward-pipeline fallback saves with a stale 10×12 grid)
 - `nodeOwner` rebuilt from `paths.nodes` on every load (not persisted)
 - Daily puzzle saves best score and attempt count separately
 

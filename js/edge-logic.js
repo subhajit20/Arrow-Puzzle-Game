@@ -1,33 +1,15 @@
 // =============================================================================
-// edge-logic.js — Dependency construction, unjamming, solvability, complexity
-// Depends on: edge-gen.js (headingToDelta, deltaToHeading, forwardRayClearSteps)
+// edge-logic.js — DAG complexity scoring, solvability assertion, collision
+// Depends on: edge-gen.js (headingToDelta, deltaToHeading)
+// =============================================================================
+// RC-5: hasForwardSelfEdge, buildDAGHeadings, runUnjammingPass removed.
+// Headings are final at placement (reverse constructor); solvability is
+// guaranteed by construction. isBoardFullySolvable is a post-build assertion.
 // =============================================================================
 
 // =============================================================================
-// Step 6: DAG Dependency Construction
+// DAG Dependency (used by evaluateBoardComplexity for difficulty scoring)
 // =============================================================================
-
-// -----------------------------------------------------------------------------
-// hasForwardSelfEdge
-// Returns true if ANY node along the forward ray from startNode in `heading`
-// direction is owned by pathId (self-collision guard).
-// Continues through foreign-owned nodes until hitting the grid boundary.
-// Uses nodeOwner so perpendicular self-intersections are correctly detected.
-// -----------------------------------------------------------------------------
-function hasForwardSelfEdge(pathId, startNode, heading, graph) {
-    const { dr, dc }              = headingToDelta(heading);
-    const { nodeOwner, rows, cols } = graph;
-    const W = cols + 1;
-    let r = startNode.r, c = startNode.c;
-
-    for (let i = 0; i < rows + cols + 4; i++) {
-        const nr = r + dr, nc = c + dc;
-        if (nr < 0 || nr > rows || nc < 0 || nc > cols) break;
-        if (nodeOwner[nr * W + nc] === pathId) return true;
-        r = nr; c = nc;
-    }
-    return false;
-}
 
 // -----------------------------------------------------------------------------
 // buildDAGDep
@@ -120,112 +102,14 @@ function computeDAGStats(paths, graph) {
     };
 }
 
-// -----------------------------------------------------------------------------
-// buildDAGHeadings
-// DAG-first dependency construction pass (ported from board-gen.js).
-//
-// After generation + fragmentation, many paths have a clear escape corridor —
-// the player can tap them in any order.  This function iteratively flips the
-// heading of "free" paths (no current blockers) to point them at another
-// path's body, creating an explicit dependency chain.
-//
-// Each flip is safety-checked:
-//   1. Self-collision guard — the entire new forward ray must not cross any
-//      self-owned edge (hasForwardSelfEdge).
-//   2. Target check — after flip, there must actually be a foreign blocker in
-//      the new corridor; skip if the path remains freely escapable.
-//   3. Cycle guard — DFS confirms the target path cannot already reach this
-//      path through the current dep graph (prevents deadlock cycles).
-//
-// 6 passes; exits early when no more flips can be made.
-// Mutates path.nodes (reversal) and path.heading in-place.
-// -----------------------------------------------------------------------------
-function buildDAGHeadings(paths, graph) {
-    const { nodeOwner, rows, cols } = graph;
-    const W = cols + 1;
-
-    for (let pass = 0; pass < 6; pass++) {
-        const dep = buildDAGDep(paths, graph);
-
-        // DFS reachability — returns true if toId is reachable from fromId
-        function canReach(fromId, toId) {
-            const seen = new Set();
-            const stk  = [fromId];
-            while (stk.length > 0) {
-                const cur = stk.pop();
-                if (cur === toId) return true;
-                if (seen.has(cur)) continue;
-                seen.add(cur);
-                dep[cur]?.forEach(nxt => stk.push(nxt));
-            }
-            return false;
-        }
-
-        const freePaths = paths.filter(p => dep[p.id].size === 0);
-        let flippedAny  = false;
-
-        for (const p of freePaths) {
-            const n = p.nodes.length;
-            if (n < 2) continue;
-
-            // Reversed endpoint: first node becomes new head
-            const newHead = p.nodes[0];
-            const newPrev = p.nodes[1];
-            const newHdg  = deltaToHeading(
-                newHead.r - newPrev.r,
-                newHead.c - newPrev.c
-            );
-
-            // 1. Self-collision guard — entire ray must be self-free
-            if (hasForwardSelfEdge(p.id, newHead, newHdg, graph)) continue;
-
-            // 2. Scan new corridor for the first foreign blocker (node-based)
-            const { dr, dc } = headingToDelta(newHdg);
-            let blockId = -1;
-            let r = newHead.r, c = newHead.c;
-
-            for (let i = 0; i < rows + cols + 4; i++) {
-                const nr = r + dr, nc = c + dc;
-                if (nr < 0 || nr > rows || nc < 0 || nc > cols) break;
-
-                const owner = nodeOwner[nr * W + nc];
-                if (owner >= 0 && owner !== p.id) { blockId = owner; break; }
-                r = nr; c = nc;
-            }
-
-            if (blockId < 0) continue; // still freely escapes after flip — skip
-
-            // 3. Cycle guard
-            if (canReach(blockId, p.id)) continue;
-
-            // ── Safe to flip ────────────────────────────────────────────────
-            p.nodes.reverse();
-            p.heading       = newHdg;
-            p.originalNodes = p.nodes.slice();
-            dep[p.id].add(blockId); // keep local dep consistent for this pass
-            flippedAny = true;
-        }
-
-        if (!flippedAny) break; // converged
-    }
-}
-
-// =============================================================================
-// Step 7: Unjamming Pass
-// =============================================================================
+// buildDAGHeadings and runUnjammingPass removed (RC-5).
+// hasForwardSelfEdge removed (only used by the two functions above).
+// countStuckPaths removed (only used by isBoardFullySolvable below).
 
 // -----------------------------------------------------------------------------
 // canEscapeEdge
 // Simulates whether path p can fire and exit the board given a set of already-
-// cleared paths.  The escape ray travels node-by-node in p.heading direction.
-//
-// Transparent nodes (pass through):
-//   - unowned nodes (-1, shouldn't exist on a complete board)
-//   - nodes owned by p itself
-//   - nodes owned by any path in clearedSet (virtually removed)
-//
-// Blocked if: any node owned by a still-active foreign path is encountered.
-// Escaped if: ray exits grid boundary without hitting a blocker.
+// cleared paths. Kept for runtime collision detection (getLeadingEdgeOwner).
 // -----------------------------------------------------------------------------
 function canEscapeEdge(p, clearedSet, graph) {
     const { nodeOwner, rows, cols } = graph;
@@ -240,132 +124,20 @@ function canEscapeEdge(p, clearedSet, graph) {
 
         const owner = nodeOwner[nr * W + nc];
         if (owner === -1 || owner === p.id || clearedSet.has(owner)) {
-            r = nr; c = nc; // transparent — keep going
-            continue;
+            r = nr; c = nc; continue;
         }
-
         return false; // blocked by active foreign path
     }
     return true;
 }
 
 // -----------------------------------------------------------------------------
-// countStuckPaths
-// Returns how many paths remain stuck after a full greedy-clear simulation.
-// Does NOT mutate paths or graph — pure read.
-// -----------------------------------------------------------------------------
-function countStuckPaths(paths, graph) {
-    const clearedSet = new Set();
-    const activeIds  = new Set(paths.map(p => p.id));
-
-    let resolved = true;
-    while (resolved) {
-        resolved = false;
-        for (const p of paths) {
-            if (!activeIds.has(p.id)) continue;
-            if (canEscapeEdge(p, clearedSet, graph)) {
-                clearedSet.add(p.id);
-                activeIds.delete(p.id);
-                resolved = true;
-                break;
-            }
-        }
-    }
-    return activeIds.size;
-}
-
-// -----------------------------------------------------------------------------
-// runUnjammingPass
-// Ported from runUnjammingSolvabilityTweak (board-gen.js) to the edge model.
-//
-// Algorithm (up to 5 passes):
-//   1. Greedy-clear simulation: iteratively mark any path that can currently
-//      escape (its corridor is free of active foreign edges) as "cleared."
-//   2. If all paths cleared → done (board already solvable).
-//   3. For each remaining stuck path: try reversing its nodes.
-//      - Self-collision guard: reversed heading must not cross any self-owned edge.
-//      - Escape check: reversed path must be able to escape given current cleared set.
-//      - If both pass → commit the flip, mark as cleared.
-//   4. Repeat.  Stop early when no flip was made (converged deadlock — unjammer
-//      cannot resolve; board will be rejected in Step 8 solvability check).
-//
-// Mutates path.nodes (may reverse) and path.heading/originalNodes in-place.
-// -----------------------------------------------------------------------------
-function runUnjammingPass(paths, graph) {
-    for (let pass = 0; pass < 5; pass++) {
-        const clearedSet = new Set();
-        const activeIds  = new Set(paths.map(p => p.id));
-
-        // ── Phase A: greedy-clear paths that can currently escape ─────────────
-        let resolved = true;
-        while (resolved) {
-            resolved = false;
-            for (const p of paths) {
-                if (!activeIds.has(p.id)) continue;
-                if (canEscapeEdge(p, clearedSet, graph)) {
-                    clearedSet.add(p.id);
-                    activeIds.delete(p.id);
-                    resolved = true;
-                    break;
-                }
-            }
-        }
-
-        if (activeIds.size === 0) return; // fully solvable — nothing to unjam
-
-        // ── Phase B: try flipping each stuck path ─────────────────────────────
-        let anyFlipped = false;
-
-        for (const p of paths) {
-            if (!activeIds.has(p.id)) continue;
-
-            const origHeading = p.heading;
-
-            p.nodes.reverse();
-            const newHead = p.nodes[p.nodes.length - 1];
-            const newPrev = p.nodes[p.nodes.length - 2];
-            const newHdg  = deltaToHeading(newHead.r - newPrev.r, newHead.c - newPrev.c);
-            p.heading = newHdg;
-
-            const selfHit = hasForwardSelfEdge(p.id, newHead, newHdg, graph);
-
-            if (!selfHit && canEscapeEdge(p, clearedSet, graph)) {
-                // Commit flip — path can now escape
-                p.originalNodes = p.nodes.slice();
-                clearedSet.add(p.id);
-                activeIds.delete(p.id);
-                anyFlipped = true;
-            } else {
-                // Revert
-                p.heading = origHeading;
-                p.nodes.reverse();
-            }
-        }
-
-        if (activeIds.size === 0) return;
-        if (!anyFlipped) return; // converged — no more flips possible
-    }
-}
-
-// =============================================================================
-// Step 8: Solvability Validation
-// =============================================================================
-
-// -----------------------------------------------------------------------------
-// isBoardFullySolvable
-// Returns true if every path can eventually escape via greedy simulation.
-//
-// Uses the same canEscapeEdge logic as the unjammer:
-//   - own edges transparent
-//   - cleared-path edges transparent
-//   - free edges transparent
-//   - active foreign edges = blocker
-//
-// A board is solvable if the greedy simulation clears all N paths.
-// Boards that fail this check are rejected and regenerated in Step 14.
+// isBoardFullySolvable — POST-BUILD ASSERTION ONLY (RC-5)
+// Should always return true for boards built by the reverse constructor.
+// Logs an error if it ever fires; board-gen.js skips and retries on failure.
 // -----------------------------------------------------------------------------
 function isBoardFullySolvable(paths, graph) {
-    return countStuckPaths(paths, graph) === 0;
+    return rcBoardSolvable(paths, graph);
 }
 
 // =============================================================================
@@ -419,19 +191,8 @@ function getDifficultyTier(score) {
     return 'TITAN';
 }
 
-// -----------------------------------------------------------------------------
-// getMinScoreForLevel
-// Returns the minimum complexity score required to accept a board at a given
-// level.  Boards scoring below this are rejected and regenerated (Step 14).
-// -----------------------------------------------------------------------------
-function getMinScoreForLevel(level) {
-    if (level === 100) return 29; // TITAN guaranteed
-    if (level >= 21)  return 6;  // EASY permanently removed at L21+
-    return 0;                    // EASY still possible at L1-20
-}
-
 // =============================================================================
-// Step 11: Edge-Based Collision Detection
+// Edge-Based Collision Detection
 // =============================================================================
 
 // -----------------------------------------------------------------------------

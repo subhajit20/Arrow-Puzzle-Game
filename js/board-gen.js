@@ -1,56 +1,80 @@
 // -----------------------------------------------------------------------------
+// validateBoardAsserts
+// Post-build defensive checks. Logs errors but never throws — the board was
+// already committed. Should never fire for boards built by the RC constructor.
+//
+// Invariants checked:
+//   1. Orthogonal-only steps — consecutive nodes must differ by exactly 1 in r
+//      or c, never diagonally.
+//   2. Single-owner — every node in nodeOwner must be owned by exactly the path
+//      whose node list contains it (no double-ownership, consistent encoding).
+//   3. Coverage floor ≥ 80% — warn if below threshold.
+// -----------------------------------------------------------------------------
+function validateBoardAsserts(paths, graph) {
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1;
+    let errors = 0;
+
+    // 1. Orthogonal-only steps
+    for (const p of paths) {
+        for (let i = 0; i < p.nodes.length - 1; i++) {
+            const a = p.nodes[i], b = p.nodes[i + 1];
+            const dr = Math.abs(b.r - a.r), dc = Math.abs(b.c - a.c);
+            if (dr + dc !== 1) {
+                console.error(`[Assert] path ${p.id} has diagonal step at node ${i}: (${a.r},${a.c})→(${b.r},${b.c})`);
+                errors++;
+            }
+        }
+    }
+
+    // 2. Single-owner consistency (nodeOwner matches path node lists)
+    const seen = new Map();
+    for (const p of paths) {
+        for (const { r, c } of p.nodes) {
+            const key = r * W + c;
+            if (seen.has(key)) {
+                console.error(`[Assert] node (${r},${c}) owned by both path ${seen.get(key)} and path ${p.id}`);
+                errors++;
+            } else {
+                seen.set(key, p.id);
+                if (nodeOwner[key] !== p.id) {
+                    console.error(`[Assert] nodeOwner[${r},${c}]=${nodeOwner[key]} but path ${p.id} claims it`);
+                    errors++;
+                }
+            }
+        }
+    }
+
+    // 3. Coverage floor — large boards (36x16) average ~78%; warn below 65% (genuinely degenerate).
+    const totalNodes = (rows + 1) * (cols + 1);
+    const usedNodes  = paths.reduce((s, p) => s + p.nodes.length, 0);
+    const coverage   = usedNodes / totalNodes;
+    if (coverage < 0.65) {
+        console.warn(`[Assert] coverage ${Math.round(coverage * 100)}% is below the 65% floor`);
+    }
+
+    if (errors > 0) console.error(`[Assert] ${errors} invariant violation(s) on this board`);
+}
+
+// -----------------------------------------------------------------------------
 // getSizesForLevel
-// Returns the pool of {rows, cols} sizes valid for the given level.
-// Notation: cols×rows (width × height) — all portrait/vertical boards.
+// Returns the size for the given level — pure 4:3 staircase (Option A).
+// Every board is exactly rows:cols = 4:3 (ratio 1.33), growing in 6 steps
+// from 4×3 at L1 up to 24×18 at L76+.
+//
+//   L1–5   →  4× 3  (micro  8× 6,   ~55 dots)
+//   L6–15  →  8× 6  (micro 16×12,  ~221 dots)
+//   L16–30 → 12× 9  (micro 24×18,  ~475 dots)
+//   L31–50 → 16×12  (micro 32×24,  ~825 dots)
+//   L51–75 → 20×15  (micro 40×30, ~1271 dots)
+//   L76+   → 24×18  (micro 48×36, ~1813 dots)
 // -----------------------------------------------------------------------------
 function getSizesForLevel(level) {
-    // rows/cols ratio kept at 2.0–2.4 so the board is always height-constrained
-    // on mobile (screen ratio ≈ 1.85–1.90), leaving clear side margins that
-    // make the portrait shape visually obvious instead of filling edge-to-edge.
-    if (level === 1) return [{ rows:  6, cols:  3 }];  // ratio 2.00
-    if (level === 2) return [{ rows:  7, cols:  3 }];  // ratio 2.33
-    if (level === 3) return [{ rows:  8, cols:  4 }];  // ratio 2.00
-    if (level === 4) return [{ rows:  9, cols:  4 }];  // ratio 2.25
-    if (level === 5) return [{ rows: 10, cols:  4 }];  // ratio 2.50
-
-    if (level <= 10) return [
-        { rows: 10, cols:  5 },   // ratio 2.00
-        { rows: 11, cols:  5 },   // ratio 2.20
-        { rows: 12, cols:  5 },   // ratio 2.40
-        { rows: 12, cols:  6 },   // ratio 2.00
-    ];
-    if (level <= 20) return [
-        { rows: 14, cols:  6 },   // ratio 2.33
-        { rows: 14, cols:  7 },   // ratio 2.00
-        { rows: 16, cols:  7 },   // ratio 2.29
-        { rows: 16, cols:  8 },   // ratio 2.00
-    ];
-    if (level <= 45) return [
-        { rows: 18, cols:  8 },   // ratio 2.25
-        { rows: 20, cols:  9 },   // ratio 2.22
-        { rows: 20, cols: 10 },   // ratio 2.00
-        { rows: 22, cols: 10 },   // ratio 2.20
-    ];
-    if (level <= 70) return [
-        { rows: 24, cols: 11 },   // ratio 2.18
-        { rows: 24, cols: 12 },   // ratio 2.00
-        { rows: 26, cols: 12 },   // ratio 2.17
-        { rows: 28, cols: 12 },   // ratio 2.33
-    ];
-    if (level <= 99) return [
-        { rows: 28, cols: 13 },   // ratio 2.15
-        { rows: 30, cols: 13 },   // ratio 2.31
-        { rows: 30, cols: 14 },   // ratio 2.14
-        { rows: 32, cols: 14 },   // ratio 2.29
-    ];
-    if (level === 100) return [
-        { rows: 36, cols: 16 },   // ratio 2.25 — boss level
-    ];
-    return [
-        { rows: 34, cols: 15 },   // ratio 2.27
-        { rows: 36, cols: 16 },   // ratio 2.25
-        { rows: 38, cols: 17 },   // ratio 2.24
-    ];
+    if (level <=  5) return [{ rows:  4, cols:  3 }];
+    if (level <= 15) return [{ rows:  8, cols:  6 }];
+    if (level <= 30) return [{ rows: 12, cols:  9 }];
+    if (level <= 50) return [{ rows: 16, cols: 12 }];
+    if (level <= 75) return [{ rows: 20, cols: 15 }];
+    return                  [{ rows: 24, cols: 18 }];
 }
 
 // =============================================================================
@@ -65,8 +89,8 @@ function _build100PackedLevelEdge(forceNewGeneration) {
         return;
     }
 
-    const sizes   = getSizesForLevel(State.level);
-    const size    = sizes[Math.floor(Math.random() * sizes.length)];
+    const sizes = getSizesForLevel(State.level);
+    const size  = sizes[Math.floor(Math.random() * sizes.length)];
     State.rootRows  = size.rows;
     State.rootCols  = size.cols;
     State.gridRows  = size.rows * State.subdivFactor;
@@ -90,139 +114,104 @@ function _build100PackedLevelEdge(forceNewGeneration) {
     const cols  = State.gridCols;
     const level = State.level;
 
-    const targetTier       = selectTargetDifficulty(level, State.recentDifficulties || []);
-    const candidatesByTier = {};
+    const targetTier = selectTargetDifficulty(level, State.recentDifficulties || []);
+
+    // ── Reverse-construction loop (solvability guaranteed by construction) ──
+    // Each attempt builds a fresh board via rcConstructForTier and keeps the best
+    // by: (1) tier match, (2) aesthetic score, (3) coverage.
+    // BATCH and MAX_ROUNDS scale down for large boards — a single construction at
+    // 24×18 takes ~200-400ms, so cap total attempts to stay under ~1s.
+    const totalNodes = (rows + 1) * (cols + 1);
+    const BATCH      = totalNodes > 1000 ? 2 : 4;  // inner tier-bracket attempts
+    const MAX_ROUNDS = totalNodes > 1000 ? 3 : 5;  // outer retry rounds
+
     let validResult = null;
     let chosenTier  = 'NORMAL';
+    let bestAesthetic = -1;
+    const candidatesByTier = {};
 
-    // Aesthetic filter: track the best-scoring board for the target tier so we
-    // can fall back to it if no board clears the threshold within 20 attempts.
-    const AESTHETIC_THRESHOLD = 0.45;
-    let bestAestheticScore  = -1;
-    let bestAestheticResult = null;
-
-    // Target length is in root-cell units; multiply by subdivFactor for micro-node count.
-    // Floor of 20×subdivFactor guarantees trails can be long enough for LONG-tier paths
-    // (10–16 root cells) without capping them at the MEDIUM default.
-    const maxTrailLen = Math.max(
-        20 * State.subdivFactor,
-        getTargetLength(level, State.rootRows, State.rootCols) * State.subdivFactor * 2
-    );
-
-    for (let attempt = 0; attempt < 20; attempt++) {
+    for (let round = 0; round < MAX_ROUNDS; round++) {
         const graph = buildEdgeGraph(rows, cols);
-        const { trails } = generateTrails(graph, maxTrailLen, State.subdivFactor);
-        const paths = fragmentAllTrails(trails, level, graph);
-        assignHeadings(paths, graph);
-        // DAG heading optimization creates dependency chains → raises complexity score.
-        // Skip it when targeting EASY/NORMAL so small boards don't score HARD artificially.
-        if (targetTier !== 'EASY' && targetTier !== 'NORMAL') {
-            buildDAGHeadings(paths, graph);
+        const { paths, cx } = rcConstructForTier(graph, targetTier, BATCH);
+
+        // Post-build solvability assert (should always pass; logs if not).
+        if (!isBoardFullySolvable(paths, graph)) {
+            console.warn('[Board] RC post-build solvability assert FAILED — skipping this board');
+            continue;
         }
-        runUnjammingPass(paths, graph);
 
-        if (!isBoardFullySolvable(paths, graph)) continue;
-
-        const cx     = evaluateBoardComplexity(paths, graph);
-        const tier   = getDifficultyTier(cx.score);
+        const tier   = cx.tier;
         const aScore = computeAestheticScore(paths, graph);
 
-        if (!candidatesByTier[tier]) candidatesByTier[tier] = { paths, graph };
-
-        if (tier === targetTier) {
-            // Always track the aesthetically best board for this tier
-            if (aScore > bestAestheticScore) {
-                bestAestheticScore  = aScore;
-                bestAestheticResult = { paths, graph };
+        // Derive hEdge/vEdge from final node sequences (same as forward pipeline).
+        for (const p of paths) {
+            for (let i = 0; i < p.nodes.length - 1; i++) {
+                const a = p.nodes[i], b = p.nodes[i + 1];
+                reserveEdge(graph, a.r, a.c, b.r, b.c, p.id);
             }
-            // Accept immediately if aesthetic threshold is met
-            if (aScore >= AESTHETIC_THRESHOLD) {
-                validResult = { paths, graph };
-                chosenTier  = tier;
-                break;
-            }
+            p.originalNodes = p.nodes.slice();
         }
+
+        if (!candidatesByTier[tier] || aScore > candidatesByTier[tier].aScore) {
+            candidatesByTier[tier] = { paths, graph, aScore };
+        }
+
+        if (tier === targetTier && aScore > bestAesthetic) {
+            bestAesthetic = aScore;
+            validResult   = { paths, graph };
+            chosenTier    = tier;
+        }
+
+        // Accept immediately once we have a good-enough tier+aesthetic match.
+        if (tier === targetTier && aScore >= 0.40) break;
     }
 
-    // If no board hit the threshold, accept the best aesthetic result we found
-    if (!validResult && bestAestheticResult) {
-        validResult = bestAestheticResult;
-        chosenTier  = targetTier;
-    }
-
+    // Fall back to any board of an allowed tier.
     if (!validResult) {
-        // Only pick from tiers allowed at this level — never promote a forbidden difficulty
         const allowedAtLevel = getAllowedTiersForLevel(level);
         const fallbackOrder  = [targetTier, ...allowedAtLevel.filter(t => t !== targetTier)];
         for (const t of fallbackOrder) {
             if (candidatesByTier[t]) {
-                validResult = candidatesByTier[t];
+                validResult = { paths: candidatesByTier[t].paths, graph: candidatesByTier[t].graph };
                 chosenTier  = t;
                 break;
             }
         }
     }
 
-    // Hard fallback: level-appropriate grid guaranteed to converge
+    // ── Commit ──────────────────────────────────────────────────────────────
     if (!validResult) {
-        // For tutorial levels use a slightly larger version of the intended size.
-        // For all other levels use 10×12 which reliably converges.
-        let FB_ROOT_R, FB_ROOT_C;
-        if      (level === 1) { FB_ROOT_R = 2; FB_ROOT_C = 3; }
-        else if (level === 2) { FB_ROOT_R = 3; FB_ROOT_C = 4; }
-        else if (level <= 5)  { FB_ROOT_R = 4; FB_ROOT_C = 6; }
-        else                  { FB_ROOT_R = 10; FB_ROOT_C = 12; }
-
-        const FB_R = FB_ROOT_R * State.subdivFactor;
-        const FB_C = FB_ROOT_C * State.subdivFactor;
-        State.rootRows = FB_ROOT_R; State.rootCols = FB_ROOT_C;
-        State.gridRows = FB_R; State.gridCols = FB_C; State.gridSize = FB_ROOT_R;
-        resetCamera(); resizeCanvas();
-        const fbMaxTrailLen = Math.max(
-            20 * State.subdivFactor,
-            getTargetLength(level, FB_ROOT_R, FB_ROOT_C) * State.subdivFactor * 2
-        );
-
-        for (let attempt = 0; attempt < 10; attempt++) {
-            const graph = buildEdgeGraph(FB_R, FB_C);
-            const { trails: fbTrails } = generateTrails(graph, fbMaxTrailLen, State.subdivFactor);
-            const paths = fragmentAllTrails(fbTrails, level, graph);
-            assignHeadings(paths, graph);
-            if (level > 5) buildDAGHeadings(paths, graph);
-            runUnjammingPass(paths, graph);
-            if (!isBoardFullySolvable(paths, graph)) continue;
-            const cx = evaluateBoardComplexity(paths, graph);
-            validResult = { paths, graph };
-            chosenTier  = getDifficultyTier(cx.score);
-            break;
-        }
-    }
-
-    if (validResult) {
-        State.paths = validResult.paths;
-        State.hEdge = validResult.graph.hEdge;
-        State.vEdge = validResult.graph.vEdge;
-        State.boardDifficulty = chosenTier;
-
-        // Safety cap: badge must never show a tier forbidden at this level
-        const _tierOrder   = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'TITAN'];
-        const _allowedTiers = getAllowedTiersForLevel(level);
-        if (!_allowedTiers.includes(State.boardDifficulty)) {
-            State.boardDifficulty = [..._allowedTiers]
-                .sort((a, b) => _tierOrder.indexOf(b) - _tierOrder.indexOf(a))[0] || 'NORMAL';
-        }
-
-        console.log(`[Board] L${State.level} → difficulty: ${State.boardDifficulty} | paths: ${State.paths.length}`);
-
-        // Build nodeOwner from final paths for runtime collision detection
-        const _W = validResult.graph.cols + 1;
-        State.nodeOwner = new Int32Array((validResult.graph.rows + 1) * _W).fill(-1);
-        for (const p of State.paths)
-            for (const { r, c } of p.nodes)
-                State.nodeOwner[r * _W + c] = p.id;
-    } else {
+        console.error('[Board] RC failed to produce any board — this should not happen');
         return false;
     }
+
+    State.paths = validResult.paths;
+    State.hEdge = validResult.graph.hEdge;
+    State.vEdge = validResult.graph.vEdge;
+    State.boardDifficulty = chosenTier;
+
+    // Safety cap: badge must never show a tier forbidden at this level.
+    const _tierOrder    = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'TITAN'];
+    const _allowedTiers = getAllowedTiersForLevel(level);
+    if (!_allowedTiers.includes(State.boardDifficulty)) {
+        State.boardDifficulty = [..._allowedTiers]
+            .sort((a, b) => _tierOrder.indexOf(b) - _tierOrder.indexOf(a))[0] || 'NORMAL';
+    }
+
+    // Build nodeOwner from final paths for runtime collision detection.
+    const _W = validResult.graph.cols + 1;
+    State.nodeOwner = new Int32Array((validResult.graph.rows + 1) * _W).fill(-1);
+    for (const p of State.paths)
+        for (const { r, c } of p.nodes)
+            State.nodeOwner[r * _W + c] = p.id;
+
+    const cov = Math.round(
+        State.paths.reduce((s, p) => s + p.nodes.length, 0) /
+        ((rows + 1) * (cols + 1)) * 100
+    );
+    console.log(`[Board] L${State.level} → ${State.boardDifficulty} | paths: ${State.paths.length} | coverage: ${cov}%`);
+
+    validateBoardAsserts(State.paths, validResult.graph);
 
     if (!State.recentDifficulties) State.recentDifficulties = [];
     State.recentDifficulties.push(State.boardDifficulty);

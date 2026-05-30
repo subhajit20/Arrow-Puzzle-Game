@@ -11,7 +11,7 @@
 //   1. Graph Construction  (buildEdgeGraph with nodeOwner)
 //   2. Node-Warnsdorff     (walkWarnsdorff, generateTrails)
 //   4. Fragmentation       (fragmentTrail, fragmentAllTrails)
-//   5. Heading Assignment  (assignHeadings + forwardRayClearSteps)
+//   RC. Reverse Construction (reverseConstruct + helpers — solvability by design)
 // =============================================================================
 
 // -----------------------------------------------------------------------------
@@ -733,72 +733,302 @@ function deltaToHeading(dr, dc) {
     return 'RIGHT';
 }
 
-// -----------------------------------------------------------------------------
-// forwardRayClearSteps
-// Counts how many node-steps the arrowhead can travel from startNode before
-// hitting the grid boundary or a node owned by this same path (self-collision).
+// forwardRayClearSteps and assignHeadings removed (RC-5):
+// headings are set at placement time by the reverse constructor and never reassigned.
+
+// =============================================================================
+// RC — Reverse Construction
+// Build the board backwards: place pieces only when their head's forward ray is
+// currently clear. The solve order = placement order reversed.  Solvability is
+// a property of construction, never a search.
 //
-// Uses nodeOwner (node model) instead of hEdge/vEdge (old edge model).
-// -----------------------------------------------------------------------------
-function forwardRayClearSteps(pathId, startNode, heading, graph) {
-    const { dr, dc }              = headingToDelta(heading);
-    const { nodeOwner, rows, cols } = graph;
-    const W = cols + 1;
-    let r = startNode.r, c = startNode.c;
-    let steps = 0;
+// Public entry point:  reverseConstruct(graph, knobs)
+//   knobs.chainDepth — number of forced dependency links (drives difficulty)
+//   knobs.d          — [0,1] head-ray bias (0 = short/easy, 1 = long/hard)
+//   knobs.lenScale   — piece-length multiplier (default 1)
+//
+// Tier selector:  rcChainDepthForTier(tier) → chainDepth
+//                 rcConstructForTier(graph, tier, batch) → { paths, graph, coverage, cx }
+// =============================================================================
 
-    for (let i = 0; i < rows + cols + 4; i++) {
+// Solvability oracle for RC (uses recorded headings, NOT the forward-model).
+// Own nodes + cleared nodes are transparent (snake escape model).
+function rcCanEscape(p, removed, graph) {
+    const { dr, dc } = headingToDelta(p.heading);
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1;
+    const head = p.nodes[p.nodes.length - 1];
+    let r = head.r, c = head.c;
+    for (;;) {
         const nr = r + dr, nc = c + dc;
-        if (nr < 0 || nr > rows || nc < 0 || nc > cols) break;
-        if (nodeOwner[nr * W + nc] === pathId) break; // self-collision
-        steps++;
-        r = nr; c = nc;
+        if (nr < 0 || nr > rows || nc < 0 || nc > cols) return true;
+        const o = nodeOwner[nr * W + nc];
+        if (o === -1 || o === p.id || removed.has(o)) { r = nr; c = nc; continue; }
+        return false;
     }
-
-    return steps;
+}
+function rcBoardSolvable(paths, graph) {
+    const removed = new Set(); let prog = true;
+    while (prog) { prog = false;
+        for (const p of paths) { if (removed.has(p.id)) continue;
+            if (rcCanEscape(p, removed, graph)) { removed.add(p.id); prog = true; }
+        }
+    }
+    return removed.size === paths.length;
+}
+// After Phase C tail-appends, recompute placeOrder from a fresh greedy clear.
+function rcRecomputePlaceOrder(paths, graph) {
+    const removed = new Set(), clearOrder = []; let prog = true;
+    while (prog) { prog = false;
+        for (const p of paths) { if (removed.has(p.id)) continue;
+            if (rcCanEscape(p, removed, graph)) { removed.add(p.id); clearOrder.push(p); prog = true; }
+        }
+    }
+    if (removed.size !== paths.length) return false;
+    const N = clearOrder.length;
+    clearOrder.forEach((p, i) => { p.placeOrder = N - 1 - i; }); // first cleared = highest placeOrder
+    return true;
 }
 
-// -----------------------------------------------------------------------------
-// assignHeadings
-// Evaluates both endpoints of each path as candidate arrowhead positions.
-//
-// Chevron Self-Collision Guard:
-//   Cast a forward ray from each endpoint in its natural outward direction.
-//   Count clear node-steps before hitting the boundary or a self-owned node.
-//   Pick the endpoint with MORE clear steps (safer launch corridor).
-//   Ties default to keeping the last node as head (no reversal).
-//
-// Mutates path.nodes (may reverse) and sets path.heading + path.originalNodes.
-// -----------------------------------------------------------------------------
-function assignHeadings(paths, graph) {
-    for (const p of paths) {
-        const n = p.nodes.length;
+// Piece-length sampling: SHORT/MEDIUM/LONG distribution (root-cell units × f).
+function rcSampleLen(f) {
+    const r = Math.random();
+    if (r < 0.25) return Math.round((3  + Math.random() * 2) * f); // SHORT  3-5
+    if (r < 0.75) return Math.round((5  + Math.random() * 4) * f); // MEDIUM 5-9
+    return            Math.round((10 + Math.random() * 6) * f);    // LONG  10-16
+}
 
-        if (n < 2) {
-            p.heading       = 'RIGHT';
-            p.originalNodes = p.nodes.slice();
-            continue;
+// Anchor sampling: least-occupied / interior-biased (14 candidates, keep best).
+function rcPickAnchor(graph) {
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1, R = rows + 1, C = cols + 1;
+    let best = null, bestScore = -Infinity;
+    for (let k = 0; k < 14; k++) {
+        const r = (Math.random() * R) | 0, c = (Math.random() * C) | 0;
+        if (nodeOwner[r * W + c] !== -1) continue;
+        let empty = 0, tot = 0;
+        for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+            const rr = r + dr, cc = c + dc;
+            if (rr < 0 || rr >= R || cc < 0 || cc >= C) continue;
+            tot++; if (nodeOwner[rr * W + cc] === -1) empty++;
         }
-
-        // Candidate A — arrowhead at last node
-        const last  = p.nodes[n - 1];
-        const prev  = p.nodes[n - 2];
-        const hA    = deltaToHeading(last.r - prev.r, last.c - prev.c);
-        const safeA = forwardRayClearSteps(p.id, last, hA, graph);
-
-        // Candidate B — arrowhead at first node (heading away from body)
-        const first = p.nodes[0];
-        const secnd = p.nodes[1];
-        const hB    = deltaToHeading(first.r - secnd.r, first.c - secnd.c);
-        const safeB = forwardRayClearSteps(p.id, first, hB, graph);
-
-        if (safeB > safeA) {
-            p.nodes.reverse();
-            p.heading = hB;
-        } else {
-            p.heading = hA;
-        }
-
-        p.originalNodes = p.nodes.slice();
+        const interior = Math.min(r, R - 1 - r, c, C - 1 - c) / Math.max(1, Math.min(R, C) / 2);
+        const score = (empty / tot) + interior * 0.5 + Math.random() * 0.1;
+        if (score > bestScore) { bestScore = score; best = { r, c }; }
     }
+    return best;
+}
+
+// Occupancy-aware winding self-avoiding walk from anchor.
+// Prefers turns over straights (turn score 1.0 vs straight 0.4) for variety.
+function rcGrowWalk(graph, anchor, targetLen) {
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1, R = rows + 1, C = cols + 1;
+    const nodes = [{ r: anchor.r, c: anchor.c }];
+    const local = new Set([anchor.r + ',' + anchor.c]);
+    let cur = anchor, pdr = 0, pdc = 0;
+    const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    for (let i = 1; i < targetLen; i++) {
+        const opts = dirs.map(([dr, dc]) => ({ r: cur.r + dr, c: cur.c + dc, dr, dc }))
+            .filter(o => o.r >= 0 && o.r < R && o.c >= 0 && o.c < C &&
+                         nodeOwner[o.r * W + o.c] === -1 && !local.has(o.r + ',' + o.c));
+        if (!opts.length) break;
+        for (const o of opts) {
+            const straight = (o.dr === pdr && o.dc === pdc);
+            o.score = (straight ? 0.4 : 1.0) + Math.random();
+        }
+        opts.sort((a, b) => b.score - a.score);
+        const pick = opts[0];
+        nodes.push({ r: pick.r, c: pick.c }); local.add(pick.r + ',' + pick.c);
+        pdr = pick.dr; pdc = pick.dc; cur = pick;
+    }
+    return nodes;
+}
+
+// Returns true if the straight ray from head in (dr,dc) is clear of all placed pieces.
+function rcHeadRayClear(graph, head, dr, dc) {
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1;
+    let r = head.r + dr, c = head.c + dc;
+    while (r >= 0 && r <= rows && c >= 0 && c <= cols) {
+        if (nodeOwner[r * W + c] !== -1) return false;
+        r += dr; c += dc;
+    }
+    return true;
+}
+
+// Ray length from head to board edge in heading direction (difficulty bias measure).
+function rcRayLenToEdge(h, dr, dc, rows, cols) {
+    if (dr > 0) return rows - h.r;
+    if (dr < 0) return h.r;
+    if (dc > 0) return cols - h.c;
+    return h.c;
+}
+
+// Chain pre-pass: place (depth+1) right-pointing length-2 pieces in a row, left
+// to right.  Each is placed while its right-ray is clear — guarantee preserved.
+// Afterwards each is blocked by its right neighbour → dependency chain of depth = count−1.
+function rcBuildChain(graph, paths, ctr, depth, row) {
+    const { nodeOwner, cols } = graph; const W = cols + 1;
+    const count = depth + 1;
+    if (2 * count - 1 > cols) return 0;
+    let placed = 0;
+    for (let j = 0; j < count; j++) {
+        const c0 = 2 * j;
+        const nodes = [{ r: row, c: c0 }, { r: row, c: c0 + 1 }];
+        if (!nodes.every(n => nodeOwner[n.r * W + n.c] === -1)) break;
+        if (!rcHeadRayClear(graph, nodes[1], 0, 1)) break;
+        for (const n of nodes) nodeOwner[n.r * W + n.c] = ctr.n;
+        paths.push({ id: ctr.n, nodes, heading: 'RIGHT', placeOrder: ctr.n, state: 'IDLE', animProgress: 0, originalNodes: [] });
+        ctr.n++; placed++;
+    }
+    return placed;
+}
+
+// Phase A: main fill — place winding pieces respecting the clear-ray rule.
+// knobs.d  [0,1]: high → prefers long inward rays (harder); low → short exits (easier).
+function rcFillA(graph, paths, ctr, maxFails, knobs) {
+    const d         = (knobs && knobs.d         != null) ? knobs.d         : 0.5;
+    const lenScale  = (knobs && knobs.lenScale  != null) ? knobs.lenScale  : 1;
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1;
+    const f = (typeof State !== 'undefined' && State.subdivFactor) ? State.subdivFactor : 1;
+    let fails = 0;
+    while (fails < maxFails) {
+        const anchor = rcPickAnchor(graph);
+        if (!anchor) { fails++; continue; }
+        const nodes = rcGrowWalk(graph, anchor, Math.max(2, Math.round(rcSampleLen(f) * lenScale)));
+        if (nodes.length < 2) { fails++; continue; }
+        // Try both endpoints as head; pick best by difficulty bias.
+        const cands = [];
+        { const h = nodes[nodes.length - 1], pv = nodes[nodes.length - 2];
+          const dr = h.r - pv.r, dc = h.c - pv.c;
+          if (rcHeadRayClear(graph, h, dr, dc)) cands.push({ seq: nodes, h, dr, dc }); }
+        { const h = nodes[0], pv = nodes[1];
+          const dr = h.r - pv.r, dc = h.c - pv.c;
+          if (rcHeadRayClear(graph, h, dr, dc)) cands.push({ seq: nodes.slice().reverse(), h, dr, dc }); }
+        if (!cands.length) { fails++; continue; }
+        let best = null, bestScore = -Infinity;
+        for (const cn of cands) {
+            const rl = rcRayLenToEdge(cn.h, cn.dr, cn.dc, rows, cols) / Math.max(rows, cols);
+            const sc = (2 * d - 1) * rl + Math.random() * 0.25;
+            if (sc > bestScore) { bestScore = sc; best = cn; }
+        }
+        for (const n of best.seq) nodeOwner[n.r * W + n.c] = ctr.n;
+        paths.push({ id: ctr.n, nodes: best.seq, heading: deltaToHeading(best.dr, best.dc),
+                     placeOrder: ctr.n, state: 'IDLE', animProgress: 0, originalNodes: [] });
+        ctr.n++; fails = 0;
+    }
+}
+
+// Phase B: gap fill — place small new pieces in empty pockets.
+function rcFillB(graph, paths, ctr) {
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1, R = rows + 1, C = cols + 1;
+    let progress = true;
+    while (progress) {
+        progress = false;
+        for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+            if (nodeOwner[r * W + c] !== -1) continue;
+            for (let attempt = 0; attempt < 6 && nodeOwner[r * W + c] === -1; attempt++) {
+                const nodes = rcGrowWalk(graph, { r, c }, 2 + (Math.random() * 3 | 0));
+                if (nodes.length < 2) continue;
+                const ends = [[nodes[nodes.length - 1], nodes[nodes.length - 2], false],
+                              [nodes[0],                 nodes[1],                 true]];
+                for (const [h, pv, rev] of ends) {
+                    const dr = h.r - pv.r, dc = h.c - pv.c;
+                    if (!rcHeadRayClear(graph, h, dr, dc)) continue;
+                    const seq = rev ? nodes.slice().reverse() : nodes;
+                    const id = ctr.n++;
+                    for (const n of seq) nodeOwner[n.r * W + n.c] = id;
+                    paths.push({ id, nodes: seq, heading: deltaToHeading(dr, dc),
+                                 placeOrder: id, state: 'IDLE', animProgress: 0, originalNodes: [] });
+                    progress = true; break;
+                }
+            }
+        }
+    }
+}
+
+// Phase C: tail-append isolated empty nodes; validate with complete oracle; revert LIFO if needed.
+function rcFillC(graph, paths) {
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1, R = rows + 1, C = cols + 1;
+    const byId = new Map(paths.map(p => [p.id, p]));
+    const appends = []; let progress = true;
+    while (progress) {
+        progress = false;
+        for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+            if (nodeOwner[r * W + c] !== -1) continue;
+            const nb = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+            for (const [ar, ac] of nb) {
+                if (ar < 0 || ar >= R || ac < 0 || ac >= C) continue;
+                const oid = nodeOwner[ar * W + ac]; if (oid < 0) continue;
+                const p = byId.get(oid); if (!p) continue;
+                const tail = p.nodes[0];
+                if (tail.r !== ar || tail.c !== ac) continue;
+                p.nodes.unshift({ r, c }); nodeOwner[r * W + c] = oid;
+                appends.push({ r, c, p }); progress = true; break;
+            }
+        }
+    }
+    // Validate with complete oracle; revert LIFO until solvable; recompute placeOrder.
+    while (appends.length && !rcBoardSolvable(paths, graph)) {
+        const a = appends.pop();
+        a.p.nodes.shift();
+        nodeOwner[a.r * W + a.c] = -1;
+    }
+    rcRecomputePlaceOrder(paths, graph);
+}
+
+// Full reverse constructor: chain backbone → Phase A → two rounds of B+C.
+function reverseConstruct(graph, knobs) {
+    const chainDepth = (knobs && knobs.chainDepth) || 0;
+    const paths = []; const ctr = { n: 0 };
+    if (chainDepth > 0) {
+        const row = 1 + ((Math.random() * graph.rows) | 0);
+        rcBuildChain(graph, paths, ctr, chainDepth, row);
+    }
+    // maxFails proportional to board size: caps the fail-countdown once the board
+    // is near-full, avoiding hundreds of ms burning through guaranteed-empty attempts.
+    const totalNodes = (graph.rows + 1) * (graph.cols + 1);
+    const maxFails   = Math.max(400, Math.floor(totalNodes * 0.55));
+    rcFillA(graph, paths, ctr, maxFails, knobs);
+    for (let round = 0; round < 2; round++) {
+        rcFillB(graph, paths, ctr);
+        rcFillC(graph, paths);
+    }
+    return paths;
+}
+
+// Map difficulty tier → chainDepth knob.
+function rcChainDepthForTier(tier) {
+    return { EASY: 0, NORMAL: 0, HARD: 4, EXPERT: 7, TITAN: 11 }[tier] || 0;
+}
+
+// Generate up to `batch` boards, return the one whose measured tier matches target
+// (or the closest-scoring one if no exact match within the batch).
+// After returning, graph.nodeOwner is always consistent with the returned paths.
+function rcConstructForTier(graph, tier, batch) {
+    const TIER_CENTER = { EASY: 3, NORMAL: 9.5, HARD: 17.5, EXPERT: 25.5, TITAN: 33 };
+    const cd = rcChainDepthForTier(tier);
+    const d  = (tier === 'EASY') ? 0 : 0.5;
+    let best = null, bestDelta = Infinity;
+    for (let i = 0; i < batch; i++) {
+        const cdi = Math.max(0, cd + ((i % 3) - 1));   // bracket cd-1 .. cd+1
+        const paths = reverseConstruct(graph, { d, chainDepth: cdi });
+        const cx = evaluateBoardComplexity(paths, graph);
+        if (cx.tier === tier) return { paths, cx };             // graph is in correct state
+        const delta = Math.abs(cx.score - TIER_CENTER[tier]);
+        if (delta < bestDelta) { bestDelta = delta; best = { paths, cx }; }
+        // Reset graph for next attempt — only if another attempt follows
+        if (i < batch - 1) {
+            graph.nodeOwner.fill(-1);
+            graph.hEdge.forEach(row => row.fill(-1));
+            graph.vEdge.forEach(row => row.fill(-1));
+        }
+    }
+    // After the loop, graph.nodeOwner may be stale (from a reset after a non-best
+    // iteration). Rebuild it from the best paths so callers always get a consistent pair.
+    if (best) {
+        const W = graph.cols + 1;
+        graph.nodeOwner.fill(-1);
+        for (const p of best.paths)
+            for (const { r, c } of p.nodes)
+                graph.nodeOwner[r * W + c] = p.id;
+    }
+    return best;
 }

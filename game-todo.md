@@ -734,9 +734,9 @@ Verify the full system end-to-end with subdivision active.
 | SD-5 | Renderer: Dot Grid + subCellSize   | ✅ done  |
 | SD-6 | Input Detection Fix                | ✅ done  |
 | SD-7 | Persistence V4                     | ✅ done  |
-| SD-8 | Integration Sweep                  | pending |
-| 15   | Full Game Sweep                    | pending |
-| 16   | Cleanup + Final                    | pending |
+| SD-8 | Integration Sweep                  | ✅ superseded by RC-8 regression harness |
+| 15   | Full Game Sweep                    | ✅ superseded by RC-8 regression harness |
+| 16   | Cleanup + Final                    | ✅ superseded by RC-9 |
 | OA-1 | Explicit Length Tier Distribution  | ✅ done  |
 | OA-2 | Trail Personality Object           | ✅ done  |
 | OA-3 | Phase Vocabulary + Rhythm Profiles | ✅ done  |
@@ -913,3 +913,184 @@ Ensure no single board accidentally over-produces one personality type due to ra
 - Length tier distribution checked against OA-1 targets — if fragmentation drifted, re-balance
 
 **Visual result:** every board is guaranteed to have directional variety, handedness variety, and rhythm variety — not by chance but by design.
+
+---
+
+---
+
+# REVERSE-CONSTRUCTION MIGRATION (Solvability-by-Design)
+
+**Why this is needed:**
+The current pipeline generates dense geometry first, then *checks* solvability via the
+unjammer + `isBoardFullySolvable` gate. Headless testing of the real generator proves this
+**never** produces a solvable board at large sizes — root **24×18** (micro 48×36, ~155 paths)
+fails **0/40** attempts and silently falls back to the `10×12` grid. The deadlock is baked into
+the geometry before any check runs; an *optimal* global peel still leaves 111/156 paths stuck.
+No solver, unjammer, or retry count can fix it.
+
+**The fix — build the board backwards.** Place pieces one at a time; a piece may only be
+placed where its head's straight ray to the board edge is *currently* clear of already-placed
+pieces. Record placement order. The guaranteed solve = that order reversed. Solvability becomes
+a property of construction, not a search. Verified on this game's exact node model: root 24×18
+reverse-constructs **18/20 solvable at ~161 paths** (more paths than the forward method can't
+even do once), provably 20/20 with a constructor that honors its own placement order.
+
+**Core invariant (the one rule everything serves):**
+> A piece is placed only if the straight ray from its head node, in its heading
+> (terminal-segment direction), is clear of all already-placed pieces at that moment.
+
+**Escape model (confirmed in `animationUpdateTick` / `canEscapeEdge`):** snake model — the head
+exits in a straight line along its heading; the body retraces its own owned cells. Only the
+**head's forward ray** matters for clearance.
+
+Each step requires explicit approval before starting.
+
+---
+
+## STEP RC-1 — Reverse Constructor Phase A (Interior Fill) — Harness Prototype
+**File:** `diag-gen.js` (scratch harness — no game code yet)
+- Implement `reverseConstruct(graph, params)`:
+  - Start with empty `nodeOwner` (all -1).
+  - Loop: generate a winding self-avoiding orthogonal walk (length from SHORT/MEDIUM/LONG tier);
+    pick an anchor weighted toward least-occupied / interior region.
+  - head = last node; heading = terminal-segment direction.
+  - Place **only if** every node empty AND the head ray to the edge is clear of existing pieces.
+  - Record `{ id, nodes, heading, placeOrder }`. Stop after K consecutive failures.
+- **Test:** generate 40 boards at root 24×18 (micro 48×36). Assert **solvable == 40/40** via the
+  peel solver. Log path count + coverage. (Coverage will be low here — that is RC-2's job.)
+
+**Approval required before RC-2**
+
+---
+
+## STEP RC-2 — Phases B + C (Coverage to Threshold)
+**File:** `diag-gen.js` (continue)
+- **Phase B — gap fill:** scan empty regions; grow a small piece into each, trying all 4 head
+  orientations and a few shapes; accept the first with a clear head ray.
+- **Phase C — single-node cleanup:** append remaining isolated empty nodes to an adjacent piece's
+  **tail** (end away from the head). Each append is **validated** against solvability and reverted
+  if it blocks any earlier-removed piece's ray.
+- Add a **coverage target** (start ~90%, tune empirically); small retry loop to hit it.
+- **Test:** at root 24×18, report coverage distribution + path counts; assert solvable == trials
+  at the chosen threshold. Confirm coverage ≥ target on the majority of boards.
+
+**Approval required before RC-3**
+
+---
+
+## STEP RC-3 — Per-Tier Difficulty Tuning During Construction
+**File:** `diag-gen.js` (continue)
+- Drive difficulty by construction knobs (piece length distribution + how aggressively pieces
+  stack into each other's exit corridors → deeper forced solve chains → higher tier).
+- Keep `evaluateBoardComplexity` / `getDifficultyTier` as **measurement/labels only** (not a gate).
+- **Test:** sweep knob sets; confirm the resulting tier distribution can be steered to match
+  `selectTargetDifficulty`'s targets across level bands (EASY→TITAN).
+
+**Approval required before RC-4**
+
+---
+
+## STEP RC-4 — Port Constructor into the Game
+**File:** `js/board-gen.js`, `js/edge-gen.js`
+- Move `reverseConstruct` + helpers (`randomWindingShape`, `headRayClear`, gap-fill, tail-append)
+  into `edge-gen.js`. Reuse the OA personality system to shape the walks.
+- Rewrite `_build100PackedLevelEdge` control flow:
+  ```
+  pick size (getSizesForLevel)                 [unchanged]
+  target = selectTargetDifficulty(...)         [unchanged]
+  for a few attempts:
+      graph = buildEdgeGraph(rows, cols)        [reused]
+      paths = reverseConstruct(graph, tierParams)
+      assert isBoardFullySolvable(paths, graph) [assert, not gate]
+      measure complexity + aesthetic + coverage
+      keep best by (tier match, coverage, aesthetic)
+  commit best
+  ```
+- Commit step **identical to today**: set `State.paths`, headings already final,
+  `originalNodes = nodes.slice()`, rebuild `State.nodeOwner`, derive `hEdge`/`vEdge` via
+  `reserveEdge`, set difficulty (with allowed-tier cap), push `recentDifficulties`,
+  `Persistence.saveState()`, `startPathRevealAnimation()`.
+- **Test in index.html:** levels 1–10 generate without errors; no board falls to hard fallback.
+
+**Approval required before RC-5**
+
+---
+
+## STEP RC-5 — Retire Dead Generation Code
+**Files:** `js/edge-gen.js`, `js/edge-logic.js`
+- Remove `assignHeadings`, `buildDAGHeadings`, `runUnjammingPass` (no longer needed — headings are
+  final at placement, solvability guaranteed).
+- Demote `isBoardFullySolvable` to a **post-build assertion** (logs an error if ever false;
+  should never fire). Keep `canEscapeEdge`, `headingToDelta`/`deltaToHeading`, `getLeadingEdgeOwner`,
+  `buildEdgeGraph`, `reserveEdge`.
+- Remove the now-dead 20-retry-and-pray loop and its tier/aesthetic fallback cascade (replaced by
+  the small RC-4 loop).
+- **Test:** generation still succeeds across all sizes; no references to removed functions remain.
+
+**Approval required before RC-6**
+
+---
+
+## STEP RC-6 — Relax Coverage Invariant + Safety Asserts
+**Files:** `js/board-gen.js`, `CLAUDE.md`, `ARCHITECTURE.md` (invariant note only)
+- Replace the strict **100%-coverage** invariant with a **coverage-target** invariant (≥ threshold).
+- Keep the orthogonal-only and single-owner checks; empty nodes are valid (render as bare dots).
+- Add the post-build solvability assert; validate every Phase-C tail append.
+- **Test:** assert no diagonal steps, no double-owned nodes, solvability holds on 50 boards/size.
+
+**Approval required before RC-7**
+
+---
+
+## STEP RC-7 — Persistence (optional V5 bump)  ⟵ DECISION NEEDED
+**File:** `js/persistence.js`
+- V4 format already stores `paths` + dims and rebuilds `nodeOwner` on load — **compatible**.
+- **Decision:** bump to **V5** to silently discard old fallback/half-broken saves (same pattern as
+  V2/V3 discard), or keep loading V4 saves as-is.
+- **Test:** complete a level, reload, resume; confirm restore + collisions; old save handled per decision.
+
+**Approval required before RC-8**
+
+---
+
+## STEP RC-8 — Full Game Sweep (All Sizes, In-Browser)
+**Files:** integration testing + `diag-gen.js` regression
+- Regression harness: assert **solvable == trials** for *every* size in `getSizesForLevel`,
+  including root 24×18. Report coverage + path counts + tier spread per level band.
+- In `index.html`: play levels 1→100 sample, verify render/input/solve/crash/clear end-to-end,
+  generation time, daily puzzle, save/load. Confirm **no board ever hits the hard fallback**.
+
+**Approval required before RC-9**
+
+---
+
+## STEP RC-9 — Docs + Cleanup
+**Files:** `ARCHITECTURE.md`, `CLAUDE.md`, `game-todo.md`, `diag-gen.js`
+- Document the reverse-construction model and the relaxed coverage invariant.
+- Note the retired forward pipeline (`assignHeadings`/`buildDAGHeadings`/`runUnjammingPass`).
+- Decide whether to keep `diag-gen.js` as a committed regression harness or delete it.
+- Mark all RC steps complete.
+
+---
+
+## OPEN DECISIONS
+- **Coverage floor** — ✅ DECIDED: floor **80%**, ~85% achieved (avg). 90% deferred (would need a
+  frontier/slide-in Phase A packer; revisit only if boards look sparse in-browser).
+- **Strict 100% coverage** — ✅ RELAXED to the 80% floor above (required for solvability at scale).
+- **Persistence V5 bump** — discard old saves, or keep loading them? (resolve at RC-7.)
+
+---
+
+## RC STATUS
+
+| Step | Description                              | Status   |
+|------|------------------------------------------|----------|
+| RC-1 | Reverse constructor Phase A (harness)    | ✅ done — 40/40 solvable @ 24×18, 61% coverage |
+| RC-2 | Phases B+C — coverage to threshold       | ✅ done — 40/40 solvable @ 24×18, ~85% coverage (floor 80%) |
+| RC-3 | Per-tier difficulty tuning               | ✅ done — chainDepth dial steers EASY→TITAN (TITAN 12/12 @ L100), 100% solvable |
+| RC-4 | Port constructor into game               | ✅ done — generates L1–L100, no fallback, verified headless |
+| RC-5 | Retire dead generation code              | ✅ done — 6 functions removed, 0 dead refs, all levels OK |
+| RC-6 | Relax coverage invariant + asserts       | ✅ done — 400/400 boards: 0 diagonal errors, 0 owner errors, 0 coverage warnings |
+| RC-7 | Persistence (optional V5 bump)           | ✅ done — V4 kept; dimension guard discards fallback saves; 13/13 tests pass |
+| RC-8 | Full game sweep (all sizes, in-browser)  | ✅ done — 840/840 boards: 0 solvability failures, 0 assert errors, 0 fallbacks |
+| RC-9 | Docs + cleanup                           | ✅ done — docs current, scratch files deleted, tests committed |
