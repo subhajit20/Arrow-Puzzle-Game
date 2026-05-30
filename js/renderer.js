@@ -149,15 +149,9 @@ function drawEngine() {
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
 
-        // Edge paths: micro-grid nodes at sCS pitch, no center offset.
-        // Cell paths (legacy): root-grid cells at cSize pitch, +cSize/2 center offset.
-        const pts = p.nodes ?? p.points;
-        const pixScale = p.nodes ? sCS : cSize;
-        const pxOff = p.nodes ? 0 : cSize / 2;
-
-        const fullTrack = pts.map(pt => ({
-            x: ox + pt.c * pixScale + pxOff,
-            y: oy + pt.r * pixScale + pxOff
+        const fullTrack = p.nodes.map(pt => ({
+            x: ox + pt.c * sCS,
+            y: oy + pt.r * sCS
         }));
 
         let len = pts.length;
@@ -251,58 +245,26 @@ function animationUpdateTick() {
             State.animatingCount++;
             p.animProgress += 0.26 * (State.subdivFactor || 1);
 
-            if (p.nodes && State.nodeOwner) {
-                // ── Node-based collision (node-Hamiltonian model) ─────────────
-                const head = p.nodes[p.nodes.length - 1];
-                let dr = 0, dc = 0;
-                if (p.heading === "UP") dr = -1;
-                if (p.heading === "DOWN") dr = 1;
-                if (p.heading === "LEFT") dc = -1;
-                if (p.heading === "RIGHT") dc = 1;
+            const head = p.nodes[p.nodes.length - 1];
+            let dr = 0, dc = 0;
+            if (p.heading === "UP") dr = -1;
+            if (p.heading === "DOWN") dr = 1;
+            if (p.heading === "LEFT") dc = -1;
+            if (p.heading === "RIGHT") dc = 1;
 
-                const steps = Math.round(p.animProgress);
-                const leadR = head.r + dr * steps;
-                const leadC = head.c + dc * steps;
-                const _W = State.gridCols + 1;
+            const steps = Math.round(p.animProgress);
+            const leadR = head.r + dr * steps;
+            const leadC = head.c + dc * steps;
+            const _W = State.gridCols + 1;
 
-                if (leadR >= 0 && leadR <= State.gridRows &&
-                    leadC >= 0 && leadC <= State.gridCols) {
-                    const ownerId = State.nodeOwner[leadR * _W + leadC];
-                    if (ownerId >= 0 && ownerId !== p.id) {
-                        const ownerPath = State.paths.find(o => o.id === ownerId);
-                        if (ownerPath &&
-                            ownerPath.state !== "CLEARED" &&
-                            ownerPath.state !== "MOVING") {
-                            p.state = "CRASHING";
-                            p.crashFlashFrames = 8;
-                            AudioEngine.crash();
-                            triggerCameraShake();
-                            processFailurePenalty();
-                        }
-                    }
-                }
-            } else {
-                // ── Cell-based collision (legacy / fallback) ──────────────────
-                let head = p.points[p.points.length - 1];
-                let dr = 0, dc = 0;
-                if (p.heading === "UP") dr = -1;
-                if (p.heading === "DOWN") dr = 1;
-                if (p.heading === "LEFT") dc = -1;
-                if (p.heading === "RIGHT") dc = 1;
-
-                let leadingGridR = Math.round(head.r + dr * p.animProgress);
-                let leadingGridC = Math.round(head.c + dc * p.animProgress);
-
-                if (leadingGridR >= 0 && leadingGridR < State.gridRows && leadingGridC >= 0 && leadingGridC < State.gridCols) {
-                    let hit = State.paths.some(other => {
-                        if (other.id === p.id || other.state === "CLEARED" || other.state === "MOVING") return false;
-                        let occupied = getPathOccupiedCells(other);
-                        return occupied.some(opt => opt.r === leadingGridR && opt.c === leadingGridC);
-                    });
-
-                    let hitWall = (State.gridMask[leadingGridR]?.[leadingGridC] === -1);
-
-                    if (hit || hitWall) {
+            if (leadR >= 0 && leadR <= State.gridRows &&
+                leadC >= 0 && leadC <= State.gridCols) {
+                const ownerId = State.nodeOwner[leadR * _W + leadC];
+                if (ownerId >= 0 && ownerId !== p.id) {
+                    const ownerPath = State.paths.find(o => o.id === ownerId);
+                    if (ownerPath &&
+                        ownerPath.state !== "CLEARED" &&
+                        ownerPath.state !== "MOVING") {
                         p.state = "CRASHING";
                         p.crashFlashFrames = 8;
                         AudioEngine.crash();

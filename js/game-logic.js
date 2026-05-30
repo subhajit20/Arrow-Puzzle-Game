@@ -1,63 +1,6 @@
 function getPathOccupiedCells(p) {
     if (p.state === "CLEARED") return [];
-    if (p.nodes) return p.nodes; // edge-based path — nodes serve as occupied positions
-    if (p.state === "IDLE") return p.points;
-
-    const cells = [];
-    const len = p.points.length;
-    const lastPt = p.points[len - 1];
-    let dr = 0, dc = 0;
-    if (p.heading === "UP") dr = -1;
-    if (p.heading === "DOWN") dr = 1;
-    if (p.heading === "LEFT") dc = -1;
-    if (p.heading === "RIGHT") dc = 1;
-
-    const startIdx = Math.floor(p.animProgress);
-    const endIdx = Math.ceil((len - 1) + p.animProgress);
-
-    for (let i = startIdx; i <= endIdx; i++) {
-        if (i < len) {
-            cells.push(p.points[i]);
-        } else {
-            const j = i - (len - 1);
-            cells.push({
-                r: lastPt.r + dr * j,
-                c: lastPt.c + dc * j
-            });
-        }
-    }
-    return cells;
-}
-
-function getUnblockedPaths() {
-    return State.paths.filter(p => {
-        if (p.state !== "IDLE") return false;
-        let head = p.points[p.points.length - 1];
-        let dr = 0, dc = 0;
-        if (p.heading === "UP") dr = -1;
-        if (p.heading === "DOWN") dr = 1;
-        if (p.heading === "LEFT") dc = -1;
-        if (p.heading === "RIGHT") dc = 1;
-
-        let checkR = head.r + dr;
-        let checkC = head.c + dc;
-
-        while (checkR >= 0 && checkR < State.gridRows && checkC >= 0 && checkC < State.gridCols) {
-            if (State.gridMask[checkR]?.[checkC] === -1) {
-                return false;
-            }
-
-            let collision = State.paths.some(other => {
-                if (other.id === p.id || other.state === "CLEARED") return false;
-                let occupied = getPathOccupiedCells(other);
-                return occupied.some(pt => pt.r === checkR && pt.c === checkC);
-            });
-            if (collision) return false;
-            checkR += dr;
-            checkC += dc;
-        }
-        return true;
-    });
+    return p.nodes;
 }
 
 function triggerCameraShake() {
@@ -203,13 +146,10 @@ const actions = {
     },
     useHint() {
         if (State.isWinState || State.isFailState) return;
-        let clearPaths = getUnblockedPaths();
-        if (clearPaths.length > 0) {
-            State.hintPathId = clearPaths[Math.floor(Math.random() * clearPaths.length)].id;
+        const remaining = State.paths.filter(p => p.state === "IDLE");
+        if (remaining.length > 0) {
+            State.hintPathId = remaining[Math.floor(Math.random() * remaining.length)].id;
             AudioEngine.playTone(880.00, 'sine', 0.15, 0.08);
-        } else {
-            let remaining = State.paths.filter(p => p.state === "IDLE");
-            if (remaining.length > 0) State.hintPathId = remaining[0].id;
         }
     }
 };

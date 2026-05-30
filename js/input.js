@@ -157,18 +157,7 @@ canvas.addEventListener('touchend', (e) => {
             const cSize = State.cellSize;
             const hitR  = cSize * 0.7;
 
-            let selected = findPathByEdgeTap(touchStartCoords.x, touchStartCoords.y, hitR);
-
-            if (!selected) {
-                // Cell-based fallback (old engine)
-                let clickedR = Math.floor((touchStartCoords.y - State.offsetY) / cSize);
-                let clickedC = Math.floor((touchStartCoords.x - State.offsetX) / cSize);
-                selected = State.paths.find(p => {
-                    if (p.state !== "IDLE") return false;
-                    return p.points?.some(pt => pt.r === clickedR && pt.c === clickedC);
-                }) ?? null;
-            }
-
+            const selected = findPathByEdgeTap(touchStartCoords.x, touchStartCoords.y, hitR);
             if (selected) {
                 AudioEngine.tap();
                 selected.state = "MOVING";
@@ -215,19 +204,7 @@ canvas.addEventListener('mousemove', (e) => {
     const coords = getCanvasCoords(e.clientX, e.clientY);
     const cSize  = State.cellSize;
 
-    let hovered = findPathByEdgeTap(coords.x, coords.y, cSize * 0.6);
-
-    if (!hovered) {
-        // Cell-based fallback (old engine)
-        let hoveredR = Math.floor((coords.y - State.offsetY) / cSize);
-        let hoveredC = Math.floor((coords.x - State.offsetX) / cSize);
-        hovered = State.paths.find(p => {
-            if (p.state !== "IDLE") return false;
-            return p.points?.some(pt => pt.r === hoveredR && pt.c === hoveredC);
-        }) ?? null;
-    }
-
-    State.selectedPath = hovered || null;
+    State.selectedPath = findPathByEdgeTap(coords.x, coords.y, cSize * 0.6) || null;
 
     if (isMouseDown) {
         let dx = e.clientX - lastMouseX;
@@ -247,18 +224,7 @@ window.addEventListener('mouseup', (e) => {
             const cSize = State.cellSize;
             const hitR  = cSize * 0.7;
 
-            let selected = findPathByEdgeTap(mouseDownCoords.x, mouseDownCoords.y, hitR);
-
-            if (!selected) {
-                // Cell-based fallback (old engine)
-                let clickedR = Math.floor((mouseDownCoords.y - State.offsetY) / cSize);
-                let clickedC = Math.floor((mouseDownCoords.x - State.offsetX) / cSize);
-                selected = State.paths.find(p => {
-                    if (p.state !== "IDLE") return false;
-                    return p.points?.some(pt => pt.r === clickedR && pt.c === clickedC);
-                }) ?? null;
-            }
-
+            const selected = findPathByEdgeTap(mouseDownCoords.x, mouseDownCoords.y, hitR);
             if (selected) {
                 AudioEngine.tap();
                 selected.state = "MOVING";

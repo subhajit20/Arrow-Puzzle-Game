@@ -13,7 +13,6 @@ const State = {
     // Subdivision
     subdivFactor: 2,      // each root-cell axis splits into this many micro-units
     subCellSize:  0,      // pixel pitch of micro-grid nodes = cellSize / subdivFactor
-    gridMask: [],
     shapeName: "Square Matrix",
     hEdge: null,      // edge-based: (rows+1) × cols  Int32Array[]
     vEdge: null,      // edge-based: rows × (cols+1) Int32Array[]
@@ -30,7 +29,6 @@ const State = {
     hintPathId: null,
     levelStartScore: 0,
     dailyPuzzleMode: false,
-    dailyPuzzleScoreAtStart: 0,
     dailyScore: 0,
     cssZoom: 1.0,
     matE: 0,
