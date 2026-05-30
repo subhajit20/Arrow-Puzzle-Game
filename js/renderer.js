@@ -154,8 +154,8 @@ function drawEngine() {
             y: oy + pt.r * sCS
         }));
 
-        let len = pts.length;
-        let lastPt = pts[len - 1];
+        let len = p.nodes.length;
+        let lastPt = p.nodes[len - 1];
         let dr = 0, dc = 0;
         if (p.heading === "UP") dr = -1;
         if (p.heading === "DOWN") dr = 1;
@@ -164,8 +164,8 @@ function drawEngine() {
 
         for (let j = 1; j <= Math.max(State.gridRows, State.gridCols) + 2; j++) {
             fullTrack.push({
-                x: ox + (lastPt.c + dc * j) * pixScale + pxOff,
-                y: oy + (lastPt.r + dr * j) * pixScale + pxOff
+                x: ox + (lastPt.c + dc * j) * sCS,
+                y: oy + (lastPt.r + dr * j) * sCS
             });
         }
 
