@@ -27,6 +27,9 @@ function applyBoardTransform() {
         const scaledBoardW = boardW * State.cssZoom;
         const scaledBoardH = boardH * State.cssZoom;
 
+        // One visible cell of breathing room beyond every board edge.
+        const overscroll = State.cellSize * State.cssZoom;
+
         // Horizontal ─────────────────────────────────────────────────────────
         const ox = State.offsetX || 0;
         if (scaledBoardW <= bcr.width) {
@@ -34,9 +37,9 @@ function applyBoardTransform() {
             const scaledW = State.canvasW * State.cssZoom;
             State.matE = (bcr.width - scaledW) / 2;
         } else {
-            // Board wider than container: allow panning across full board width
-            const maxE  = -ox * State.cssZoom;
-            const minE  = bcr.width - (ox + boardW) * State.cssZoom;
+            // Board wider than container: allow panning with overscroll at edges
+            const maxE  = -ox * State.cssZoom + overscroll;
+            const minE  = bcr.width - (ox + boardW) * State.cssZoom - overscroll;
             State.matE  = Math.min(maxE, Math.max(minE, State.matE));
         }
 
@@ -50,9 +53,9 @@ function applyBoardTransform() {
             // Board shorter than visible gameplay height: center it vertically
             State.matF = visibleH / 2 - (oy + boardH / 2) * State.cssZoom;
         } else {
-            // Board taller than visible gameplay height: allow vertical panning
-            const maxF = -oy * State.cssZoom;
-            const minF = visibleH - (oy + boardH) * State.cssZoom;
+            // Board taller than visible gameplay height: allow vertical panning with overscroll
+            const maxF = -oy * State.cssZoom + overscroll;
+            const minF = visibleH - (oy + boardH) * State.cssZoom - overscroll;
             State.matF = Math.min(maxF, Math.max(minF, State.matF));
         }
     }
@@ -250,16 +253,15 @@ function startCameraEntranceAnimation() {
     const startF = State.matF;
 
     // ── Step 2 target: normal gameplay position ───────────────────────────────
-    const targetZ = 1.35;
-    
-    // Dynamically calculate the perfect target translation values for zoom=1.35
-    const oldZoom = State.cssZoom;
-    const oldE = State.matE;
-    const oldF = State.matF;
-    
+    const targetZ = 1.65;
+
+    // Seed matE/matF at the board-center position before applyBoardTransform
+    // so the clamp anchors to the center, not the top-left corner.
+    const _boardW = State.rootCols * State.cellSize;
+    const _boardH = State.rootRows * State.cellSize;
     State.cssZoom = targetZ;
-    State.matE = 0;
-    State.matF = 0;
+    State.matE = bcr.width / 2 - (State.offsetX + _boardW / 2) * targetZ;
+    State.matF = visibleH  / 2 - (State.offsetY + _boardH / 2) * targetZ;
     applyBoardTransform();
     
     const targetE = State.matE;

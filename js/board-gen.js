@@ -4,50 +4,51 @@
 // Notation: cols×rows (width × height) — all portrait/vertical boards.
 // -----------------------------------------------------------------------------
 function getSizesForLevel(level) {
-    // Levels 1–5: fixed tutorial grids — one specific size per level
-    if (level === 1) return [{ rows:  1, cols:  2 }];  // 2×1  →  8 subcells
-    if (level === 2) return [{ rows:  2, cols:  3 }];  // 3×2  → 24 subcells
-    if (level === 3) return [{ rows:  3, cols:  4 }];  // 4×3  → 48 subcells
-    if (level === 4) return [{ rows:  4, cols:  4 }];  // 4×4  → 64 subcells
-    if (level === 5) return [{ rows:  4, cols:  6 }];  // 6×4  → 96 subcells
+    // All sizes: rows = height (vertical), cols = width (horizontal).
+    // Portrait rule: rows > cols throughout. Target ratio rows/cols ≈ 1.5–1.75.
+    if (level === 1) return [{ rows:  3, cols:  2 }];  // ratio 1.50
+    if (level === 2) return [{ rows:  4, cols:  3 }];  // ratio 1.33
+    if (level === 3) return [{ rows:  5, cols:  3 }];  // ratio 1.67
+    if (level === 4) return [{ rows:  6, cols:  4 }];  // ratio 1.50
+    if (level === 5) return [{ rows:  7, cols:  4 }];  // ratio 1.75
 
     if (level <= 10) return [
-        { rows:  8, cols:  6 },   // 6×8
-        { rows: 10, cols:  8 },   // 8×10
-        { rows: 12, cols:  8 },   // 8×12
-        { rows: 12, cols: 10 },   // 10×12
+        { rows:  8, cols:  5 },   // ratio 1.60
+        { rows:  9, cols:  6 },   // ratio 1.50
+        { rows: 10, cols:  6 },   // ratio 1.67
+        { rows: 10, cols:  7 },   // ratio 1.43
     ];
     if (level <= 20) return [
-        { rows: 12, cols: 10 },   // 10×12
-        { rows: 14, cols: 10 },   // 10×14
-        { rows: 14, cols: 12 },   // 12×14
-        { rows: 16, cols: 12 },   // 12×16
+        { rows: 12, cols:  7 },   // ratio 1.71
+        { rows: 12, cols:  8 },   // ratio 1.50
+        { rows: 14, cols:  8 },   // ratio 1.75
+        { rows: 14, cols:  9 },   // ratio 1.56
     ];
     if (level <= 45) return [
-        { rows: 18, cols: 12 },   // 12×18
-        { rows: 20, cols: 14 },   // 14×20
-        { rows: 22, cols: 16 },   // 16×22
-        { rows: 24, cols: 18 },   // 18×24
+        { rows: 16, cols: 10 },   // ratio 1.60
+        { rows: 18, cols: 11 },   // ratio 1.64
+        { rows: 20, cols: 12 },   // ratio 1.67
+        { rows: 22, cols: 13 },   // ratio 1.69
     ];
     if (level <= 70) return [
-        { rows: 24, cols: 18 },   // 18×24
-        { rows: 26, cols: 18 },   // 18×26
-        { rows: 26, cols: 20 },   // 20×26
-        { rows: 28, cols: 20 },   // 20×28
+        { rows: 22, cols: 14 },   // ratio 1.57
+        { rows: 24, cols: 15 },   // ratio 1.60
+        { rows: 26, cols: 16 },   // ratio 1.63
+        { rows: 28, cols: 17 },   // ratio 1.65
     ];
     if (level <= 99) return [
-        { rows: 28, cols: 20 },   // 20×28
-        { rows: 28, cols: 22 },   // 22×28
-        { rows: 30, cols: 22 },   // 22×30
-        { rows: 30, cols: 24 },   // 24×30
+        { rows: 28, cols: 18 },   // ratio 1.56
+        { rows: 30, cols: 18 },   // ratio 1.67
+        { rows: 32, cols: 20 },   // ratio 1.60
+        { rows: 34, cols: 20 },   // ratio 1.70
     ];
     if (level === 100) return [
-        { rows: 32, cols: 24 },   // 24×32 — boss level
+        { rows: 36, cols: 22 },   // ratio 1.64 — boss level
     ];
     return [
-        { rows: 30, cols: 22 },   // 22×30
-        { rows: 30, cols: 24 },   // 24×30
-        { rows: 32, cols: 24 },   // 24×32
+        { rows: 34, cols: 20 },   // ratio 1.70
+        { rows: 36, cols: 22 },   // ratio 1.64
+        { rows: 38, cols: 24 },   // ratio 1.58
     ];
 }
 
