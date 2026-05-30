@@ -160,7 +160,15 @@ canvas.addEventListener('touchend', (e) => {
             const selected = findPathByEdgeTap(touchStartCoords.x, touchStartCoords.y, hitR);
             if (selected) {
                 AudioEngine.tap();
-                selected.state = "MOVING";
+                // Flash the path blue for ~120ms before moving so the tap
+                // is visually confirmed on mobile (no hover state exists).
+                State.selectedPath = selected;
+                setTimeout(() => {
+                    if (selected.state === "IDLE") {
+                        selected.state = "MOVING";
+                        State.selectedPath = null;
+                    }
+                }, 120);
             }
         }
     }
