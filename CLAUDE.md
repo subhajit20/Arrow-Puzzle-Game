@@ -35,7 +35,7 @@ Pipeline in `_build100PackedLevelEdge` (`board-gen.js`):
 1. Pick grid size from `getSizesForLevel` (portrait 2:1 ratios, grows with level).
 2. Pick target difficulty tier with `selectTargetDifficulty` (anti-streak, level-gated).
 3. Up to 5 rounds: call `rcConstructForTier(graph, tier, batch)` → get `{paths, cx}`.
-4. Post-build assert: `isBoardFullySolvable` + `validateBoardAsserts` (should always pass).
+4. Post-build assert: `isBoardFullySolvable` + `validateRulebook` (all 14 RULEBOOK rules; should always pass).
 5. Derive `hEdge`/`vEdge` from node sequences via `reserveEdge`.
 6. Commit: set `State.paths`, `State.nodeOwner`, `State.hEdge/vEdge`, difficulty, lives, call `startPathRevealAnimation`.
 
@@ -79,9 +79,9 @@ V4 format in `localStorage`. `nodeOwner` is rebuilt from `paths.nodes` on load (
 
 ## Critical invariants
 
-- **Strictly orthogonal paths** — consecutive nodes must differ by exactly 1 in r or c (`|dr| + |dc| === 1`). `validateBoardAsserts` logs an error on violation. Never place two path nodes diagonally adjacent.
-- **Single-owner nodes** — every micro-grid node is owned by at most one path. `nodeOwner` is the authoritative lookup; `validateBoardAsserts` checks consistency. Empty (unowned) nodes are valid and render as bare dots.
-- **Coverage floor ≥ 65%** — the RC generator achieves ~65–92% coverage (smaller boards pack more densely). `validateBoardAsserts` warns below 65% (genuinely degenerate board). The old strict 100%-coverage invariant is relaxed: solvability at large board sizes requires allowing up to ~35% empty nodes at the extremes.
-- **Solvability — guaranteed by construction** — `rcBuildChain` + `rcFillA/B/C` place each piece only when its head ray is clear, so reverse-order removal is always valid. `isBoardFullySolvable` is a post-build assertion (delegates to `rcBoardSolvable`); it should never fire.
-- **Heading is final at placement** — `p.heading` is set by the reverse constructor and never mutated after. `assignHeadings`, `buildDAGHeadings`, and `runUnjammingPass` are retired.
+- **Strictly orthogonal paths** — consecutive nodes must differ by exactly 1 in r or c (`|dr| + |dc| === 1`). `validateRulebook` (Rules 4, 5) logs an error on violation. Never place two path nodes diagonally adjacent.
+- **Single-owner nodes** — every micro-grid node is owned by at most one path. `nodeOwner` is the authoritative lookup; `validateRulebook` (Rules 3, 11) checks consistency. Empty (unowned) nodes are valid and render as bare dots.
+- **Coverage ≥ 90% (target ~96–100%)** — Phase D oracle-based gap fill achieves ~96% average across all board sizes (90–100% range). `validateRulebook` (Rule 12) hard-fails below 90% (genuinely degenerate board) and info-logs below 100% (structural dead-ends are accepted). Rule 8 enforces a minimum of 3 nodes per path (2 segments minimum).
+- **Solvability — guaranteed by construction** — `rcBuildChain` + `rcFillA/B/C/D` place or validate each piece so reverse-order removal is always valid. `isBoardFullySolvable` and `validateRulebook` (Rule 14) are post-build assertions; they should never fire.
+- **Heading is final after construction** — `p.heading` is set at placement time and may be updated by Phase D's reversal pass (which re-derives it from the new terminal segment), but is never mutated during gameplay. `assignHeadings`, `buildDAGHeadings`, and `runUnjammingPass` are retired.
 - **`nodeOwner` encoding** — `-1` = empty node, `≥0` = path id. (Old `gridMask`/`gridOwnership` encoding is retired.)

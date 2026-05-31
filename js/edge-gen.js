@@ -861,19 +861,42 @@ function rcRayLenToEdge(h, dr, dc, rows, cols) {
     return h.c;
 }
 
-// Chain pre-pass: place (depth+1) right-pointing length-2 pieces in a row, left
+// Exit point for a path: the boundary node the head's ray terminates at.
+//   RIGHT → (hr, cols)   LEFT → (hr, 0)
+//   DOWN  → (rows, hc)   UP   → (0,  hc)
+function rcExitPoint(path, graph) {
+    const head = path.nodes[path.nodes.length - 1];
+    const { rows, cols } = graph;
+    if (path.heading === 'RIGHT') return { r: head.r,  c: cols  };
+    if (path.heading === 'LEFT')  return { r: head.r,  c: 0     };
+    if (path.heading === 'DOWN')  return { r: rows,    c: head.c };
+    return                               { r: 0,       c: head.c };  // UP
+}
+
+// Stable string key for an exit point: "<heading>:<boundary_coord>".
+// Two paths with the same key share the same exit slot.
+function rcExitKey(path, graph) {
+    const head = path.nodes[path.nodes.length - 1];
+    const { rows, cols } = graph;
+    if (path.heading === 'RIGHT') return 'R:' + head.r;
+    if (path.heading === 'LEFT')  return 'L:' + head.r;
+    if (path.heading === 'DOWN')  return 'D:' + head.c;
+    return                               'U:' + head.c;
+}
+
+// Chain pre-pass: place (depth+1) right-pointing length-3 pieces in a row, left
 // to right.  Each is placed while its right-ray is clear — guarantee preserved.
 // Afterwards each is blocked by its right neighbour → dependency chain of depth = count−1.
 function rcBuildChain(graph, paths, ctr, depth, row) {
     const { nodeOwner, cols } = graph; const W = cols + 1;
     const count = depth + 1;
-    if (2 * count - 1 > cols) return 0;
+    if (3 * count - 1 > cols) return 0;
     let placed = 0;
     for (let j = 0; j < count; j++) {
-        const c0 = 2 * j;
-        const nodes = [{ r: row, c: c0 }, { r: row, c: c0 + 1 }];
+        const c0 = 3 * j;
+        const nodes = [{ r: row, c: c0 }, { r: row, c: c0 + 1 }, { r: row, c: c0 + 2 }];
         if (!nodes.every(n => nodeOwner[n.r * W + n.c] === -1)) break;
-        if (!rcHeadRayClear(graph, nodes[1], 0, 1)) break;
+        if (!rcHeadRayClear(graph, nodes[2], 0, 1)) break;
         for (const n of nodes) nodeOwner[n.r * W + n.c] = ctr.n;
         paths.push({ id: ctr.n, nodes, heading: 'RIGHT', placeOrder: ctr.n, state: 'IDLE', animProgress: 0, originalNodes: [] });
         ctr.n++; placed++;
@@ -892,8 +915,8 @@ function rcFillA(graph, paths, ctr, maxFails, knobs) {
     while (fails < maxFails) {
         const anchor = rcPickAnchor(graph);
         if (!anchor) { fails++; continue; }
-        const nodes = rcGrowWalk(graph, anchor, Math.max(2, Math.round(rcSampleLen(f) * lenScale)));
-        if (nodes.length < 2) { fails++; continue; }
+        const nodes = rcGrowWalk(graph, anchor, Math.max(3, Math.round(rcSampleLen(f) * lenScale)));
+        if (nodes.length < 3) { fails++; continue; }
         // Try both endpoints as head; pick best by difficulty bias.
         const cands = [];
         { const h = nodes[nodes.length - 1], pv = nodes[nodes.length - 2];
@@ -925,8 +948,8 @@ function rcFillB(graph, paths, ctr) {
         for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
             if (nodeOwner[r * W + c] !== -1) continue;
             for (let attempt = 0; attempt < 6 && nodeOwner[r * W + c] === -1; attempt++) {
-                const nodes = rcGrowWalk(graph, { r, c }, 2 + (Math.random() * 3 | 0));
-                if (nodes.length < 2) continue;
+                const nodes = rcGrowWalk(graph, { r, c }, 3 + (Math.random() * 3 | 0));
+                if (nodes.length < 3) continue;
                 const ends = [[nodes[nodes.length - 1], nodes[nodes.length - 2], false],
                               [nodes[0],                 nodes[1],                 true]];
                 for (const [h, pv, rev] of ends) {
@@ -974,7 +997,153 @@ function rcFillC(graph, paths) {
     rcRecomputePlaceOrder(paths, graph);
 }
 
-// Full reverse constructor: chain backbone → Phase A → two rounds of B+C.
+// Phase D: oracle-only gap fill — convergence loop then brute-force reversal pass.
+// Unlike Phases A/B (head-ray-clear gate) and Phase C (LIFO tail-append), Phase D
+// uses rcBoardSolvable as the sole validity gate, allowing placements that fail the
+// ray check but still produce a solvable board.
+function rcFillD(graph, paths, ctr) {
+    const { nodeOwner, rows, cols } = graph;
+    const W = cols + 1, R = rows + 1, C = cols + 1;
+    const byId = new Map(paths.map(p => [p.id, p]));
+    const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+    function emptyNbCount(r, c) {
+        let n = 0;
+        for (const [dr, dc] of DIRS) {
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < R && nc >= 0 && nc < C && nodeOwner[nr * W + nc] === -1) n++;
+        }
+        return n;
+    }
+
+    // ── Convergence loop ────────────────────────────────────────────────────────
+    let progress = true;
+    while (progress) {
+        progress = false;
+
+        // Collect empty nodes sorted most-constrained first (fewest empty neighbours)
+        const empty = [];
+        for (let r = 0; r < R; r++)
+            for (let c = 0; c < C; c++)
+                if (nodeOwner[r * W + c] === -1)
+                    empty.push({ r, c, ec: emptyNbCount(r, c) });
+        empty.sort((a, b) => a.ec - b.ec);
+
+        for (const { r, c } of empty) {
+            if (nodeOwner[r * W + c] !== -1) continue; // already claimed earlier this sweep
+            let placed = false;
+
+            // Option 1: grow a 3-node walk from (r,c) → new piece (Rule 8: min 3 nodes).
+            // Try every L-shaped or straight triplet reachable from (r,c).
+            for (let d1 = 0; d1 < DIRS.length && !placed; d1++) {
+                const [dr1, dc1] = DIRS[d1];
+                const r2 = r + dr1, c2 = c + dc1;
+                if (r2 < 0 || r2 >= R || c2 < 0 || c2 >= C) continue;
+                if (nodeOwner[r2 * W + c2] !== -1) continue;
+
+                for (let d2 = 0; d2 < DIRS.length && !placed; d2++) {
+                    const [dr2, dc2] = DIRS[d2];
+                    if (dr2 === -dr1 && dc2 === -dc1) continue; // no backtrack
+                    const r3 = r2 + dr2, c3 = c2 + dc2;
+                    if (r3 < 0 || r3 >= R || c3 < 0 || c3 >= C) continue;
+                    if (nodeOwner[r3 * W + c3] !== -1) continue;
+                    if (r3 === r && c3 === c) continue; // no self-loop
+
+                    // 3-node walk: (r,c)→(r2,c2)→(r3,c3). Try head at each end.
+                    const seq = [{ r, c }, { r: r2, c: c2 }, { r: r3, c: c3 }];
+                    const tries = [
+                        { ns: seq,                   hdr:  dr2, hdc:  dc2 },
+                        { ns: seq.slice().reverse(), hdr: -dr1, hdc: -dc1 },
+                    ];
+                    for (const { ns, hdr, hdc } of tries) {
+                        const id = ctr.n;
+                        for (const n of ns) nodeOwner[n.r * W + n.c] = id;
+                        const p = { id, nodes: ns, heading: deltaToHeading(hdr, hdc),
+                                    placeOrder: id, state: 'IDLE', animProgress: 0, originalNodes: [] };
+                        paths.push(p); byId.set(id, p);
+
+                        if (rcBoardSolvable(paths, graph)) {
+                            ctr.n++; placed = true; progress = true;
+                            break;
+                        }
+                        for (const n of ns) nodeOwner[n.r * W + n.c] = -1;
+                        paths.pop(); byId.delete(id);
+                    }
+                }
+            }
+
+            if (placed) continue;
+
+            // Option 2: append to adjacent piece tail (nodes[0])
+            for (const [dr, dc] of DIRS) {
+                if (placed) break;
+                const ar = r + dr, ac = c + dc;
+                if (ar < 0 || ar >= R || ac < 0 || ac >= C) continue;
+                const oid = nodeOwner[ar * W + ac]; if (oid < 0) continue;
+                const p = byId.get(oid); if (!p) continue;
+                if (p.nodes[0].r !== ar || p.nodes[0].c !== ac) continue;
+
+                p.nodes.unshift({ r, c });
+                nodeOwner[r * W + c] = oid;
+                if (rcBoardSolvable(paths, graph)) {
+                    placed = true; progress = true;
+                } else {
+                    p.nodes.shift();
+                    nodeOwner[r * W + c] = -1;
+                }
+            }
+        }
+    }
+
+    // ── Brute-force reversal pass ────────────────────────────────────────────────
+    // For nodes still empty after convergence: try reversing an adjacent piece so its
+    // head becomes the tail, then append the empty node to that new tail.
+    let revProgress = true;
+    while (revProgress) {
+        revProgress = false;
+        for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+            if (nodeOwner[r * W + c] !== -1) continue;
+            let placed = false;
+            for (const [dr, dc] of DIRS) {
+                if (placed) break;
+                const ar = r + dr, ac = c + dc;
+                if (ar < 0 || ar >= R || ac < 0 || ac >= C) continue;
+                const oid = nodeOwner[ar * W + ac]; if (oid < 0) continue;
+                const p = byId.get(oid); if (!p || p.nodes.length < 2) continue;
+
+                // Only try if (ar,ac) is the head — reversing exposes it as the new tail
+                const head = p.nodes[p.nodes.length - 1];
+                if (head.r !== ar || head.c !== ac) continue;
+
+                const savedNodes   = p.nodes.slice();
+                const savedHeading = p.heading;
+
+                // Reverse: old head becomes new tail, old tail becomes new head
+                p.nodes.reverse();
+                const nh = p.nodes[p.nodes.length - 1], np = p.nodes[p.nodes.length - 2];
+                p.heading = deltaToHeading(nh.r - np.r, nh.c - np.c);
+                p.nodes.unshift({ r, c });
+                nodeOwner[r * W + c] = oid;
+
+                if (rcBoardSolvable(paths, graph)) {
+                    placed = true; revProgress = true;
+                } else {
+                    p.nodes.shift();
+                    nodeOwner[r * W + c] = -1;
+                    p.nodes = savedNodes;
+                    p.heading = savedHeading;
+                }
+            }
+        }
+    }
+
+    rcRecomputePlaceOrder(paths, graph);
+}
+
+// Core reverse constructor: chain backbone → Phase A → two rounds of B+C.
+// Phase D (oracle gap-fill) is intentionally NOT called here — it runs after
+// complexity scoring in rcConstructForTier so tiny gap-fill pieces don't dilute
+// the difficulty measurement.
 function reverseConstruct(graph, knobs) {
     const chainDepth = (knobs && knobs.chainDepth) || 0;
     const paths = []; const ctr = { n: 0 };
@@ -1010,7 +1179,16 @@ function rcConstructForTier(graph, tier, batch) {
     for (let i = 0; i < batch; i++) {
         const cdi = Math.max(0, cd + ((i % 3) - 1));   // bracket cd-1 .. cd+1
         const paths = reverseConstruct(graph, { d, chainDepth: cdi });
+
+        // Score complexity BEFORE Phase D — gap-fill pieces are cosmetic and must
+        // not dilute the difficulty measurement from the Phase A/B/C structure.
         const cx = evaluateBoardComplexity(paths, graph);
+
+        // Phase D: oracle-only gap fill to reach 100% node coverage. Runs after
+        // scoring so tiny 2-node pieces don't affect the difficulty tier.
+        const ctr = { n: paths.length };
+        rcFillD(graph, paths, ctr);
+
         if (cx.tier === tier) return { paths, cx };             // graph is in correct state
         const delta = Math.abs(cx.score - TIER_CENTER[tier]);
         if (delta < bestDelta) { bestDelta = delta; best = { paths, cx }; }

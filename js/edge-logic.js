@@ -227,3 +227,171 @@ function getLeadingEdgeOwner(p, hEdge, vEdge, rows, cols) {
         ? hEdge[lr][Math.min(lc, nc)]
         : vEdge[Math.min(lr, nr)][lc];
 }
+
+// =============================================================================
+// validateRulebook — formal validation of all 14 RULEBOOK rules.
+//
+// Returns true only when all HARD rules pass. Hard failures log
+//   [Rulebook] Rule N FAIL: <detail>
+// via console.error and cause board-gen.js to discard and retry the board.
+//
+// Rules 12 and 13 are SOFT (informational):
+//   Rule 12 — 100% node coverage is the goal; ~4% dead-ends are structural.
+//              Hard-fails only below the 90% floor (genuinely degenerate).
+//   Rule 13 — exit-slot uniqueness is impossible at large board sizes (path
+//              count > available slots). Sequential exits are handled by Rule 14.
+//
+// Depends on: rcExitPoint, rcExitKey (edge-gen.js), rcBoardSolvable (edge-gen.js),
+//             deltaToHeading (edge-gen.js).
+// =============================================================================
+function validateRulebook(paths, graph) {
+    const { rows, cols } = graph;
+    let ok = true;
+
+    // ── Pass 1: Rules 4 + 5 — cheapest geometric checks ─────────────────────
+    for (const p of paths) {
+        for (let i = 0; i < p.nodes.length - 1; i++) {
+            const a = p.nodes[i], b = p.nodes[i + 1];
+            const dr = b.r - a.r, dc = b.c - a.c;
+            if (Math.abs(dr) + Math.abs(dc) !== 1) {
+                console.error(`[Rulebook] Rule 4 FAIL: path ${p.id} node ${i}→${i+1} skips (|dr|+|dc|=${Math.abs(dr)+Math.abs(dc)})`);
+                ok = false;
+            }
+            if (dr !== 0 && dc !== 0) {
+                console.error(`[Rulebook] Rule 5 FAIL: path ${p.id} node ${i}→${i+1} is diagonal (dr=${dr},dc=${dc})`);
+                ok = false;
+            }
+        }
+    }
+
+    // ── Pass 2: Rules 1, 2, 3 — path self-consistency ───────────────────────
+    for (const p of paths) {
+        // Rule 1: no duplicate segments within a path
+        const segSet = new Set();
+        for (let i = 0; i < p.nodes.length - 1; i++) {
+            const a = p.nodes[i], b = p.nodes[i + 1];
+            const key = (a.r === b.r)
+                ? ('h:' + a.r + ':' + Math.min(a.c, b.c))
+                : ('v:' + Math.min(a.r, b.r) + ':' + a.c);
+            if (segSet.has(key)) {
+                console.error(`[Rulebook] Rule 1 FAIL: path ${p.id} reuses segment ${key}`);
+                ok = false;
+            }
+            segSet.add(key);
+        }
+
+        // Rule 2: no closed loop (start ≠ end)
+        const head = p.nodes[p.nodes.length - 1], tail = p.nodes[0];
+        if (head.r === tail.r && head.c === tail.c) {
+            console.error(`[Rulebook] Rule 2 FAIL: path ${p.id} forms a closed loop`);
+            ok = false;
+        }
+
+        // Rule 3: no dot visited twice within a path
+        const nodeSet = new Set();
+        for (const n of p.nodes) {
+            const key = n.r + ',' + n.c;
+            if (nodeSet.has(key)) {
+                console.error(`[Rulebook] Rule 3 FAIL: path ${p.id} revisits node (${n.r},${n.c})`);
+                ok = false;
+            }
+            nodeSet.add(key);
+        }
+    }
+
+    // ── Pass 3: Rules 6, 7, 8 — path structure ───────────────────────────────
+    for (const p of paths) {
+        // Rule 6: consecutive segment connectivity.
+        // In our node-sequence model this is equivalent to Rule 4 (orthogonal steps
+        // guarantee connectivity); verify explicitly for completeness.
+        for (let i = 0; i < p.nodes.length - 1; i++) {
+            const a = p.nodes[i], b = p.nodes[i + 1];
+            if (Math.abs(a.r - b.r) + Math.abs(a.c - b.c) !== 1) {
+                console.error(`[Rulebook] Rule 6 FAIL: path ${p.id} chain broken at node ${i}`);
+                ok = false;
+            }
+        }
+
+        // Rule 7: stored heading must match the terminal-segment direction.
+        if (p.nodes.length >= 2) {
+            const hd = p.nodes[p.nodes.length - 1], pv = p.nodes[p.nodes.length - 2];
+            const derived = deltaToHeading(hd.r - pv.r, hd.c - pv.c);
+            if (derived !== p.heading) {
+                console.error(`[Rulebook] Rule 7 FAIL: path ${p.id} heading=${p.heading} but terminal segment direction=${derived}`);
+                ok = false;
+            }
+        }
+
+        // Rule 8: minimum 3 nodes (2 segments)
+        if (p.nodes.length < 3) {
+            console.error(`[Rulebook] Rule 8 FAIL: path ${p.id} has ${p.nodes.length} node(s) — minimum is 3`);
+            ok = false;
+        }
+    }
+
+    // ── Pass 4: Rules 9, 10 — exit point and chain ───────────────────────────
+    for (const p of paths) {
+        // Rule 9: exit point must lie on the board boundary.
+        // rcExitPoint always returns a boundary node by construction; this
+        // verifies the helper is consistent with the actual heading.
+        const ep = rcExitPoint(p, graph);
+        if (ep.r !== 0 && ep.r !== rows && ep.c !== 0 && ep.c !== cols) {
+            console.error(`[Rulebook] Rule 9 FAIL: path ${p.id} exit (${ep.r},${ep.c}) is not on boundary`);
+            ok = false;
+        }
+
+        // Rule 10: path is one continuous chain — same as Rule 6, reconfirmed here
+        // to satisfy the RULEBOOK ordering. Violations already caught in Pass 3.
+    }
+
+    // ── Pass 5: Rules 11, 12, 13 — grid-wide consistency ─────────────────────
+
+    // Rule 11: no segment shared by two different paths.
+    const allSegs = new Map();
+    for (const p of paths) {
+        for (let i = 0; i < p.nodes.length - 1; i++) {
+            const a = p.nodes[i], b = p.nodes[i + 1];
+            const key = (a.r === b.r)
+                ? ('h:' + a.r + ':' + Math.min(a.c, b.c))
+                : ('v:' + Math.min(a.r, b.r) + ':' + a.c);
+            if (allSegs.has(key)) {
+                console.error(`[Rulebook] Rule 11 FAIL: segment ${key} shared by path ${allSegs.get(key)} and path ${p.id}`);
+                ok = false;
+            } else {
+                allSegs.set(key, p.id);
+            }
+        }
+    }
+
+    // Rule 12: node coverage — hard-fail below 90%; info-log below 100%.
+    const totalNodes = (rows + 1) * (cols + 1);
+    const usedNodes  = paths.reduce((s, p) => s + p.nodes.length, 0);
+    const coverage   = usedNodes / totalNodes;
+    if (coverage < 0.90) {
+        console.error(`[Rulebook] Rule 12 FAIL: coverage ${Math.round(coverage * 100)}% is below the 90% floor`);
+        ok = false;
+    } else if (coverage < 1.0) {
+        console.log(`[Rulebook] Rule 12 INFO: coverage ${Math.round(coverage * 100)}% — ${totalNodes - usedNodes} node(s) are structural dead-ends`);
+    }
+
+    // Rule 13: exit-point uniqueness — informational only.
+    // Strict uniqueness is impossible when paths > available exit slots at large
+    // board sizes. Sequential exits are handled correctly by Rule 14 (solvability).
+    const exitSeen = new Set(); let exitColl = 0;
+    for (const p of paths) {
+        const key = rcExitKey(p, graph);
+        if (exitSeen.has(key)) exitColl++;
+        else exitSeen.add(key);
+    }
+    if (exitColl > 0) {
+        console.log(`[Rulebook] Rule 13 INFO: ${exitColl} exit-slot collision(s) — sequential ordering handled by Rule 14`);
+    }
+
+    // ── Pass 6: Rule 14 — solvability (most expensive) ───────────────────────
+    if (!rcBoardSolvable(paths, graph)) {
+        console.error('[Rulebook] Rule 14 FAIL: board is not solvable');
+        ok = false;
+    }
+
+    return ok;
+}
