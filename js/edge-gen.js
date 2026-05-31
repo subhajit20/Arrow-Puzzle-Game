@@ -817,26 +817,100 @@ function rcPickAnchor(graph) {
     return best;
 }
 
+// =============================================================================
+// VT-3: Topology Rhythm System
+// Zone map: a pre-planned spatial grid of DENSE / OPEN / NEUTRAL regions built
+// once per board attempt and threaded into rcFillA → rcGrowWalk.
+//
+// DENSE zones → tight turns, short pieces (high local path density).
+// OPEN zones  → long straight runs, long pieces (visual breathing space).
+// A full-width or full-height OPEN corridor is always guaranteed, ensuring a
+// visible breathing band that visually separates the dense regions.
+// =============================================================================
+
+const ZONE_DENSE   = 0;
+const ZONE_OPEN    = 1;
+const ZONE_NEUTRAL = 2;
+
+// Per-zone walk-scoring knobs for rcGrowWalk.
+// straightScore / turnScore replace the hardcoded 0.4 / 1.0.
+// maxStraight caps consecutive straight steps; beyond it, straight moves get a
+// heavy penalty (-10) so the walk is effectively forced to turn.
+const ZONE_WALK_KNOBS = [
+    { straightScore: 0.05, turnScore: 3.0,  maxStraight: 1   }, // DENSE
+    { straightScore: 2.5,  turnScore: 0.15, maxStraight: 999  }, // OPEN
+    { straightScore: 0.4,  turnScore: 1.0,  maxStraight: 999  }, // NEUTRAL
+];
+
+// lenScale multiplier per zone (multiplied on top of the base lenScale in rcFillA).
+const ZONE_LEN_SCALE = [0.6, 1.6, 1.0]; // DENSE, OPEN, NEUTRAL
+
+// generateZoneMap(rows, cols)
+// Builds a ceil((rows+1)/4) × ceil((cols+1)/4) tag grid.
+// Base pattern: checkerboard of DENSE (even zr+zc) and OPEN (odd).
+// One random full-span OPEN corridor (horizontal or vertical) is overlaid to
+// guarantee at least one band of OPEN zones connecting opposite board edges.
+function generateZoneMap(rows, cols) {
+    const R = rows + 1, C = cols + 1;
+    const zRows = Math.max(2, Math.ceil(R / 4));
+    const zCols = Math.max(2, Math.ceil(C / 4));
+    const tags  = new Uint8Array(zRows * zCols);
+
+    for (let zr = 0; zr < zRows; zr++)
+        for (let zc = 0; zc < zCols; zc++)
+            tags[zr * zCols + zc] = (zr + zc) % 2 === 0 ? ZONE_DENSE : ZONE_OPEN;
+
+    // Guaranteed OPEN corridor through the middle half of the board
+    if (Math.random() < 0.5) {
+        const zr = Math.floor(zRows / 4) + ((Math.random() * Math.ceil(zRows / 2)) | 0);
+        for (let zc = 0; zc < zCols; zc++) tags[zr * zCols + zc] = ZONE_OPEN;
+    } else {
+        const zc = Math.floor(zCols / 4) + ((Math.random() * Math.ceil(zCols / 2)) | 0);
+        for (let zr = 0; zr < zRows; zr++) tags[zr * zCols + zc] = ZONE_OPEN;
+    }
+
+    return { zRows, zCols, tags };
+}
+
+// zoneFor(r, c, zoneMap, rows, cols) — maps micro-grid node to its zone tag.
+function zoneFor(r, c, zoneMap, rows, cols) {
+    const R = rows + 1, C = cols + 1;
+    const { zRows, zCols, tags } = zoneMap;
+    const zr = Math.min(zRows - 1, Math.floor(r * zRows / R));
+    const zc = Math.min(zCols - 1, Math.floor(c * zCols / C));
+    return tags[zr * zCols + zc];
+}
+
 // Occupancy-aware winding self-avoiding walk from anchor.
-// Prefers turns over straights (turn score 1.0 vs straight 0.4) for variety.
-function rcGrowWalk(graph, anchor, targetLen) {
+// zoneMap (optional): if provided, scoring and maxStraight are queried per step
+// from the current node's zone, creating naturally dense or open walk sections.
+function rcGrowWalk(graph, anchor, targetLen, zoneMap) {
     const { nodeOwner, rows, cols } = graph; const W = cols + 1, R = rows + 1, C = cols + 1;
     const nodes = [{ r: anchor.r, c: anchor.c }];
     const local = new Set([anchor.r + ',' + anchor.c]);
-    let cur = anchor, pdr = 0, pdc = 0;
+    let cur = anchor, pdr = 0, pdc = 0, streak = 0;
     const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
     for (let i = 1; i < targetLen; i++) {
         const opts = dirs.map(([dr, dc]) => ({ r: cur.r + dr, c: cur.c + dc, dr, dc }))
             .filter(o => o.r >= 0 && o.r < R && o.c >= 0 && o.c < C &&
                          nodeOwner[o.r * W + o.c] === -1 && !local.has(o.r + ',' + o.c));
         if (!opts.length) break;
+
+        const knobs = zoneMap
+            ? ZONE_WALK_KNOBS[zoneFor(cur.r, cur.c, zoneMap, rows, cols)]
+            : ZONE_WALK_KNOBS[ZONE_NEUTRAL];
+        const forceTurn = streak >= knobs.maxStraight;
+
         for (const o of opts) {
             const straight = (o.dr === pdr && o.dc === pdc);
-            o.score = (straight ? 0.4 : 1.0) + Math.random();
+            o.score = (straight ? (forceTurn ? -10 : knobs.straightScore) : knobs.turnScore)
+                      + Math.random();
         }
         opts.sort((a, b) => b.score - a.score);
         const pick = opts[0];
         nodes.push({ r: pick.r, c: pick.c }); local.add(pick.r + ',' + pick.c);
+        const isStraight = (pick.dr === pdr && pick.dc === pdc);
+        streak = isStraight ? streak + 1 : 0;
         pdr = pick.dr; pdc = pick.dc; cur = pick;
     }
     return nodes;
@@ -905,17 +979,24 @@ function rcBuildChain(graph, paths, ctr, depth, row) {
 }
 
 // Phase A: main fill — place winding pieces respecting the clear-ray rule.
-// knobs.d  [0,1]: high → prefers long inward rays (harder); low → short exits (easier).
+// knobs.d        [0,1]: high → prefers long inward rays (harder); low → short exits (easier).
+// knobs.zoneMap  (optional): VT-3 zone map; enables per-anchor length scaling and
+//                per-step turn/straight scoring inside rcGrowWalk.
 function rcFillA(graph, paths, ctr, maxFails, knobs) {
-    const d         = (knobs && knobs.d         != null) ? knobs.d         : 0.5;
-    const lenScale  = (knobs && knobs.lenScale  != null) ? knobs.lenScale  : 1;
+    const d        = (knobs && knobs.d        != null) ? knobs.d        : 0.5;
+    const lenScale = (knobs && knobs.lenScale != null) ? knobs.lenScale : 1;
+    const zoneMap  = (knobs && knobs.zoneMap) || null;
     const { nodeOwner, rows, cols } = graph; const W = cols + 1;
     const f = (typeof State !== 'undefined' && State.subdivFactor) ? State.subdivFactor : 1;
     let fails = 0;
     while (fails < maxFails) {
         const anchor = rcPickAnchor(graph);
         if (!anchor) { fails++; continue; }
-        const nodes = rcGrowWalk(graph, anchor, Math.max(3, Math.round(rcSampleLen(f) * lenScale)));
+        // Zone-aware target length: multiply base lenScale by zone's length multiplier.
+        const effLen = zoneMap
+            ? lenScale * ZONE_LEN_SCALE[zoneFor(anchor.r, anchor.c, zoneMap, rows, cols)]
+            : lenScale;
+        const nodes = rcGrowWalk(graph, anchor, Math.max(3, Math.round(rcSampleLen(f) * effLen)), zoneMap);
         if (nodes.length < 3) { fails++; continue; }
         // Try both endpoints as head; pick best by difficulty bias.
         const cands = [];
@@ -1175,10 +1256,13 @@ function rcConstructForTier(graph, tier, batch) {
     const TIER_CENTER = { EASY: 3, NORMAL: 9.5, HARD: 17.5, EXPERT: 25.5, TITAN: 33 };
     const cd = rcChainDepthForTier(tier);
     const d  = (tier === 'EASY') ? 0 : 0.5;
+    // VT-3: generate one zone map per rcConstructForTier call so all batch attempts
+    // share the same spatial layout (apples-to-apples difficulty comparison).
+    const zoneMap = generateZoneMap(graph.rows, graph.cols);
     let best = null, bestDelta = Infinity;
     for (let i = 0; i < batch; i++) {
         const cdi = Math.max(0, cd + ((i % 3) - 1));   // bracket cd-1 .. cd+1
-        const paths = reverseConstruct(graph, { d, chainDepth: cdi });
+        const paths = reverseConstruct(graph, { d, chainDepth: cdi, zoneMap });
 
         // Score complexity BEFORE Phase D — gap-fill pieces are cosmetic and must
         // not dilute the difficulty measurement from the Phase A/B/C structure.
@@ -1209,4 +1293,243 @@ function rcConstructForTier(graph, tier, batch) {
                 graph.nodeOwner[r * W + c] = p.id;
     }
     return best;
+}
+
+// =============================================================================
+// VT-4: Mutation Engine
+// Local topology mutation pipeline for a set of nodes (nodeSet).
+// Guaranteed to preserve ownership legality and solvability via oracle gate.
+//
+// Pipeline:  extractRegion → rcFillRegion → reconnectStubs → validate → commit/revert
+//
+// Depends on: validateRulebook (edge-logic.js) — resolved at call time, not load time.
+// =============================================================================
+
+// extractRegion(paths, graph, nodeSet)
+// For each path with ≥1 node inside nodeSet, splits at the region boundary:
+//   in-region sequences   → freed (nodeOwner = -1), added to freedKeys
+//   out-of-region ≥3 nodes → new stub paths pushed to paths[]
+//   out-of-region < 3 nodes → also freed (too short to form a valid path alone)
+// Affected paths are removed from paths[]. Returns { stubs, freedKeys }.
+function extractRegion(paths, graph, nodeSet) {
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1;
+
+    const nodeKeys = new Set();
+    for (const n of nodeSet) nodeKeys.add(n.r * W + n.c);
+
+    const affectedIds = new Set();
+    for (const p of paths)
+        if (p.nodes.some(n => nodeKeys.has(n.r * W + n.c)))
+            affectedIds.add(p.id);
+
+    if (!affectedIds.size) return { stubs: [], freedKeys: new Set() };
+
+    const freedKeys = new Set();
+    const stubs = [];
+    let nextId = paths.reduce((m, p) => Math.max(m, p.id), -1) + 1;
+
+    for (const p of paths) {
+        if (!affectedIds.has(p.id)) continue;
+
+        // Partition nodes into contiguous in-region / out-of-region segments
+        let i = 0;
+        while (i < p.nodes.length) {
+            const inReg = nodeKeys.has(p.nodes[i].r * W + p.nodes[i].c);
+            let j = i;
+            while (j < p.nodes.length &&
+                   nodeKeys.has(p.nodes[j].r * W + p.nodes[j].c) === inReg) j++;
+            const seg = p.nodes.slice(i, j);
+
+            if (inReg) {
+                for (const n of seg) { nodeOwner[n.r * W + n.c] = -1; freedKeys.add(n.r * W + n.c); }
+            } else if (seg.length >= 3) {
+                const head = seg[seg.length - 1], pv = seg[seg.length - 2];
+                const sid = nextId++;
+                // Update nodeOwner to the new stub id — the old path's id is now stale
+                for (const n of seg) nodeOwner[n.r * W + n.c] = sid;
+                stubs.push({
+                    id: sid, nodes: seg,
+                    heading: deltaToHeading(head.r - pv.r, head.c - pv.c),
+                    placeOrder: 0, state: 'IDLE', animProgress: 0, originalNodes: []
+                });
+            } else {
+                // Too short to stand alone — absorb into freed pool
+                for (const n of seg) { nodeOwner[n.r * W + n.c] = -1; freedKeys.add(n.r * W + n.c); }
+            }
+            i = j;
+        }
+    }
+
+    // Remove affected paths; add stubs as independent paths
+    for (let i = paths.length - 1; i >= 0; i--)
+        if (affectedIds.has(paths[i].id)) paths.splice(i, 1);
+    for (const s of stubs) paths.push(s);
+
+    return { stubs, freedKeys };
+}
+
+// boundaryEndpoints(stubs)
+// Returns the boundary node of each stub (the end facing the freed region).
+// Used by rcFillRegion as preferred anchor positions.
+function boundaryEndpoints(stubs) {
+    return stubs.map(s => ({
+        node: s.nodes[s.nodes.length - 1],
+        heading: s.heading
+    }));
+}
+
+// rcFillRegion(graph, paths, freedKeys, endpoints, ctr)
+// Oracle-gated fill confined strictly to freedKeys.
+// Grows walks only through nodes that are still free AND in freedKeys.
+// Enforces Rule 8: rejects walks shorter than 3 nodes.
+// Falls back to single-node tail-append for isolated leftover freed nodes.
+function rcFillRegion(graph, paths, freedKeys, endpoints, ctr) {
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1, R = rows + 1, C = cols + 1;
+    const DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
+    const byId = new Map(paths.map(p => [p.id, p]));
+
+    function growInRegion(anchor) {
+        const walk = [anchor];
+        const loc = new Set([anchor.r * W + anchor.c]);
+        let cur = anchor, pdr = 0, pdc = 0;
+        for (let step = 1; step < 16; step++) {
+            const opts = DIRS.map(([dr,dc]) => ({r: cur.r+dr, c: cur.c+dc, dr, dc}))
+                .filter(o => o.r >= 0 && o.r < R && o.c >= 0 && o.c < C &&
+                             nodeOwner[o.r * W + o.c] === -1 &&
+                             freedKeys.has(o.r * W + o.c) &&
+                             !loc.has(o.r * W + o.c));
+            if (!opts.length) break;
+            for (const o of opts)
+                o.score = (o.dr === pdr && o.dc === pdc ? 0.4 : 1.0) + Math.random();
+            opts.sort((a,b) => b.score - a.score);
+            const pick = opts[0];
+            walk.push({r: pick.r, c: pick.c});
+            loc.add(pick.r * W + pick.c);
+            pdr = pick.dr; pdc = pick.dc; cur = pick;
+        }
+        return walk;
+    }
+
+    // Convergence loop — place 3+ node pieces within freedKeys
+    let prog = true;
+    while (prog) {
+        prog = false;
+        for (const key of freedKeys) {
+            if (nodeOwner[key] !== -1) continue;
+            const anchor = { r: (key / W) | 0, c: key % W };
+            const walk = growInRegion(anchor);
+            if (walk.length < 3) continue; // Rule 8: skip walks shorter than 3 nodes
+
+            for (const rev of [false, true]) {
+                const seq = rev ? walk.slice().reverse() : walk;
+                const head = seq[seq.length - 1], pv = seq[seq.length - 2];
+                const dr = head.r - pv.r, dc = head.c - pv.c;
+                if (!rcHeadRayClear(graph, head, dr, dc)) continue;
+
+                const id = ctr.n;
+                for (const n of seq) nodeOwner[n.r * W + n.c] = id;
+                const p = { id, nodes: seq, heading: deltaToHeading(dr, dc),
+                            placeOrder: id, state: 'IDLE', animProgress: 0, originalNodes: [] };
+                paths.push(p); byId.set(id, p);
+
+                if (rcBoardSolvable(paths, graph)) { ctr.n++; prog = true; break; }
+                for (const n of seq) nodeOwner[n.r * W + n.c] = -1;
+                paths.pop(); byId.delete(id);
+            }
+        }
+    }
+
+    // Tail-append pass — absorb remaining single freed nodes into adjacent piece tails
+    let tapProg = true;
+    while (tapProg) {
+        tapProg = false;
+        for (const key of freedKeys) {
+            if (nodeOwner[key] !== -1) continue;
+            const r = (key / W) | 0, c = key % W;
+            for (const [dr, dc] of DIRS) {
+                const ar = r + dr, ac = c + dc;
+                if (ar < 0 || ar >= R || ac < 0 || ac >= C) continue;
+                const oid = nodeOwner[ar * W + ac]; if (oid < 0) continue;
+                const p = byId.get(oid); if (!p) continue;
+                if (p.nodes[0].r !== ar || p.nodes[0].c !== ac) continue;
+
+                p.nodes.unshift({r, c}); nodeOwner[key] = oid;
+                if (rcBoardSolvable(paths, graph)) { tapProg = true; break; }
+                p.nodes.shift(); nodeOwner[key] = -1;
+            }
+        }
+    }
+}
+
+// reconnectStubs(stubs, paths, graph)
+// Optional aesthetic step: tries to merge each stub with an adjacent new piece
+// by extending that piece's tail with the stub's nodes. Oracle-gated — reverts
+// if solvability breaks. Stubs coexist as valid independent paths without merging.
+function reconnectStubs(stubs, paths, graph) {
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1;
+    const DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
+    const byId = new Map(paths.map(p => [p.id, p]));
+
+    for (const stub of stubs) {
+        const stubHead = stub.nodes[stub.nodes.length - 1];
+        let merged = false;
+
+        for (const [dr, dc] of DIRS) {
+            if (merged) break;
+            const ar = stubHead.r + dr, ac = stubHead.c + dc;
+            if (ar < 0 || ar > rows || ac < 0 || ac > cols) continue;
+            const oid = nodeOwner[ar * W + ac]; if (oid < 0) continue;
+            const piece = byId.get(oid); if (!piece) continue;
+            // Only merge if the adjacent node is piece's tail (nodes[0])
+            if (piece.nodes[0].r !== ar || piece.nodes[0].c !== ac) continue;
+
+            const mergedNodes = [...stub.nodes, ...piece.nodes];
+            const mH = mergedNodes[mergedNodes.length - 1], mP = mergedNodes[mergedNodes.length - 2];
+            const savedNodes = piece.nodes.slice(), savedHeading = piece.heading;
+
+            for (const n of stub.nodes) nodeOwner[n.r * W + n.c] = piece.id;
+            piece.nodes = mergedNodes;
+            piece.heading = deltaToHeading(mH.r - mP.r, mH.c - mP.c);
+
+            if (rcBoardSolvable(paths, graph)) {
+                const idx = paths.findIndex(p => p.id === stub.id);
+                if (idx >= 0) paths.splice(idx, 1);
+                merged = true;
+            } else {
+                for (const n of stub.nodes) nodeOwner[n.r * W + n.c] = stub.id;
+                piece.nodes = savedNodes; piece.heading = savedHeading;
+            }
+        }
+    }
+}
+
+// mutateRegion(paths, graph, nodeSet)
+// Full mutation pipeline. Returns true on commit, false on revert (board unchanged).
+// nodeSet: array or iterable of {r, c} nodes defining the region to mutate.
+function mutateRegion(paths, graph, nodeSet) {
+    // Deep-copy state for revert
+    const savedPaths = paths.map(p => ({
+        ...p, nodes: p.nodes.map(n => ({...n})),
+        originalNodes: (p.originalNodes || []).map(n => ({...n}))
+    }));
+    const savedNodeOwner = new Int32Array(graph.nodeOwner);
+
+    const { stubs, freedKeys } = extractRegion(paths, graph, nodeSet);
+    if (!freedKeys.size) return true; // nothing extracted — trivial success
+
+    const ctr  = { n: paths.reduce((m, p) => Math.max(m, p.id), -1) + 1 };
+    const eps  = boundaryEndpoints(stubs);
+    rcFillRegion(graph, paths, freedKeys, eps, ctr);
+    reconnectStubs(stubs, paths, graph);
+    rcRecomputePlaceOrder(paths, graph);
+
+    // validateRulebook is defined in edge-logic.js — resolved at call time
+    if (typeof validateRulebook === 'function' && !validateRulebook(paths, graph)) {
+        paths.length = 0;
+        for (const p of savedPaths) paths.push(p);
+        graph.nodeOwner.set(savedNodeOwner);
+        return false;
+    }
+
+    return true;
 }

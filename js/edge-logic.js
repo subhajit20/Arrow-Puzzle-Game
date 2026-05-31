@@ -395,3 +395,144 @@ function validateRulebook(paths, graph) {
 
     return ok;
 }
+
+// =============================================================================
+// VT-1: Visual Entropy Analyzer
+// Four independent metrics that measure how visually interesting a board looks.
+// None of these affect generation — they are measurement-only.
+// =============================================================================
+
+// computeStraightnessIndex
+// Average number of nodes per straight run across all paths.
+// High = long boring straight lines. Low = frequent turns.
+// Formula: per path, runs = direction-change count + 1; avg_run = nodes / runs.
+// Global = mean of per-path averages.
+function computeStraightnessIndex(paths) {
+    if (!paths || paths.length === 0) return 0;
+    let sum = 0, count = 0;
+    for (const p of paths) {
+        if (p.nodes.length < 2) continue;
+        let runs = 1;
+        let pdr = p.nodes[1].r - p.nodes[0].r, pdc = p.nodes[1].c - p.nodes[0].c;
+        for (let i = 2; i < p.nodes.length; i++) {
+            const dr = p.nodes[i].r - p.nodes[i-1].r, dc = p.nodes[i].c - p.nodes[i-1].c;
+            if (dr !== pdr || dc !== pdc) { runs++; pdr = dr; pdc = dc; }
+        }
+        sum += p.nodes.length / runs;
+        count++;
+    }
+    return count > 0 ? sum / count : 0;
+}
+
+// computeDirectionalEntropy
+// Shannon entropy of segment direction distribution across all path segments.
+// Measures: is the board direction-balanced?
+// Max = 2.0 bits (equal UP/DOWN/LEFT/RIGHT). Low = axis-dominated board.
+function computeDirectionalEntropy(paths) {
+    const counts = [0, 0, 0, 0]; // UP, DOWN, LEFT, RIGHT by (dr,dc) key
+    let total = 0;
+    for (const p of paths) {
+        for (let i = 0; i < p.nodes.length - 1; i++) {
+            const dr = p.nodes[i+1].r - p.nodes[i].r;
+            const dc = p.nodes[i+1].c - p.nodes[i].c;
+            // Map (dr,dc) → index: UP=0 DOWN=1 LEFT=2 RIGHT=3
+            const idx = dr < 0 ? 0 : dr > 0 ? 1 : dc < 0 ? 2 : 3;
+            counts[idx]++; total++;
+        }
+    }
+    if (total === 0) return 0;
+    let H = 0;
+    for (const c of counts) {
+        const p = c / total;
+        if (p > 0) H -= p * Math.log2(p);
+    }
+    return H;
+}
+
+// computeTurnClusteringCoefficient
+// For each turn node, fraction of its 5×5 neighbourhood that also contains turn nodes.
+// High = turns cluster together (looks deliberate). Low = turns scatter uniformly.
+function computeTurnClusteringCoefficient(paths, graph) {
+    const { rows, cols } = graph; const W = cols + 1;
+    const R = rows + 1, C = cols + 1;
+    const turnSet = new Set();
+
+    for (const p of paths) {
+        for (let i = 1; i < p.nodes.length - 1; i++) {
+            const dr1 = p.nodes[i].r - p.nodes[i-1].r, dc1 = p.nodes[i].c - p.nodes[i-1].c;
+            const dr2 = p.nodes[i+1].r - p.nodes[i].r, dc2 = p.nodes[i+1].c - p.nodes[i].c;
+            if (dr1 !== dr2 || dc1 !== dc2)
+                turnSet.add(p.nodes[i].r * W + p.nodes[i].c);
+        }
+    }
+
+    if (turnSet.size === 0) return 0;
+
+    let totalFrac = 0;
+    for (const key of turnSet) {
+        const tr = (key / W) | 0, tc = key % W;
+        let turnNb = 0, validNb = 0;
+        for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const nr = tr + dr, nc = tc + dc;
+            if (nr < 0 || nr >= R || nc < 0 || nc >= C) continue;
+            validNb++;
+            if (turnSet.has(nr * W + nc)) turnNb++;
+        }
+        totalFrac += validNb > 0 ? turnNb / validNb : 0;
+    }
+    return totalFrac / turnSet.size;
+}
+
+// computeSpatialDensityVariance
+// Divides the board into a 4×4 grid of zones, measures TURN-NODE density per zone
+// (turn count / total nodes in zone), returns variance across zones.
+// Near-zero = turns uniformly scattered (boring). High = some zones are tight and
+// turning, others are straight and open — exactly the rhythm VT-3 creates.
+// Node-ownership density was the original definition but it is nearly constant at
+// ~96% everywhere regardless of zone type — turn density is the correct proxy.
+function computeSpatialDensityVariance(paths, graph) {
+    const { rows, cols } = graph;
+    const R = rows + 1, C = cols + 1;
+    const Z = 4;
+    const zTurns = new Array(Z * Z).fill(0);
+    const zTotal = new Array(Z * Z).fill(0);
+
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+        const zi = Math.min(Z - 1, (r * Z / R) | 0) * Z +
+                   Math.min(Z - 1, (c * Z / C) | 0);
+        zTotal[zi]++;
+    }
+
+    for (const p of paths) {
+        for (let i = 1; i < p.nodes.length - 1; i++) {
+            const dr1 = p.nodes[i].r - p.nodes[i-1].r, dc1 = p.nodes[i].c - p.nodes[i-1].c;
+            const dr2 = p.nodes[i+1].r - p.nodes[i].r, dc2 = p.nodes[i+1].c - p.nodes[i].c;
+            if (dr1 !== dr2 || dc1 !== dc2) {
+                const r = p.nodes[i].r, c = p.nodes[i].c;
+                const zi = Math.min(Z - 1, (r * Z / R) | 0) * Z +
+                           Math.min(Z - 1, (c * Z / C) | 0);
+                zTurns[zi]++;
+            }
+        }
+    }
+
+    const densities = zTotal.map((t, i) => t > 0 ? zTurns[i] / t : 0);
+    const mean = densities.reduce((a, b) => a + b, 0) / densities.length;
+    return densities.reduce((s, d) => s + (d - mean) ** 2, 0) / densities.length;
+}
+
+// computeVisualEntropy
+// Wrapper — runs all four metrics and returns them as a single object.
+//   straightness    : avg nodes per straight run  (lower = more turns = better)
+//   dirEntropy      : heading distribution entropy (higher = more balanced = better, max 2.0)
+//   turnClustering  : fraction of turn-node neighbours that are also turns (higher = clusters)
+//   densityVariance : variance of zone densities   (higher = more spatial rhythm = better)
+function computeVisualEntropy(paths, graph) {
+    return {
+        straightness:    computeStraightnessIndex(paths),
+        dirEntropy:      computeDirectionalEntropy(paths),
+        turnClustering:  computeTurnClusteringCoefficient(paths, graph),
+        densityVariance: computeSpatialDensityVariance(paths, graph),
+    };
+}

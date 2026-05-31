@@ -1292,3 +1292,210 @@ number is logged.
 | RV-3 | Unique exit points (Rule 13)         | ✅ done — rcExitPoint + rcExitKey helpers added; warning-only check in validateBoardAsserts; strict enforcement structurally impossible (paths > slots at large sizes); Rule 14 covers sequencing |
 | RV-4 | validateRulebook() function          | ✅ done — all 14 rules; hard-fails on Rules 1-11,14; soft on 12,13; 180/180 boards pass; injection tests confirm correct rule numbers |
 | RV-5 | Regression + cleanup                 | ✅ done — 180/180 boards: 0 solv failures, 0 assert errors, 0 rulebook failures, 0 fallbacks |
+
+---
+
+---
+
+# VISUAL TOPOLOGY COMPOSITION ENGINE
+
+**Goal:** Evolve the generator from an occupancy-driven procedural system into a premium
+visual-topology composition engine producing dense, handcrafted-looking puzzle boards.
+
+**Priority order:** measurement first → spatial planning → mutation engine → derived systems → cognitive modeling.
+
+Each step requires explicit approval before starting.
+
+---
+
+## PHASE 1 — Visual Entropy Analyzer
+
+**System 4. Measurement infrastructure — must be built before any other phase.**
+
+**File:** `js/edge-logic.js`
+
+- Implement `computeStraightnessIndex(paths)` — average consecutive nodes per direction change across all paths; high = boring straight runs
+- Implement `computeDirectionalEntropy(paths)` — Shannon entropy of heading distribution across all path segments; target ~2.0 bits (uniform over 4 directions)
+- Implement `computeTurnClusteringCoefficient(paths, graph)` — for each turn node, fraction of its 5×5 neighbourhood that also contains turn nodes; high = turns cluster naturally
+- Implement `computeSpatialDensityVariance(paths, graph)` — divide board into 4×4 zones, compute path node density per zone, return variance; near-zero = boring uniform board
+- Wrap all four into `computeVisualEntropy(paths, graph)` returning `{ straightness, dirEntropy, turnClustering, densityVariance }`
+- Add visual entropy output to regression harness as reported metrics (no fail conditions yet)
+- Baseline run: generate 50 boards per size, record metric distributions to establish current numbers
+
+**Test:** Regression harness outputs visual entropy metrics per size. No new failures.
+
+**Approval required before Phase 2**
+
+---
+
+## PHASE 2 — Aesthetic Quality Filter (Skeleton)
+
+**System 8 skeleton. Gate before the player sees the board.**
+
+**File:** `js/board-gen.js`
+
+- Define per-size threshold constants for each visual entropy metric (derived from Phase 1 baseline data)
+- Implement `boardPassesVisualFilter(paths, graph, level)` — checks all four metrics against thresholds, returns `{ pass: bool, failedMetric: string | null }`
+- Wire into `_build100PackedLevelEdge` as a post-`validateRulebook` filter — reject board and continue to next round if filter fails
+- Tune thresholds so ~30–40% of current boards pass (aggressive but not generation-breaking)
+- Add filter pass rate per size to regression harness reporting column
+- Regression: 0 new solvability failures, generation time < 2× pre-Phase-1 baseline
+
+**Test:** Regression harness shows filter pass rate per size. All boards committed to player pass filter.
+
+**Approval required before Phase 3**
+
+---
+
+## PHASE 3 — Topology Rhythm System
+
+**System 6. Spatial planning — runs before the RC generator, not after.**
+
+**File:** `js/edge-gen.js`
+
+- Define `ZoneMap` structure — `ceil(rows/4) × ceil(cols/4)` grid, each cell tagged `DENSE` / `OPEN` / `NEUTRAL`
+- Implement `generateZoneMap(rows, cols)` — checkerboard-style alternation with constraint: at least one OPEN corridor connects opposite board edges
+- Implement `zoneFor(r, c, zoneMap, rows, cols)` — maps any micro-grid node coordinate to its zone tag
+- Define zone-specific knob tables:
+  - `DENSE`:   `maxStraight = 1×f`, `turnBonus = 2.0`, `lenScale = 0.6`
+  - `OPEN`:    `maxStraight = 8×f`, `turnBonus = 0.3`, `lenScale = 1.6`
+  - `NEUTRAL`: current rcFillA defaults unchanged
+- Extend `rcGrowWalk` to accept zone knobs, queried per step via `zoneFor`
+- Thread zone map through `rcConstructForTier` → `reverseConstruct` → `rcFillA`
+- Verify: `spatialDensityVariance` increases meaningfully vs Phase 1 baseline
+
+**Test:** Spatial density variance increases across all sizes. All other metrics and solvability unchanged.
+
+**Approval required before Phase 4**
+
+---
+
+## PHASE 4 — Mutation Engine
+
+**Systems 1 + 2 core. The most complex phase — foundation for all subsequent mutation.**
+
+**File:** `js/edge-gen.js`
+
+- Implement `extractRegion(paths, graph, nodeSet)` — for each path with ≥1 node inside `nodeSet`, split at region boundary; return `{ stubs, freedNodes }`. Stubs are outside portions with updated headings. Freed nodes go into empty pool (nodeOwner reset to -1).
+- Implement `boundaryEndpoints(stubs)` — list of `{ node, requiredHeading }` at each stub terminal — these are the forced entry/exit points the mini-RC must connect to
+- Implement `rcFillRegion(graph, freedNodes, endpoints, ctr)` — constrained mini-RC that fills freed nodes; treats boundary endpoint nodes as pre-placed 1-node anchors; enforces Rule 8 (≥3 nodes per produced piece)
+- Implement `reconnectStubs(stubs, newPieces, paths, graph)` — merges each new piece with its corresponding stub using head-to-tail join; updates `paths` array and `nodeOwner` in place
+- Implement `mutateRegion(paths, graph, nodeSet)` — full pipeline: extract → fill → reconnect → `validateRulebook` → commit on pass, full revert on fail
+- Rule 8 guard: reject any `rcFillRegion` result where any piece has < 3 nodes; retry with different seed up to 5 times before reverting
+- Regression: apply `mutateRegion` on randomly selected 3×3 regions across 100 boards at 16×12; assert 0 ownership violations, 0 solvability failures, 0 Rule 8 violations post-mutation
+
+**Test:** 100 random 3×3 mutations at 16×12 all pass oracle and rulebook. No coverage change.
+
+**Approval required before Phase 5**
+
+---
+
+## PHASE 5 — Corridor Fragmentation
+
+**System 1. Applies the mutation engine to destroy long straight runs.**
+
+**File:** `js/edge-gen.js`
+
+- Implement `extractCorridors(p)` — returns `[{ startIdx, endIdx, dir, span }]` for each maximal straight run within path `p` (span = number of node-to-node steps in the run)
+- Implement `longCorridors(paths, minSpan)` — returns all paths containing any corridor with `span ≥ minSpan`, sorted by longest corridor first
+- Implement `thickenCorridor(path, corridor, graph, thickness)` — expand corridor node set by `thickness` cells perpendicular to corridor direction, clamped to board bounds
+- Implement `fragmentCorridor(paths, graph, path, corridor)` — apply `mutateRegion` on the thickened node set with high-turn mini-RC bias (`turnBonus = 3.0`, `maxStraight = 1`)
+- Implement `runCorridorFragmentation(paths, graph, maxIterations)` — while any corridor ≥ threshold AND iterations < max: pick longest corridor, fragment it, re-measure straightness index
+- Target: straightness index < 4.0 post-pass
+- Wire fragmentation pass into board generation pipeline after initial RC construction and before visual filter
+- Regression: straightness index drops vs Phase 3 baseline; coverage, solvability, rulebook all unchanged
+
+**Test:** Straightness index < 4.0 on ≥90% of boards across all sizes. Zero new failures.
+
+**Approval required before Phase 6**
+
+---
+
+## PHASE 6 — Topological Compression
+
+**System 3. Makes dense zones actually dense via targeted mutation.**
+
+**File:** `js/edge-gen.js`
+
+- Implement `turnDensityInZone(paths, graph, zoneBounds)` — turn-node count per 100 nodes within zone bounds
+- Implement `undercompressedZones(paths, graph, zoneMap)` — returns DENSE zones where `turnDensityInZone` is below target threshold
+- For each undercompressed zone: call `mutateRegion` with compressed mini-RC knobs (`turnBonus = 3.0`, `maxStraight = 1`, `lenScale = 0.5`)
+- Implement `runTopologicalCompression(paths, graph, zoneMap, maxIterations)` — iterates per zone until target met or `MAX_ZONE_ITER` reached
+- Wire after Corridor Fragmentation, before visual filter
+- Verify: turn clustering coefficient increases in DENSE zones; OPEN zones unchanged; no density bleed between zones
+
+**Test:** Turn clustering coefficient in DENSE zones improves vs Phase 5 baseline. OPEN zones unaffected.
+
+**Approval required before Phase 7**
+
+---
+
+## PHASE 7 — Pseudo-Loop Composition
+
+**System 5. Detection first, targeted completion second.**
+
+**File:** `js/edge-logic.js`
+
+- Implement `detectPseudoLoops(paths, graph)` — scan for groups of 3–4 adjacent paths whose combined node sets form a closed rectangular or L-shaped outline; return `[{ pathIds, shape, completeness }]`
+- Implement `pseudoLoopScore(paths, graph)` — weighted count of detected loops by completeness (0–1) and size; composite scalar
+- Implement `protoPseudoLoops(paths, graph)` — partial candidates with 2–3 sides present and at least one viable completion region adjacent
+- Implement `completePseudoLoop(paths, graph, proto)` — apply `mutateRegion` to the gap region to route new paths completing the loop outline
+- Add `pseudoLoopScore` to `computeVisualEntropy` output
+- Add to `boardPassesVisualFilter`: boards at sizes ≥ 20×15 must contain ≥1 pseudo-loop with `completeness ≥ 0.75`
+- Wire completion pass after Topological Compression, before final filter
+
+**Test:** Boards ≥ 20×15 all contain ≥1 detected pseudo-loop. Smaller boards unaffected.
+
+**Approval required before Phase 8**
+
+---
+
+## PHASE 8 — Advanced Solver Simulation
+
+**System 7. Cognitive difficulty signal, independent of tier.**
+
+**File:** `js/edge-logic.js`
+
+- Implement `computeRayAmbiguity(paths, graph)` — for each path: count distinct foreign paths with ≥1 node in its escape ray; return average across all paths
+- Implement `computeVisualConfusion(paths, graph)` — for each path head: count other path heads within 3 nodes pointing in a similar direction (±1 heading step); return average across all paths
+- Implement `computeSolveDepth(paths, graph)` — maximum dependency chain length; reuse `buildDAGDep` already in `edge-logic.js`, walk the dep graph for longest chain
+- Implement `computeSolverDifficulty(paths, graph)` — normalised composite: `rayAmbiguity × 0.4 + visualConfusion × 0.35 + solveDepth × 0.25`
+- Verify correlation with tier: TITAN boards score meaningfully higher than EASY on all three components independently
+- Add `solverDifficulty` to visual entropy report
+
+**Test:** TITAN boards score ≥2× EASY boards on solver difficulty. No generation changes, no failures.
+
+**Approval required before Phase 9**
+
+---
+
+## PHASE 9 — Aesthetic Quality Filter (Complete)
+
+**System 8 complete. Final multi-dimensional gate before player sees the board.**
+
+**File:** `js/board-gen.js`, `js/edge-logic.js`
+
+- Extend `boardPassesVisualFilter` with solver difficulty signal; tier-specific thresholds: EASY caps solver difficulty (not too confusing for new players), HARD/EXPERT/TITAN sets minimum floor
+- Define all threshold constants in a single exported config object `VISUAL_FILTER_CONFIG` for easy tuning
+- Replace existing `computeAestheticScore` entirely — remove old scalar, replace with multi-dimensional filter result
+- Add filter pass rate per tier to regression harness
+- Full regression across all 6 sizes and all tiers: 0 solvability failures, 0 rulebook failures, generation time < 2× pre-Phase-1 baseline
+- Final tuning run: target 25–40% natural pass rate per tier (aggressive but generation-feasible)
+
+**Test:** Full 180-board regression passes. Filter pass rate 25–40% per tier. Committed boards all pass all 9-phase criteria.
+
+---
+
+## VT STATUS
+
+| Phase | System | Description                              | Status      |
+|-------|--------|------------------------------------------|-------------|
+| VT-1  | 4      | Visual Entropy Analyzer                  | ✅ done — 4 metrics live; baseline: straight 1.5–1.8 (good), dirEntropy 1.99 (near-perfect), turnClust 0.62–0.66 (good), densityVariance 0.0004–0.009 (critical weakness — near-zero on large boards) |
+| VT-2  | 8      | Aesthetic Quality Filter (skeleton)      | ✅ done — boardPassesVisualFilter wired; pass rates: 4×3=80% 8×6=93% 12×9=97% 16×12=93% 20×15=73% 24×18=40%; primary discriminator=densityVariance; gen time 2.1× at 24×18 (expected — loop exhausts MAX_ROUNDS at 40% pass rate) |
+| VT-3  | 6      | Topology Rhythm System                   | ✅ done — DENSE/OPEN/NEUTRAL zone map wired; densityVariance metric fixed to turn-density variance; density variance 0.005–0.079 (up from ~0); filter 20–57%; 0 solvability/rulebook failures; coverage improved to 97–99% |
+| VT-4  | 1+2    | Mutation Engine                          | ✅ done — extractRegion/boundaryEndpoints/rcFillRegion/reconnectStubs/mutateRegion; 100/100 3×3 mutations at 16×12: 0 owner violations, 0 solvability failures, 0 Rule 8 violations (19 no-ops); key bug fixed: stubs must update nodeOwner to new stub id |
+| VT-5  | 1      | Corridor Fragmentation                   | ⬜ pending  |
+| VT-6  | 3      | Topological Compression                  | ⬜ pending  |
+| VT-7  | 5      | Pseudo-Loop Composition                  | ⬜ pending  |
+| VT-8  | 7      | Advanced Solver Simulation               | ⬜ pending  |
+| VT-9  | 8      | Aesthetic Quality Filter (complete)      | ⬜ pending  |

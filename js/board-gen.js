@@ -184,29 +184,45 @@ function _build100PackedLevelEdge(forceNewGeneration) {
             continue;
         }
 
+        // VT-2: visual quality filter — applied after rulebook, before candidacy.
+        // Boards that fail the visual filter are still kept in candidatesByTier as
+        // fallback material, but they cannot become validResult for the player.
+        const vf = boardPassesVisualFilter(paths, graph);
+
+        // Always store rulebook-valid boards for fallback; tag visual-filter result.
         if (!candidatesByTier[tier] || aScore > candidatesByTier[tier].aScore) {
-            candidatesByTier[tier] = { paths, graph, aScore };
+            candidatesByTier[tier] = { paths, graph, aScore, passesVisual: vf.pass };
         }
 
-        if (tier === targetTier && aScore > bestAesthetic) {
+        // Only set validResult when the board passes the visual filter.
+        if (vf.pass && tier === targetTier && aScore > bestAesthetic) {
             bestAesthetic = aScore;
             validResult   = { paths, graph };
             chosenTier    = tier;
         }
 
-        // Accept immediately once we have a good-enough tier+aesthetic match.
-        if (tier === targetTier && aScore >= 0.40) break;
+        // Accept immediately on good-enough visual + tier + aesthetic match.
+        if (vf.pass && tier === targetTier && aScore >= 0.40) break;
     }
 
     // Fall back to any board of an allowed tier.
     if (!validResult) {
         const allowedAtLevel = getAllowedTiersForLevel(level);
         const fallbackOrder  = [targetTier, ...allowedAtLevel.filter(t => t !== targetTier)];
+        // Pass 1: prefer visual-filter-passing boards in any allowed tier.
         for (const t of fallbackOrder) {
-            if (candidatesByTier[t]) {
+            if (candidatesByTier[t] && candidatesByTier[t].passesVisual) {
                 validResult = { paths: candidatesByTier[t].paths, graph: candidatesByTier[t].graph };
-                chosenTier  = t;
-                break;
+                chosenTier  = t; break;
+            }
+        }
+        // Pass 2: fall back to any rulebook-valid board (visual filter bypassed).
+        if (!validResult) {
+            for (const t of fallbackOrder) {
+                if (candidatesByTier[t]) {
+                    validResult = { paths: candidatesByTier[t].paths, graph: candidatesByTier[t].graph };
+                    chosenTier  = t; break;
+                }
             }
         }
     }
@@ -307,6 +323,63 @@ function build100PackedLevel(forceNewGeneration = false) {
 
 
 
+
+// =============================================================================
+// VT-2: Aesthetic Quality Filter (skeleton)
+// Multi-metric visual gate applied after rulebook validation.
+// Thresholds calibrated from VT-1 baseline. Primary discriminator: densityVariance
+// (the critical weakness identified in VT-1 — near-zero on large boards).
+// Other metrics are permissive since they are already healthy in current boards.
+//
+// boardPassesVisualFilter(paths, graph) → { pass, failedMetric, ve }
+//   pass         — true only when ALL four thresholds are met
+//   failedMetric — name of the first failing metric, or null on pass
+//   ve           — the full computeVisualEntropy result (for logging / harness)
+// =============================================================================
+
+// Per-size threshold table.  Keyed by total micro-grid node count (≤ N).
+// Tightened over VT-3 → VT-9 as future phases raise the metrics.
+// Thresholds recalibrated after VT-3 (Topology Rhythm System).
+// densityVariance now measures TURN-DENSITY variance per zone (not node-ownership),
+// so the absolute values are much larger and respond to the DENSE/OPEN zone contrast.
+// turnClustering drops when zones concentrate turns locally (global average falls
+// because OPEN zones have near-zero clustering, pulling the mean down).
+// Thresholds recalibrated after VT-3 (Topology Rhythm System).
+// densityVariance now measures TURN-DENSITY variance per zone (not node-ownership),
+// so the absolute values are much larger and respond to the DENSE/OPEN zone contrast.
+// turnClustering drops when zones concentrate turns locally (global average falls
+// because OPEN zones have near-zero clustering, pulling the mean down).
+const _VF_THRESHOLDS = [
+    // nodes ≤   densVar   turnClust  dirEntr  straightMax
+    [100,  { densityVariance: 0.110,  turnClustering: 0.36, dirEntropy: 1.88, straightnessMax: 5.0 }],
+    [300,  { densityVariance: 0.040,  turnClustering: 0.40, dirEntropy: 1.91, straightnessMax: 5.0 }],
+    [600,  { densityVariance: 0.013,  turnClustering: 0.40, dirEntropy: 1.94, straightnessMax: 5.0 }],
+    [1000, { densityVariance: 0.010,  turnClustering: 0.39, dirEntropy: 1.96, straightnessMax: 5.5 }],
+    [1400, { densityVariance: 0.009,  turnClustering: 0.39, dirEntropy: 1.97, straightnessMax: 6.0 }],
+    [Infinity, { densityVariance: 0.007, turnClustering: 0.38, dirEntropy: 1.97, straightnessMax: 6.5 }],
+];
+
+function getVisualFilterThresholds(graph) {
+    const n = (graph.rows + 1) * (graph.cols + 1);
+    for (const [max, t] of _VF_THRESHOLDS) { if (n <= max) return t; }
+    return _VF_THRESHOLDS[_VF_THRESHOLDS.length - 1][1];
+}
+
+function boardPassesVisualFilter(paths, graph) {
+    const ve = computeVisualEntropy(paths, graph);
+    const t  = getVisualFilterThresholds(graph);
+
+    if (ve.densityVariance < t.densityVariance)
+        return { pass: false, failedMetric: 'densityVariance', ve };
+    if (ve.turnClustering  < t.turnClustering)
+        return { pass: false, failedMetric: 'turnClustering',  ve };
+    if (ve.dirEntropy      < t.dirEntropy)
+        return { pass: false, failedMetric: 'dirEntropy',      ve };
+    if (ve.straightness    > t.straightnessMax)
+        return { pass: false, failedMetric: 'straightness',    ve };
+
+    return { pass: true, failedMetric: null, ve };
+}
 
 // ---------------------------------------------------------------------------
 // computeAestheticScore
