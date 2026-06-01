@@ -1344,6 +1344,207 @@ function rcFixVisualSelfCollision(paths, graph) {
     }
 }
 
+// =============================================================================
+// PX-3: Perceptual Self-Enclosure Correction Pass
+//
+// Detects paths whose own body occupies an elevated fraction of the angular
+// hemisphere visible from the head in the heading direction — the player's eye
+// reads this as entrapment even though own nodes are physics-transparent.
+//
+// Five failure modes are all captured by one primary signal (forward angular
+// coverage) + one supporting signal (centroid alignment for inward spirals):
+//   horseshoe/U-wrap, inward spiral, forward arc enclosure,
+//   parallel corridor trap, convex enclosure.
+//
+// Runs immediately after rcFixVisualSelfCollision (PX-1).
+// Tags unfixed residual paths with _perceptualTrap = true for VT-9 gating.
+// =============================================================================
+
+// computeAngularEnclosureScore(path, graph)
+// Returns a 0–1 scalar measuring how perceptually obstructed the head's forward
+// visual field is by the path's own body.  0 = fully open, 1 = fully obstructed.
+//
+// Three independent components — any one can independently drive the score above
+// the 0.55 flag threshold, covering all known self-obstruction patterns:
+//
+//   Component 1 — forwardCoverage (angular hemisphere scan, radius D)
+//     Fraction of forward hemisphere (−90°..+90°) occupied by own body nodes
+//     within Manhattan radius D, binned at 10° resolution.
+//     Catches: horseshoe, U-wrap, convex enclosure, parallel corridor trap.
+//
+//   Component 2 — centroidAlignment (spiral detector)
+//     dot(headingVector, normalize(centroid_of_all_body − head)), clamped [0,1].
+//     Catches: inward spiral regardless of local density near head.
+//
+//   Component 3 — rayScore (escape-ray own-body scan, radius D_far = 2×D)
+//     Walks the actual forward escape ray step-by-step up to D_far nodes.
+//     Fires for ANY pattern where own body sits directly on the line of travel —
+//     hook, reverse-J, wide arc — regardless of angular hemisphere coverage.
+//     Proximity-weighted: 1.0 at step 0 → 0.60 at step D_far−1 (always > 0.55).
+//
+//   result = max(forwardCoverage × 0.65 + centroidAlignment × 0.35,  rayScore)
+//
+// D  scales: ≤300 nodes → 3,  300–800 → 4,  800+ → 6
+// D_far = 2×D (catches long-range inline obstructions the angular scan misses)
+function computeAngularEnclosureScore(path, graph) {
+    if (path.nodes.length < 4) return 0;
+    const { rows, cols } = graph;
+    const totalNodes = (rows + 1) * (cols + 1);
+    const D     = totalNodes <= 300 ? 3  : totalNodes <= 800 ? 4  : 6;
+    const D_far = totalNodes <= 300 ? 6  : totalNodes <= 800 ? 8  : 12;
+    const W     = cols + 1;
+
+    const head       = path.nodes[path.nodes.length - 1];
+    const { dr, dc } = headingToDelta(path.heading);
+
+    // ── Component 1: forward hemisphere angular coverage ─────────────────────
+    // No early-return on empty bodyNear — ray scan must still run.
+    const bodyNear = [];
+    for (let i = 0; i < path.nodes.length - 1; i++) {
+        const n = path.nodes[i];
+        if (Math.abs(n.r - head.r) + Math.abs(n.c - head.c) <= D) bodyNear.push(n);
+    }
+
+    const BINS = 18;
+    const bins = new Uint8Array(BINS);
+    for (const n of bodyNear) {
+        const relR = n.r - head.r, relC = n.c - head.c;
+        const fwd  = relR * dr + relC * dc;
+        if (fwd <= 0) continue;
+        const perp  = relC * dr - relR * dc;
+        const angle = Math.atan2(perp, fwd) * (180 / Math.PI);
+        const bin   = Math.min(BINS - 1, Math.max(0, Math.floor((angle + 90) / 10)));
+        bins[bin] = 1;
+    }
+    const forwardCoverage = bins.reduce((s, b) => s + b, 0) / BINS;
+
+    // ── Component 2: centroid alignment (inward spiral detector) ─────────────
+    let sumR = 0, sumC = 0;
+    const bodyCount = path.nodes.length - 1;
+    for (let i = 0; i < bodyCount; i++) { sumR += path.nodes[i].r; sumC += path.nodes[i].c; }
+    const cR   = sumR / bodyCount - head.r;
+    const cC   = sumC / bodyCount - head.c;
+    const cLen = Math.sqrt(cR * cR + cC * cC);
+    const centroidAlignment = cLen > 0 ? Math.max(0, (dr * cR + dc * cC) / cLen) : 0;
+
+    const angularScore = forwardCoverage * 0.65 + centroidAlignment * 0.35;
+
+    // ── Component 3: escape-ray own-body scan ─────────────────────────────────
+    // Walk the actual forward ray up to D_far steps. Any own body node directly
+    // on the escape corridor triggers a proximity-weighted score ≥ 0.60 — always
+    // above the 0.55 threshold regardless of angular coverage.
+    let rayScore = 0;
+    let rr = head.r + dr, rc = head.c + dc;
+    for (let step = 0; step < D_far; step++) {
+        if (rr < 0 || rr > rows || rc < 0 || rc > cols) break;
+        if (graph.nodeOwner[rr * W + rc] === path.id) {
+            // 1.0 at step 0 → 0.60 at step D_far−1; always exceeds 0.55 flag threshold.
+            rayScore = 1.0 - (step / D_far) * 0.40;
+            break;
+        }
+        rr += dr; rc += dc;
+    }
+
+    // Either signal independently drives the flag — take the maximum.
+    return Math.max(angularScore, rayScore);
+}
+
+// rcFixPerceptualEnclosure(paths, graph)  — PX-3
+// For each path whose enclosureScore exceeds 0.55:
+//   Attempt 1 — score-aware flip: compute score for both endpoints, commit the
+//               endpoint with the lower score if rcHeadRayClear passes AND the
+//               new score drops below the threshold.
+//   Attempt 2 — surgical mutation: identify the own body nodes occupying the
+//               highest-angle forward-hemisphere bins (the enclosure contributors),
+//               build a tight bounding-box window around them, apply mutateRegion
+//               with NEUTRAL walk knobs (open the enclosure without over-compressing).
+//   Attempt 3 — residual: tag path with _perceptualTrap = true for VT-9 gating.
+function rcFixPerceptualEnclosure(paths, graph) {
+    const THRESHOLD = 0.55;
+    const BINS      = 18;
+    const { rows, cols } = graph;
+
+    for (let pi = 0; pi < paths.length; pi++) {
+        const p = paths[pi];
+        const score = computeAngularEnclosureScore(p, graph);
+        if (score <= THRESHOLD) continue;
+
+        // ── Attempt 1: score-aware flip ─────────────────────────────────────
+        const savedNodes   = p.nodes.slice();
+        const savedHeading = p.heading;
+
+        p.nodes.reverse();
+        const nh = p.nodes[p.nodes.length - 1], np = p.nodes[p.nodes.length - 2];
+        p.heading = deltaToHeading(nh.r - np.r, nh.c - np.c);
+        const { dr: fdr, dc: fdc } = headingToDelta(p.heading);
+
+        const flippedScore    = computeAngularEnclosureScore(p, graph);
+        const flipRayClear    = rcHeadRayClear(graph, nh, fdr, fdc);
+        const flipFacesOwnBody = (() => {
+            const nr = nh.r + fdr, nc = nh.c + fdc;
+            return nr >= 0 && nr <= rows && nc >= 0 && nc <= cols &&
+                   graph.nodeOwner[nr * (cols + 1) + nc] === p.id;
+        })();
+
+        if (!flipFacesOwnBody && flipRayClear && flippedScore < score && flippedScore <= THRESHOLD) {
+            continue; // flip committed
+        }
+
+        // Flip rejected — restore original orientation.
+        p.nodes = savedNodes;
+        p.heading = savedHeading;
+
+        // ── Attempt 2: surgical mutation on arc contributor nodes ────────────
+        const head       = p.nodes[p.nodes.length - 1];
+        const { dr, dc } = headingToDelta(p.heading);
+        const totalNodes = (rows + 1) * (cols + 1);
+        const D          = totalNodes <= 300 ? 3 : totalNodes <= 800 ? 4 : 6;
+
+        // Identify own body nodes occupying forward hemisphere bins.
+        const binNodes = Array.from({ length: BINS }, () => []);
+        for (let i = 0; i < p.nodes.length - 1; i++) {
+            const n = p.nodes[i];
+            if (Math.abs(n.r - head.r) + Math.abs(n.c - head.c) > D) continue;
+            const relR = n.r - head.r, relC = n.c - head.c;
+            const fwd  = relR * dr + relC * dc;
+            if (fwd <= 0) continue;
+            const perp  = relC * dr - relR * dc;
+            const angle = Math.atan2(perp, fwd) * (180 / Math.PI);
+            const bin   = Math.min(BINS - 1, Math.max(0, Math.floor((angle + 90) / 10)));
+            binNodes[bin].push(n);
+        }
+
+        const contributors = binNodes.flat();
+        if (contributors.length > 0) {
+            let rMin = Infinity, rMax = -Infinity, cMin = Infinity, cMax = -Infinity;
+            for (const n of contributors) {
+                if (n.r < rMin) rMin = n.r; if (n.r > rMax) rMax = n.r;
+                if (n.c < cMin) cMin = n.c; if (n.c > cMax) cMax = n.c;
+            }
+            rMin = Math.max(0, rMin - 1); rMax = Math.min(rows, rMax + 1);
+            cMin = Math.max(0, cMin - 1); cMax = Math.min(cols, cMax + 1);
+
+            const nodeSet = [];
+            for (let r = rMin; r <= rMax; r++)
+                for (let c = cMin; c <= cMax; c++)
+                    nodeSet.push({ r, c });
+
+            const mutated = mutateRegion(paths, graph, nodeSet,
+                { walkKnobs: ZONE_WALK_KNOBS[ZONE_NEUTRAL] });
+
+            if (mutated) {
+                const pAfter = paths.find(q => q.id === p.id);
+                if (!pAfter || computeAngularEnclosureScore(pAfter, graph) <= THRESHOLD) {
+                    continue; // mutation resolved the enclosure
+                }
+            }
+        }
+
+        // ── Attempt 3: residual ──────────────────────────────────────────────
+        p._perceptualTrap = true;
+    }
+}
+
 // Map difficulty tier → chainDepth knob.
 function rcChainDepthForTier(tier) {
     return { EASY: 0, NORMAL: 0, HARD: 4, EXPERT: 7, TITAN: 11 }[tier] || 0;

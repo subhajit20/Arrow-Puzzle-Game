@@ -214,6 +214,7 @@ function _build100PackedLevelEdge(forceNewGeneration) {
         // assume it will crash — but own nodes are transparent in this game's physics.
         // This pass ensures the arrowhead always points toward open space.
         rcFixVisualSelfCollision(paths, graph);
+        rcFixPerceptualEnclosure(paths, graph);  // PX-3
 
         const tier = cx.tier;
 
@@ -422,6 +423,13 @@ const VISUAL_FILTER_CONFIG = {
     // Large boards (VT-7): must contain ≥1 recognisable loop shape.
     pseudoLoopMinScore: 0.5,
     pseudoLoopNodeThreshold: 1200,
+    // PX-3: max fraction of residual perceptually-trapped paths allowed per board.
+    // Tighter on large boards (more paths → more visual confusion at small fractions).
+    perceptualTrapThresholds: [
+        [300,      0.10],
+        [800,      0.08],
+        [Infinity, 0.05],
+    ],
 };
 
 // computeVisualScore(ve) — 0–1 composite visual quality score for board ranking.
@@ -434,7 +442,10 @@ function computeVisualScore(ve) {
     const s = Math.min(1, (ve.solverDifficulty || 0) / 6);
     const t = Math.min(1, (ve.turnClustering || 0) / 0.5);
     const e = Math.min(1, (ve.dirEntropy || 0) / 2.0);
-    return d * 0.30 + l * 0.25 + s * 0.20 + t * 0.15 + e * 0.10;
+    // Perceptual clarity: 1 = no trapped paths, 0 = all trapped. Normalised against
+    // the 0.55 flag threshold so a fully-flagged board maps to 0.
+    const c = 1 - Math.min(1, (ve.perceptualTrapScore || 0) / 0.55);
+    return d * 0.28 + l * 0.23 + s * 0.19 + t * 0.14 + e * 0.09 + c * 0.07;
 }
 
 function boardPassesVisualFilter(paths, graph, tier) {
@@ -467,6 +478,12 @@ function boardPassesVisualFilter(paths, graph, tier) {
         if (td.max !== null && ve.solverDifficulty > td.max)
             return { pass: false, failedMetric: 'solverDifficulty_max', ve };
     }
+
+    // Perceptual trap fraction gate (PX-3).
+    const ptEntry = VISUAL_FILTER_CONFIG.perceptualTrapThresholds.find(([max]) => n <= max);
+    const ptMax   = ptEntry ? ptEntry[1] : 0.05;
+    if (ve.perceptualTrapFraction > ptMax)
+        return { pass: false, failedMetric: 'perceptualTrapFraction', ve };
 
     return { pass: true, failedMetric: null, ve };
 }

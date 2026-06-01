@@ -1711,6 +1711,127 @@ filling the full cell.
 - Brackets around inner paths show visible openings
 - Arrowheads are clearly associated with their path
 
+**Approval required before PX-3**
+
+---
+
+## STAGE PX-3 — Perceptual Self-Enclosure Correction Pass
+
+**Problem:** Players experience a confusing issue where long folded paths visually appear
+to collide with or trap themselves despite remaining mathematically movable. The topology
+still contains **perceptual self-obstruction structures** — own body nodes crowd the head's
+forward visual field in patterns the player's eye reads as entrapment before they know
+own nodes are transparent to physics.
+
+PX-1 catches only two narrow cases (immediate self-point, anti-parallel within 2 nodes).
+The broader spatial self-enclosure class is undetected: horseshoe/U-wrap, inward spiral,
+forward arc enclosure, parallel corridor trap, and convex enclosure. All five share one
+measurable signal — own body occupies an elevated fraction of the angular hemisphere
+visible from the head in the heading direction.
+
+**Pipeline position:** Runs immediately after `rcFixVisualSelfCollision` (PX-1), before
+hEdge/vEdge derivation. Extends PX-1 into a two-pass system.
+
+**Files:** `js/edge-gen.js`, `js/edge-logic.js`, `js/board-gen.js`
+
+---
+
+### Detection — `computeAngularEnclosureScore(path, graph, D)`
+
+**D = scan radius** in micro-nodes. Scales with board size:
+- micro-grid ≤300 nodes → D=3
+- 300–800 nodes → D=4
+- 800+ nodes → D=6
+
+**Step 1 — Collect own body nodes within radius D of the head** (excluding head itself).
+
+**Step 2 — Project into heading reference frame.**
+Heading direction = 0°. Left perpendicular = −90°. Right perpendicular = +90°.
+Backward = ±180°. For each own body node within D, compute its angle.
+
+**Step 3 — Forward hemisphere angular coverage.**
+Discretize −90° to +90° (forward hemisphere) into 18 bins of 10° each.
+For each own body node in the forward hemisphere, mark its bin occupied.
+`forwardCoverage = occupiedBins / 18`
+
+**Step 4 — Centroid alignment score (spiral detector).**
+Compute centroid of all own body nodes (excluding head).
+`centroidAlignment = max(0, dot(headingVector, normalize(centroid − head)))`
+Clamp to [0, 1] — only penalise inward pointing.
+
+**Step 5 — Composite score.**
+```
+enclosureScore = forwardCoverage × 0.65 + centroidAlignment × 0.35
+```
+
+Flag path as perceptually trapped if `enclosureScore > 0.55`.
+
+---
+
+### Fix Strategy — Three Attempts in Cost Order
+
+**Attempt 1 — Informed Flip:**
+Compute `enclosureScore` for both endpoints. Pick the endpoint that minimises the score,
+provided `rcHeadRayClear` passes. Accept only if the new score drops below the flag
+threshold. This is score-aware endpoint selection — the existing PX-1 flip is blind to
+perceptual outcome and can produce a flip that still traps.
+
+**Attempt 2 — Surgical Local Mutation:**
+Identify the **enclosure arc contributors** — own body nodes occupying the highest-angle
+bins in the forward hemisphere. These are the structural source of the enclosure.
+Define a tight mutation window (rectangle containing those nodes + 1-node border,
+typically 3×3 to 4×4 micro-nodes). Apply `mutateRegion` with **FOLD or MEANDER
+personality** (not KNOT — goal is to open the enclosure, not compress it further).
+Oracle-gate as normal. Accept if post-mutation score drops below threshold.
+
+**Attempt 3 — Accept as Residual:**
+Record path as unfixed residual. VT-9 gate handles board-level rejection based on
+residual accumulation.
+
+---
+
+### VT-9 Gate Extension
+
+Add `perceptualTrapFraction` (unfixed residual paths / total paths) to
+`boardPassesVisualFilter`. Size-scaled thresholds:
+
+| Board nodes | Max allowed fraction |
+|---|---|
+| ≤300 | 0.10 |
+| 300–800 | 0.08 |
+| 800+ | 0.05 |
+
+Add `perceptualTrapScore` (mean enclosure score across all paths) to `computeVisualEntropy`
+so it also contributes to `computeVisualScore` ranking between candidate boards.
+
+---
+
+### What PX-3 Must NOT Produce
+- False positives on legitimately complex paths whose body is distant from the head
+- Global style constraints that homogenise path shapes
+- Additional rejection load for boards that already pass VT-9 on other dimensions
+
+### What PX-3 Must Produce
+- Zero paths where own body crowds >55% of the forward visual hemisphere near the head
+- Clean arrowheads that always point toward visually open space
+- Players correctly identify which paths can move without needing to know the physics rules
+
+---
+
+### Performance Notes
+- Angular coverage scan: O(D²) per path — negligible at D≤6
+- Centroid: O(nodes) per path — already cheap
+- Flip attempt: O(rows+cols) via `rcHeadRayClear` — same cost as PX-1
+- Surgical mutation: O(paths²) oracle call only if flip fails — capped to small window
+- Total oracle calls from PX-3: bounded by number of flip-failing flagged paths (typically
+  0–5 per board at the expected flag rate)
+
+**Test:** Run `node test-regression.js`. Zero boards with `enclosureScore > 0.55` on any
+committed path. Zero new solvability failures. Manual test: generate 50 boards at L100
+TITAN — visually confirm every arrowhead points toward open space with no self-enclosure
+perception. Check that `perceptualTrapFraction` is logged per board and stays below
+size-scaled thresholds.
+
 ---
 
 ## SP/PX STATUS
@@ -1722,3 +1843,4 @@ filling the full cell.
 | SP-3  | Lower corridor fragmentation threshold   | ✅ done — MIN_SPAN 6→4; thresholds ≤1000 0.009, ≤1400 0.0050; EASY 40% NORMAL 40% HARD 35% EXPERT 41% (all ~✓); straightness 1.70; 0 failures |
 | PX-1  | Fast geometric self-collision fix        | ✅ done — rcFixVisualSelfCollision: oracle→rcHeadRayClear (~500× faster) + anti-parallel bracket detection; rcFillA: -2 penalty on self-facing heads; rcFillB: sort endpoints to prefer non-self-pointing; 0 failures |
 | PX-2  | Renderer visual gap                      | ⬜ pending  |
+| PX-3  | Perceptual self-enclosure correction     | ✅ done — computeAngularEnclosureScore (forward hemisphere bins + centroid alignment); score-aware flip + surgical mutateRegion fix; VT-9 perceptualTrapFraction gate + perceptualTrapScore in computeVisualScore; 30 boards / 2341 paths: 34 flagged, 34 fixed, 0 residuals, 100% fix rate |

@@ -677,19 +677,31 @@ function completePseudoLoop(paths, graph, proto) {
 
 // computeVisualEntropy
 // Wrapper — runs all metrics and returns them as a single object.
-//   straightness    : avg nodes per straight run  (lower = more turns = better)
-//   dirEntropy      : heading distribution entropy (higher = more balanced, max 2.0)
-//   turnClustering  : fraction of turn-node neighbours that are also turns
-//   densityVariance : turn-density variance per zone (higher = more spatial rhythm)
-//   pseudoLoopScore : weighted loop count (higher = more loop illusions)
+//   straightness          : avg nodes per straight run  (lower = more turns = better)
+//   dirEntropy            : heading distribution entropy (higher = more balanced, max 2.0)
+//   turnClustering        : fraction of turn-node neighbours that are also turns
+//   densityVariance       : turn-density variance per zone (higher = more spatial rhythm)
+//   pseudoLoopScore       : weighted loop count (higher = more loop illusions)
+//   perceptualTrapScore   : mean angular enclosure score across all paths (lower = better)
+//   perceptualTrapFraction: fraction of paths tagged as residual traps by PX-3 (lower = better)
 function computeVisualEntropy(paths, graph) {
+    const n = paths.length || 1;
+    // perceptualTrapScore — mean enclosure score; computeAngularEnclosureScore is in
+    // edge-gen.js (loads before this file) so the call resolves at runtime.
+    const perceptualTrapScore = paths.reduce(
+        (s, p) => s + computeAngularEnclosureScore(p, graph), 0) / n;
+    const perceptualTrapFraction =
+        paths.filter(p => p._perceptualTrap).length / n;
+
     return {
-        straightness:    computeStraightnessIndex(paths),
-        dirEntropy:      computeDirectionalEntropy(paths),
-        turnClustering:  computeTurnClusteringCoefficient(paths, graph),
-        densityVariance:  computeSpatialDensityVariance(paths, graph),
-        pseudoLoopScore:  pseudoLoopScore(paths, graph),
-        solverDifficulty: computeSolverDifficulty(paths, graph),
+        straightness:          computeStraightnessIndex(paths),
+        dirEntropy:            computeDirectionalEntropy(paths),
+        turnClustering:        computeTurnClusteringCoefficient(paths, graph),
+        densityVariance:       computeSpatialDensityVariance(paths, graph),
+        pseudoLoopScore:       pseudoLoopScore(paths, graph),
+        solverDifficulty:      computeSolverDifficulty(paths, graph),
+        perceptualTrapScore,
+        perceptualTrapFraction,
     };
 }
 
