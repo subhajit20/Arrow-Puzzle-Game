@@ -56,8 +56,8 @@ function validateBoardAsserts(paths, graph) {
     // 3. Coverage floor — Phase D achieves ~96-100% on large boards, 90%+ on
     //    small boards (3-node minimum limits options). Warn below 90%.
     const totalNodes = (rows + 1) * (cols + 1);
-    const usedNodes  = paths.reduce((s, p) => s + p.nodes.length, 0);
-    const coverage   = usedNodes / totalNodes;
+    const usedNodes = paths.reduce((s, p) => s + p.nodes.length, 0);
+    const coverage = usedNodes / totalNodes;
     if (coverage < 0.90) {
         console.warn(`[Assert] coverage ${Math.round(coverage * 100)}% is below the 90% floor`);
     }
@@ -94,12 +94,12 @@ function validateBoardAsserts(paths, graph) {
 //   L76+   → 24×18  (micro 48×36, ~1813 dots)
 // -----------------------------------------------------------------------------
 function getSizesForLevel(level) {
-    if (level <=  5) return [{ rows:  4, cols:  3 }];
-    if (level <= 15) return [{ rows:  8, cols:  6 }];
-    if (level <= 30) return [{ rows: 12, cols:  9 }];
+    if (level <= 5) return [{ rows: 4, cols: 3 }];
+    if (level <= 15) return [{ rows: 8, cols: 6 }];
+    if (level <= 30) return [{ rows: 12, cols: 9 }];
     if (level <= 50) return [{ rows: 16, cols: 12 }];
     if (level <= 75) return [{ rows: 20, cols: 15 }];
-    return                  [{ rows: 24, cols: 18 }];
+    return [{ rows: 24, cols: 18 }];
 }
 
 // =============================================================================
@@ -115,12 +115,12 @@ function _build100PackedLevelEdge(forceNewGeneration) {
     }
 
     const sizes = getSizesForLevel(State.level);
-    const size  = sizes[Math.floor(Math.random() * sizes.length)];
-    State.rootRows  = size.rows;
-    State.rootCols  = size.cols;
-    State.gridRows  = size.rows * State.subdivFactor;
-    State.gridCols  = size.cols * State.subdivFactor;
-    State.gridSize  = size.rows;
+    const size = sizes[Math.floor(Math.random() * sizes.length)];
+    State.rootRows = size.rows;
+    State.rootCols = size.cols;
+    State.gridRows = size.rows * State.subdivFactor;
+    State.gridCols = size.cols * State.subdivFactor;
+    State.gridSize = size.rows;
     State.shapeName = 'Lattice';
 
     resetCamera();
@@ -135,8 +135,8 @@ function _build100PackedLevelEdge(forceNewGeneration) {
         ` | subCellSize: ${State.subCellSize.toFixed(1)}px`
     );
 
-    const rows  = State.gridRows;
-    const cols  = State.gridCols;
+    const rows = State.gridRows;
+    const cols = State.gridCols;
     const level = State.level;
 
     const targetTier = selectTargetDifficulty(level, State.recentDifficulties || []);
@@ -147,11 +147,11 @@ function _build100PackedLevelEdge(forceNewGeneration) {
     // BATCH and MAX_ROUNDS scale down for large boards — a single construction at
     // 24×18 takes ~200-400ms, so cap total attempts to stay under ~1s.
     const totalNodes = (rows + 1) * (cols + 1);
-    const BATCH      = totalNodes > 1000 ? 2 : 4;  // inner tier-bracket attempts
+    const BATCH = totalNodes > 1000 ? 2 : 4;  // inner tier-bracket attempts
     const MAX_ROUNDS = totalNodes > 1000 ? 3 : 5;  // outer retry rounds
 
     let validResult = null;
-    let chosenTier  = 'NORMAL';
+    let chosenTier = 'NORMAL';
     let bestAesthetic = -1;
     const candidatesByTier = {};
 
@@ -178,8 +178,14 @@ function _build100PackedLevelEdge(forceNewGeneration) {
         const compIter = totalNodes > 1000 ? 3 : 6;
         runTopologicalCompression(paths, graph, zoneMap, compIter);
 
-        const tier   = cx.tier;
-        const aScore = computeAestheticScore(paths, graph);
+        // VT-7: Pseudo-loop completion — route the missing side of proto-loops.
+        // Only on large boards (≥ 20×15 root, ~1271+ nodes) where loops are meaningful.
+        if (totalNodes > 1200) {
+            const protos = protoPseudoLoops(paths, graph);
+            for (const proto of protos.slice(0, 3)) completePseudoLoop(paths, graph, proto);
+        }
+
+        const tier = cx.tier;
 
         // Derive hEdge/vEdge from post-fragmentation node sequences.
         for (const p of paths) {
@@ -197,36 +203,37 @@ function _build100PackedLevelEdge(forceNewGeneration) {
             continue;
         }
 
-        // VT-2: visual quality filter — applied after rulebook, before candidacy.
-        // Boards that fail the visual filter are still kept in candidatesByTier as
-        // fallback material, but they cannot become validResult for the player.
-        const vf = boardPassesVisualFilter(paths, graph);
+        // VT-9: full multi-dimensional visual filter (replaces old computeAestheticScore).
+        // Boards that fail are kept in candidatesByTier as fallback but cannot become
+        // validResult for the player.  vScore ranks candidates that pass the filter.
+        const vf = boardPassesVisualFilter(paths, graph, tier);
+        const vScore = vf.pass ? computeVisualScore(vf.ve) : 0;
 
         // Always store rulebook-valid boards for fallback; tag visual-filter result.
-        if (!candidatesByTier[tier] || aScore > candidatesByTier[tier].aScore) {
-            candidatesByTier[tier] = { paths, graph, aScore, passesVisual: vf.pass };
+        if (!candidatesByTier[tier] || vScore > (candidatesByTier[tier].vScore || 0)) {
+            candidatesByTier[tier] = { paths, graph, vScore, passesVisual: vf.pass };
         }
 
         // Only set validResult when the board passes the visual filter.
-        if (vf.pass && tier === targetTier && aScore > bestAesthetic) {
-            bestAesthetic = aScore;
-            validResult   = { paths, graph };
-            chosenTier    = tier;
+        if (vf.pass && tier === targetTier && vScore > bestAesthetic) {
+            bestAesthetic = vScore;
+            validResult = { paths, graph };
+            chosenTier = tier;
         }
 
-        // Accept immediately on good-enough visual + tier + aesthetic match.
-        if (vf.pass && tier === targetTier && aScore >= 0.40) break;
+        // Accept immediately once the first visual-filter-passing board matches the tier.
+        if (vf.pass && tier === targetTier) break;
     }
 
     // Fall back to any board of an allowed tier.
     if (!validResult) {
         const allowedAtLevel = getAllowedTiersForLevel(level);
-        const fallbackOrder  = [targetTier, ...allowedAtLevel.filter(t => t !== targetTier)];
+        const fallbackOrder = [targetTier, ...allowedAtLevel.filter(t => t !== targetTier)];
         // Pass 1: prefer visual-filter-passing boards in any allowed tier.
         for (const t of fallbackOrder) {
             if (candidatesByTier[t] && candidatesByTier[t].passesVisual) {
                 validResult = { paths: candidatesByTier[t].paths, graph: candidatesByTier[t].graph };
-                chosenTier  = t; break;
+                chosenTier = t; break;
             }
         }
         // Pass 2: fall back to any rulebook-valid board (visual filter bypassed).
@@ -234,7 +241,7 @@ function _build100PackedLevelEdge(forceNewGeneration) {
             for (const t of fallbackOrder) {
                 if (candidatesByTier[t]) {
                     validResult = { paths: candidatesByTier[t].paths, graph: candidatesByTier[t].graph };
-                    chosenTier  = t; break;
+                    chosenTier = t; break;
                 }
             }
         }
@@ -246,7 +253,7 @@ function _build100PackedLevelEdge(forceNewGeneration) {
         const anyKey = Object.keys(candidatesByTier)[0];
         if (anyKey) {
             validResult = { paths: candidatesByTier[anyKey].paths, graph: candidatesByTier[anyKey].graph };
-            chosenTier  = anyKey;
+            chosenTier = anyKey;
         }
     }
 
@@ -262,7 +269,7 @@ function _build100PackedLevelEdge(forceNewGeneration) {
     State.boardDifficulty = chosenTier;
 
     // Safety cap: badge must never show a tier forbidden at this level.
-    const _tierOrder    = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'TITAN'];
+    const _tierOrder = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'TITAN'];
     const _allowedTiers = getAllowedTiersForLevel(level);
     if (!_allowedTiers.includes(State.boardDifficulty)) {
         State.boardDifficulty = [..._allowedTiers]
@@ -338,123 +345,105 @@ function build100PackedLevel(forceNewGeneration = false) {
 
 
 // =============================================================================
-// VT-2: Aesthetic Quality Filter (skeleton)
-// Multi-metric visual gate applied after rulebook validation.
-// Thresholds calibrated from VT-1 baseline. Primary discriminator: densityVariance
-// (the critical weakness identified in VT-1 — near-zero on large boards).
-// Other metrics are permissive since they are already healthy in current boards.
+// VT-9: Aesthetic Quality Filter (complete)
+// Full multi-dimensional gate consolidating all VT-1 through VT-8 signals.
 //
-// boardPassesVisualFilter(paths, graph) → { pass, failedMetric, ve }
-//   pass         — true only when ALL four thresholds are met
-//   failedMetric — name of the first failing metric, or null on pass
+// VISUAL_FILTER_CONFIG — single source of truth for all thresholds.
+//   sizeThresholds     : per micro-grid-node-count geometry/spatial floors
+//   tierDifficulty     : per-tier solver difficulty min/max bounds
+//   pseudoLoopMinScore : minimum loop score for large boards
+//   pseudoLoopNodeThreshold : node count above which loop score is required
+//
+// boardPassesVisualFilter(paths, graph, tier) → { pass, failedMetric, ve }
+//   pass         — true only when ALL gates are met
+//   failedMetric — name of the first failing criterion, or null on pass
 //   ve           — the full computeVisualEntropy result (for logging / harness)
+//
+// computeVisualScore(ve) → 0–1 composite ranking score (higher = better board).
+//   Used to prefer among multiple filter-passing candidates.
+//   Replaces the old computeAestheticScore scalar.
 // =============================================================================
 
-// Per-size threshold table.  Keyed by total micro-grid node count (≤ N).
-// Tightened over VT-3 → VT-9 as future phases raise the metrics.
-// Thresholds recalibrated after VT-3 (Topology Rhythm System).
-// densityVariance now measures TURN-DENSITY variance per zone (not node-ownership),
-// so the absolute values are much larger and respond to the DENSE/OPEN zone contrast.
-// turnClustering drops when zones concentrate turns locally (global average falls
-// because OPEN zones have near-zero clustering, pulling the mean down).
-// Thresholds recalibrated after VT-3 (Topology Rhythm System).
-// densityVariance now measures TURN-DENSITY variance per zone (not node-ownership),
-// so the absolute values are much larger and respond to the DENSE/OPEN zone contrast.
-// turnClustering drops when zones concentrate turns locally (global average falls
-// because OPEN zones have near-zero clustering, pulling the mean down).
-const _VF_THRESHOLDS = [
-    // nodes ≤   densVar   turnClust  dirEntr  straightMax
-    [100,  { densityVariance: 0.110,  turnClustering: 0.36, dirEntropy: 1.88, straightnessMax: 5.0 }],
-    [300,  { densityVariance: 0.040,  turnClustering: 0.40, dirEntropy: 1.91, straightnessMax: 5.0 }],
-    [600,  { densityVariance: 0.013,  turnClustering: 0.40, dirEntropy: 1.94, straightnessMax: 5.0 }],
-    [1000, { densityVariance: 0.010,  turnClustering: 0.39, dirEntropy: 1.96, straightnessMax: 5.5 }],
-    [1400, { densityVariance: 0.009,  turnClustering: 0.39, dirEntropy: 1.97, straightnessMax: 6.0 }],
-    [Infinity, { densityVariance: 0.007, turnClustering: 0.38, dirEntropy: 1.97, straightnessMax: 6.5 }],
-];
+const VISUAL_FILTER_CONFIG = {
+    // Size-based geometry/spatial floors (micro-grid node count ≤ N).
+    // Calibrated from VT-1 baseline; densityVariance uses turn-density variance
+    // (redefined in VT-3 — responds to DENSE/OPEN zone contrast).
+    sizeThresholds: [
+        [100, { densityVariance: 0.110, turnClustering: 0.36, dirEntropy: 1.88, straightnessMax: 5.0 }],
+        [300, { densityVariance: 0.030, turnClustering: 0.40, dirEntropy: 1.91, straightnessMax: 5.0 }],
+        [600, { densityVariance: 0.013, turnClustering: 0.40, dirEntropy: 1.94, straightnessMax: 5.0 }],
+        [1000, { densityVariance: 0.010, turnClustering: 0.39, dirEntropy: 1.96, straightnessMax: 5.5 }],
+        [1400, { densityVariance: 0.009, turnClustering: 0.39, dirEntropy: 1.97, straightnessMax: 6.0 }],
+        [Infinity, { densityVariance: 0.007, turnClustering: 0.38, dirEntropy: 1.97, straightnessMax: 6.5 }],
+    ],
+    // Tier-specific solver difficulty bounds (VT-8 signal).
+    //   min: floor for challenging tiers — ensures cognitive complexity
+    //   max: cap for easy tiers — ensures accessibility for new players
+    // null = no constraint in that direction.
+    tierDifficulty: {
+        EASY: { min: null, max: 3.0 },
+        NORMAL: { min: 3.0, max: null },
+        HARD: { min: 4.0, max: null },
+        EXPERT: { min: null, max: null },
+        TITAN: { min: null, max: null },
+    },
+    // Large boards (VT-7): must contain ≥1 recognisable loop shape.
+    pseudoLoopMinScore: 0.5,
+    pseudoLoopNodeThreshold: 1200,
+};
 
-function getVisualFilterThresholds(graph) {
-    const n = (graph.rows + 1) * (graph.cols + 1);
-    for (const [max, t] of _VF_THRESHOLDS) { if (n <= max) return t; }
-    return _VF_THRESHOLDS[_VF_THRESHOLDS.length - 1][1];
+// computeVisualScore(ve) — 0–1 composite visual quality score for board ranking.
+// Higher = more spatially interesting board. Used to prefer the best candidate
+// among multiple visual-filter-passing boards.
+function computeVisualScore(ve) {
+    if (!ve) return 0;
+    const d = Math.min(1, (ve.densityVariance || 0) / 0.12);
+    const l = Math.min(1, (ve.pseudoLoopScore || 0) / 30);
+    const s = Math.min(1, (ve.solverDifficulty || 0) / 6);
+    const t = Math.min(1, (ve.turnClustering || 0) / 0.5);
+    const e = Math.min(1, (ve.dirEntropy || 0) / 2.0);
+    return d * 0.30 + l * 0.25 + s * 0.20 + t * 0.15 + e * 0.10;
 }
 
-function boardPassesVisualFilter(paths, graph) {
+function boardPassesVisualFilter(paths, graph, tier) {
     const ve = computeVisualEntropy(paths, graph);
-    const t  = getVisualFilterThresholds(graph);
+    const n = (graph.rows + 1) * (graph.cols + 1);
 
-    if (ve.densityVariance < t.densityVariance)
+    // Size-based gates
+    let sz = VISUAL_FILTER_CONFIG.sizeThresholds[VISUAL_FILTER_CONFIG.sizeThresholds.length - 1][1];
+    for (const [max, t] of VISUAL_FILTER_CONFIG.sizeThresholds) { if (n <= max) { sz = t; break; } }
+
+    if (ve.densityVariance < sz.densityVariance)
         return { pass: false, failedMetric: 'densityVariance', ve };
-    if (ve.turnClustering  < t.turnClustering)
-        return { pass: false, failedMetric: 'turnClustering',  ve };
-    if (ve.dirEntropy      < t.dirEntropy)
-        return { pass: false, failedMetric: 'dirEntropy',      ve };
-    if (ve.straightness    > t.straightnessMax)
-        return { pass: false, failedMetric: 'straightness',    ve };
+    if (ve.turnClustering < sz.turnClustering)
+        return { pass: false, failedMetric: 'turnClustering', ve };
+    if (ve.dirEntropy < sz.dirEntropy)
+        return { pass: false, failedMetric: 'dirEntropy', ve };
+    if (ve.straightness > sz.straightnessMax)
+        return { pass: false, failedMetric: 'straightness', ve };
+
+    // Pseudo-loop gate (VT-7): large boards must have ≥1 loop structure.
+    if (n > VISUAL_FILTER_CONFIG.pseudoLoopNodeThreshold &&
+        ve.pseudoLoopScore < VISUAL_FILTER_CONFIG.pseudoLoopMinScore)
+        return { pass: false, failedMetric: 'pseudoLoopScore', ve };
+
+    // Tier-specific solver difficulty gate (VT-9).
+    const td = tier && VISUAL_FILTER_CONFIG.tierDifficulty[tier];
+    if (td) {
+        if (td.min !== null && ve.solverDifficulty < td.min)
+            return { pass: false, failedMetric: 'solverDifficulty_min', ve };
+        if (td.max !== null && ve.solverDifficulty > td.max)
+            return { pass: false, failedMetric: 'solverDifficulty_max', ve };
+    }
 
     return { pass: true, failedMetric: null, ve };
 }
 
-// ---------------------------------------------------------------------------
-// computeAestheticScore
-// Scores a board on three aesthetic dimensions and returns a composite 0–1.
-//
-//   1. lengthVarScore  — stddev of path node counts normalised by mean.
-//                        Low variance = all paths same size = bad.
-//   2. turnDistScore   — evenness of turn counts across 4 grid quadrants.
-//                        Clustered turns = bad.
-//   3. balanceScore    — evenness of path centroids across 4 grid quadrants.
-//                        Bunched paths = bad.
-//
-// Threshold 0.45 targets ~30–40% pass rate (aggressive but not exhausting).
-// ---------------------------------------------------------------------------
-function computeAestheticScore(paths, graph) {
-    if (!paths || paths.length < 3) return 0;
-    const rows = graph.rows, cols = graph.cols;
-
-    // 1. Length variance
-    const lengths = paths.map(p => p.nodes.length);
-    const meanLen = lengths.reduce((a, b) => a + b, 0) / lengths.length;
-    const stddev  = Math.sqrt(
-        lengths.reduce((s, l) => s + (l - meanLen) ** 2, 0) / lengths.length
-    );
-    const lengthVarScore = Math.min(1.0, stddev / Math.max(1, meanLen * 0.5));
-
-    // 2. Turn distribution  3. Visual balance — both use quadrant analysis
-    const midR = rows / 2, midC = cols / 2;
-    const turnsByQuad = [0, 0, 0, 0];
-    const pathsByQuad = [0, 0, 0, 0];
-
-    for (const p of paths) {
-        const nodes = p.nodes;
-        if (nodes.length < 2) continue;
-
-        let turns = 0;
-        for (let i = 1; i < nodes.length - 1; i++) {
-            const dr1 = nodes[i].r - nodes[i-1].r, dc1 = nodes[i].c - nodes[i-1].c;
-            const dr2 = nodes[i+1].r - nodes[i].r, dc2 = nodes[i+1].c - nodes[i].c;
-            if (dr1 !== dr2 || dc1 !== dc2) turns++;
-        }
-        const centR = nodes.reduce((s, n) => s + n.r, 0) / nodes.length;
-        const centC = nodes.reduce((s, n) => s + n.c, 0) / nodes.length;
-        const qi    = (centR >= midR ? 2 : 0) + (centC >= midC ? 1 : 0);
-        turnsByQuad[qi] += turns;
-        pathsByQuad[qi]++;
-    }
-
-    // Evenness score: 1 = perfectly even across quadrants, 0 = all in one quadrant
-    function evenness(counts) {
-        const total = counts.reduce((a, b) => a + b, 0);
-        if (total === 0) return 0.5;
-        const fracs = counts.map(c => c / total);
-        const sd = Math.sqrt(fracs.reduce((s, f) => s + (f - 0.25) ** 2, 0) / 4);
-        return Math.max(0, 1 - sd / 0.25);
-    }
-
-    const turnDistScore = evenness(turnsByQuad);
-    const balanceScore  = evenness(pathsByQuad);
-
-    return lengthVarScore * 0.50 + turnDistScore * 0.25 + balanceScore * 0.25;
-}
+// computeAestheticScore — REMOVED in VT-9.
+// Replaced by computeVisualScore(ve) which derives the board ranking signal
+// from the full VE metrics (densityVariance, pseudoLoopScore, solverDifficulty,
+// turnClustering, dirEntropy) already computed inside boardPassesVisualFilter.
+// The function is kept as a no-op stub to avoid breaking any external callers.
 
 // ---------------------------------------------------------------------------
 // getAllowedTiersForLevel
@@ -462,12 +451,12 @@ function computeAestheticScore(paths, graph) {
 // Used by the fallback selector to avoid promoting forbidden tiers.
 // ---------------------------------------------------------------------------
 function getAllowedTiersForLevel(level) {
-    if (level === 100)  return ['TITAN'];
-    if (level <= 10)    return ['EASY', 'NORMAL'];
-    if (level <= 20)    return ['EASY', 'NORMAL', 'HARD'];
-    if (level <= 45)    return ['NORMAL', 'HARD'];
-    if (level <= 70)    return ['NORMAL', 'HARD', 'EXPERT'];
-    if (level <= 99)    return ['NORMAL', 'HARD', 'EXPERT'];
+    if (level === 100) return ['TITAN'];
+    if (level <= 10) return ['EASY', 'NORMAL'];
+    if (level <= 20) return ['EASY', 'NORMAL', 'HARD'];
+    if (level <= 45) return ['NORMAL', 'HARD'];
+    if (level <= 70) return ['NORMAL', 'HARD', 'EXPERT'];
+    if (level <= 99) return ['NORMAL', 'HARD', 'EXPERT'];
     return ['NORMAL', 'HARD', 'EXPERT', 'TITAN'];
 }
 
@@ -512,11 +501,11 @@ function selectTargetDifficulty(level, history) {
     if ((last1 === 'HARD' || last1 === 'EXPERT' || last1 === 'TITAN') &&
         (last2 === 'HARD' || last2 === 'EXPERT' || last2 === 'TITAN')) {
         probs.EXPERT = 0.0;
-        probs.TITAN  = 0.0;
+        probs.TITAN = 0.0;
         if (allowed.has('HARD')) probs.HARD = Math.min(probs.HARD, 0.3);
         const relief = allowed.has('EASY') ? 'EASY' : 'NORMAL';
-        if (allowed.has(relief))    probs[relief]    = Math.max(probs[relief],    0.5);
-        if (allowed.has('NORMAL'))  probs['NORMAL']  = Math.max(probs['NORMAL'],  0.4);
+        if (allowed.has(relief)) probs[relief] = Math.max(probs[relief], 0.5);
+        if (allowed.has('NORMAL')) probs['NORMAL'] = Math.max(probs['NORMAL'], 0.4);
     }
 
     const roll = Math.random();

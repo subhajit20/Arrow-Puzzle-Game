@@ -522,17 +522,261 @@ function computeSpatialDensityVariance(paths, graph) {
     return densities.reduce((s, d) => s + (d - mean) ** 2, 0) / densities.length;
 }
 
+// =============================================================================
+// VT-7: Pseudo-Loop Composition
+// Detects groups of 3–4 adjacent paths whose headings and positions form a
+// rectangular outline — a visual "loop illusion." Partial groups (L-shapes)
+// are proto-loops that can be completed via mutateRegion.
+//
+// Depends on: mutateRegion, ZONE_WALK_KNOBS, ZONE_DENSE (edge-gen.js —
+// resolved at call time since edge-logic.js loads after edge-gen.js).
+// =============================================================================
+
+// detectPseudoLoops(paths, graph)
+// Returns [{pathIds, paths, shape, completeness, bbox, gapHead?, gapTail?}]
+// for every 3-path L-shape (completeness=0.75) and 4-path rectangle (1.0)
+// detected. Uses heading-sequenced chaining with a spatial tail index for speed.
+function detectPseudoLoops(paths, graph) {
+    const DIST    = 4;  // max Manhattan distance between endpoint pairs
+    const MIN_DIM = 4;  // minimum bounding-box dimension to reject tiny loops
+
+    // Both clockwise and counter-clockwise winding are valid loop shapes
+    const CW  = { RIGHT:'DOWN', DOWN:'LEFT',  LEFT:'UP',    UP:'RIGHT'  };
+    const CCW = { RIGHT:'UP',   UP:'LEFT',    LEFT:'DOWN',  DOWN:'RIGHT' };
+
+    const info = paths.map(p => ({
+        id: p.id, path: p, heading: p.heading,
+        head: p.nodes[p.nodes.length - 1], tail: p.nodes[0]
+    }));
+
+    // Spatial tail index: bucket key → [pathInfo] for fast adjacency lookup
+    const B = Math.max(1, DIST);
+    const tIdx = new Map();
+    for (const pi of info) {
+        const k = ((pi.tail.r / B) | 0) + ',' + ((pi.tail.c / B) | 0);
+        if (!tIdx.has(k)) tIdx.set(k, []);
+        tIdx.get(k).push(pi);
+    }
+
+    function nearTail(r, c, heading) {
+        const br = (r / B) | 0, bc = (c / B) | 0;
+        const out = [];
+        for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+            const bucket = tIdx.get((br+dr) + ',' + (bc+dc));
+            if (!bucket) continue;
+            for (const pi of bucket)
+                if (pi.heading === heading &&
+                    Math.abs(pi.tail.r - r) + Math.abs(pi.tail.c - c) <= DIST)
+                    out.push(pi);
+        }
+        return out;
+    }
+
+    function bboxOf(...pis) {
+        let rMin=Infinity, rMax=-Infinity, cMin=Infinity, cMax=-Infinity;
+        for (const pi of pis) for (const n of pi.path.nodes) {
+            if (n.r < rMin) rMin=n.r; if (n.r > rMax) rMax=n.r;
+            if (n.c < cMin) cMin=n.c; if (n.c > cMax) cMax=n.c;
+        }
+        return { rMin, rMax, cMin, cMax, width: cMax-cMin, height: rMax-rMin };
+    }
+
+    const results = [], seen = new Set();
+
+    for (const seq of [CW, CCW]) {
+        for (const p1 of info) {
+            const h2 = seq[p1.heading]; if (!h2) continue;
+            for (const p2 of nearTail(p1.head.r, p1.head.c, h2)) {
+                if (p2.id === p1.id) continue;
+                const h3 = seq[h2]; if (!h3) continue;
+                for (const p3 of nearTail(p2.head.r, p2.head.c, h3)) {
+                    if (p3.id === p1.id || p3.id === p2.id) continue;
+                    const h4 = seq[h3]; if (!h4) continue;
+
+                    // Try to close the loop with a 4th path
+                    let hasP4 = false;
+                    for (const p4 of nearTail(p3.head.r, p3.head.c, h4)) {
+                        if (p4.id === p1.id || p4.id === p2.id || p4.id === p3.id) continue;
+                        if (Math.abs(p4.head.r - p1.tail.r) +
+                            Math.abs(p4.head.c - p1.tail.c) > DIST) continue;
+                        const k4 = [p1.id,p2.id,p3.id,p4.id].sort().join(',');
+                        if (seen.has(k4)) { hasP4 = true; continue; }
+                        const b = bboxOf(p1,p2,p3,p4);
+                        if (b.width < MIN_DIM || b.height < MIN_DIM) continue;
+                        seen.add(k4); hasP4 = true;
+                        results.push({ pathIds:[p1.id,p2.id,p3.id,p4.id],
+                            paths:[p1.path,p2.path,p3.path,p4.path],
+                            shape:'rectangle', completeness:1.0, bbox:b });
+                    }
+
+                    // If no 4-path close found, register as 3-path L-shape (proto-loop)
+                    if (!hasP4) {
+                        const k3 = [p1.id,p2.id,p3.id].sort().join(',');
+                        if (!seen.has(k3)) {
+                            const b = bboxOf(p1,p2,p3);
+                            if (b.width >= MIN_DIM && b.height >= MIN_DIM) {
+                                seen.add(k3);
+                                results.push({ pathIds:[p1.id,p2.id,p3.id],
+                                    paths:[p1.path,p2.path,p3.path],
+                                    shape:'L', completeness:0.75, bbox:b,
+                                    gapHead:p3.head, gapTail:p1.tail,
+                                    missingHeading:h4 });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return results;
+}
+
+// pseudoLoopScore(paths, graph)
+// Composite scalar: sum of (completeness × side_fraction) per detected loop.
+// 1 L-shape → 0.5625; 1 rectangle → 1.0; higher = richer loop geometry.
+function pseudoLoopScore(paths, graph) {
+    const loops = detectPseudoLoops(paths, graph);
+    let score = 0;
+    for (const l of loops) score += l.completeness * (l.pathIds.length / 4);
+    return score;
+}
+
+// protoPseudoLoops(paths, graph)
+// Returns incomplete loops (L-shapes, completeness < 1) that have a viable
+// gap region — used by completePseudoLoop to route the missing side.
+function protoPseudoLoops(paths, graph) {
+    return detectPseudoLoops(paths, graph)
+        .filter(l => l.completeness >= 0.5 && l.completeness < 1.0 &&
+                     l.gapHead && l.gapTail);
+}
+
+// completePseudoLoop(paths, graph, proto)
+// Applies mutateRegion with DENSE knobs to the gap region of a proto-loop,
+// routing new paths that complete the visual loop outline.
+// mutateRegion and ZONE_WALK_KNOBS are resolved at call time from edge-gen.js.
+function completePseudoLoop(paths, graph, proto) {
+    if (!proto.gapHead || !proto.gapTail) return false;
+    const { rows, cols } = graph; const R = rows + 1, C = cols + 1;
+    const { gapHead: gh, gapTail: gt } = proto;
+
+    const rMin = Math.max(0, Math.min(gh.r, gt.r) - 1);
+    const rMax = Math.min(R - 1, Math.max(gh.r, gt.r) + 1);
+    const cMin = Math.max(0, Math.min(gh.c, gt.c) - 1);
+    const cMax = Math.min(C - 1, Math.max(gh.c, gt.c) + 1);
+    if (rMax <= rMin && cMax <= cMin) return false;
+
+    const nodeSet = [];
+    for (let r = rMin; r <= rMax; r++)
+        for (let c = cMin; c <= cMax; c++)
+            nodeSet.push({ r, c });
+
+    if (typeof mutateRegion !== 'function' || typeof ZONE_WALK_KNOBS === 'undefined')
+        return false;
+    return mutateRegion(paths, graph, nodeSet, { walkKnobs: ZONE_WALK_KNOBS[0] }); // ZONE_DENSE=0
+}
+
 // computeVisualEntropy
-// Wrapper — runs all four metrics and returns them as a single object.
+// Wrapper — runs all metrics and returns them as a single object.
 //   straightness    : avg nodes per straight run  (lower = more turns = better)
-//   dirEntropy      : heading distribution entropy (higher = more balanced = better, max 2.0)
-//   turnClustering  : fraction of turn-node neighbours that are also turns (higher = clusters)
-//   densityVariance : variance of zone densities   (higher = more spatial rhythm = better)
+//   dirEntropy      : heading distribution entropy (higher = more balanced, max 2.0)
+//   turnClustering  : fraction of turn-node neighbours that are also turns
+//   densityVariance : turn-density variance per zone (higher = more spatial rhythm)
+//   pseudoLoopScore : weighted loop count (higher = more loop illusions)
 function computeVisualEntropy(paths, graph) {
     return {
         straightness:    computeStraightnessIndex(paths),
         dirEntropy:      computeDirectionalEntropy(paths),
         turnClustering:  computeTurnClusteringCoefficient(paths, graph),
-        densityVariance: computeSpatialDensityVariance(paths, graph),
+        densityVariance:  computeSpatialDensityVariance(paths, graph),
+        pseudoLoopScore:  pseudoLoopScore(paths, graph),
+        solverDifficulty: computeSolverDifficulty(paths, graph),
     };
+}
+
+// =============================================================================
+// VT-8: Advanced Solver Simulation
+// Cognitive difficulty signal independent of tier.
+// Three components, each measuring a distinct aspect of tracing difficulty.
+// =============================================================================
+
+// _HEADING_CW — clockwise heading order for ±1 similarity test.
+const _HEADING_CW = ['UP', 'RIGHT', 'DOWN', 'LEFT'];
+
+// computeRayAmbiguity(paths, graph)
+// For each path: count distinct foreign paths whose nodes lie anywhere in its
+// escape ray (not just the first blocker). Returns the average across all paths.
+// High = many paths compete for the same escape corridors → cognitively demanding.
+function computeRayAmbiguity(paths, graph) {
+    if (!paths.length) return 0;
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1;
+    let total = 0;
+
+    for (const p of paths) {
+        const { dr, dc } = headingToDelta(p.heading);
+        const head = p.nodes[p.nodes.length - 1];
+        let r = head.r, c = head.c;
+        const foreign = new Set();
+
+        for (let i = 0; i < rows + cols + 4; i++) {
+            const nr = r + dr, nc = c + dc;
+            if (nr < 0 || nr > rows || nc < 0 || nc > cols) break;
+            const owner = nodeOwner[nr * W + nc];
+            if (owner >= 0 && owner !== p.id) foreign.add(owner);
+            r = nr; c = nc;
+        }
+        total += foreign.size;
+    }
+    return total / paths.length;
+}
+
+// computeVisualConfusion(paths, graph)
+// For each path head: count other path heads within 3 nodes (Manhattan) that
+// point in a similar direction (same heading or ±1 step in the clockwise cycle —
+// i.e., not the opposite direction). Returns the average across all paths.
+// High = many nearby same-axis paths → player may trace the wrong one.
+function computeVisualConfusion(paths, graph) {
+    if (!paths.length) return 0;
+    let total = 0;
+
+    for (let i = 0; i < paths.length; i++) {
+        const pi = paths[i];
+        const hi = pi.nodes[pi.nodes.length - 1];
+        const ii = _HEADING_CW.indexOf(pi.heading);
+        let count = 0;
+
+        for (let j = 0; j < paths.length; j++) {
+            if (i === j) continue;
+            const pj = paths[j];
+            const ij = _HEADING_CW.indexOf(pj.heading);
+            // Similar = same or ±1 step in the CW cycle (excludes opposite, diff=2)
+            const diff = Math.min(Math.abs(ii - ij), 4 - Math.abs(ii - ij));
+            if (diff > 1) continue;
+            const hj = pj.nodes[pj.nodes.length - 1];
+            if (Math.abs(hi.r - hj.r) + Math.abs(hi.c - hj.c) <= 3) count++;
+        }
+        total += count;
+    }
+    return total / paths.length;
+}
+
+// computeSolveDepth(paths, graph)
+// Maximum dependency chain length: the longest sequence of forced removals
+// a player must execute before any path in the chain can escape.
+// Reuses buildDAGDep + the memoised depth walk from computeDAGStats.
+function computeSolveDepth(paths, graph) {
+    if (!paths.length) return 0;
+    return computeDAGStats(paths, graph).maxDepth;
+}
+
+// computeSolverDifficulty(paths, graph)
+// Normalised composite cognitive difficulty score.
+// Each component is weighted by its expected contribution to tracing difficulty:
+//   rayAmbiguity  × 0.40 — how many paths compete for each escape corridor
+//   visualConfusion × 0.35 — how many nearby similar-heading paths confuse tracing
+//   solveDepth    × 0.25 — how deep the forced-removal chain goes
+function computeSolverDifficulty(paths, graph) {
+    const ra = computeRayAmbiguity(paths, graph);
+    const vc = computeVisualConfusion(paths, graph);
+    const sd = computeSolveDepth(paths, graph);
+    return ra * 0.40 + vc * 0.35 + sd * 0.25;
 }
