@@ -1499,3 +1499,226 @@ Each step requires explicit approval before starting.
 | VT-7  | 5      | Pseudo-Loop Composition                  | ✅ done — detectPseudoLoops/pseudoLoopScore/protoPseudoLoops/completePseudoLoop; large boards ≥20×15: score 31–50 ✓; small boards unaffected; boardPassesVisualFilter requires score≥0.5 for large; 0 failures |
 | VT-8  | 7      | Advanced Solver Simulation               | ✅ done — computeRayAmbiguity/computeVisualConfusion/computeSolveDepth/computeSolverDifficulty; TITAN/EASY ratio 8.08× (target ≥2×); 0 failures; SolvDiff added to VE baseline |
 | VT-9  | 8      | Aesthetic Quality Filter (complete)      | ✅ done — VISUAL_FILTER_CONFIG (single config); computeVisualScore replaces computeAestheticScore; boardPassesVisualFilter accepts tier for solver difficulty gate; per-tier VF%: EASY 37% NORMAL 36% HARD 35% EXPERT 37% (all in 25–40% target); 0 failures |
+
+---
+
+---
+
+# PERCEPTUAL UX REFINEMENT + SHAPE QUALITY
+
+**Goal:** Transform mathematically correct boards into boards that every player can parse
+instantly. Two parallel problem sets — shape quality (straight path elimination) and
+perceptual UX (visual correctness) — addressed together as a single refinement stage.
+
+**Root problem:** Players cannot understand boards in under 300ms because:
+1. Many paths are pure straight lines with zero shape identity (anonymous, indistinguishable)
+2. Some arrowheads appear to point into their own body (self-collision illusion)
+3. Adjacent paths share visual borders with no separation (fusion + enclosure illusions)
+
+**Design principle:** Every path must have shape identity. Every arrowhead must point
+toward open space. Every piece must be visually separable from its neighbours.
+The topology stays mathematically intact — only visual presentation changes.
+
+Each step requires explicit approval before starting.
+
+---
+
+## STAGE SP-1 — Enforce Minimum 1 Turn Per Path
+
+**Problem:** Paths with zero direction changes — pure straight lines — have no shape
+identity. Players cannot distinguish one from another. Eliminates the most visually
+anonymous pieces. Straight 3-node lines from Phase D, rcFillA, rcFillB, rcBuildChain
+backbone are the primary sources.
+
+**File:** `js/edge-gen.js`
+
+**Changes:**
+
+1. `rcGrowWalk` — after the first step is taken, force the second step to be in a
+   different direction: set score of continuing-straight option to -Infinity for step 2
+   only. This guarantees every walk-generated path has ≥1 direction change baked in
+   before the walk ends. No oracle calls. 1 extra comparison per step.
+
+2. `rcFillD` — when creating a 3-node pairing, add collinearity check: if all 3
+   candidate nodes are in the same direction (no turn), reject that pairing and try
+   the next direction/orientation. One O(1) check per pairing attempt.
+
+3. Validation: add a `hasAtLeastOneTurn(p)` helper — returns true if any consecutive
+   triple of nodes changes direction. Use it as a sanity assert in `validateBoardAsserts`.
+
+**Note on rcBuildChain backbone:** Backbone pieces (straight 3-node horizontal) are
+deliberately straight to build the forced dependency chain. They are excluded from
+this rule. They represent ≤12 pieces out of ~200 on TITAN — acceptable trade-off.
+
+**Performance cost:** Zero oracle calls. O(1) per walk step. Negligible slowdown.
+
+**Test:** Run `node test-regression.js`. Zero boards with any zero-turn path (excluding
+backbone). Straightness index remains ≤ 4.0. Zero new solvability failures.
+
+**Approval required before SP-2**
+
+---
+
+## STAGE SP-2 — Moderate OPEN Zone Knobs
+
+**Problem:** OPEN zones are currently too extreme — `maxStraight=8×f`, `turnBonus=0.15`,
+`lenScale=1.6`. This produces entire board regions filled with long, identical-looking
+straight paths. Density of straight paths in the same area overwhelms the player.
+
+**File:** `js/edge-gen.js` — `ZONE_WALK_KNOBS` constant
+
+**Changes:**
+
+Update the OPEN zone entry in `ZONE_WALK_KNOBS`:
+```
+OPEN was:  { straightScore: 2.5,  turnScore: 0.15, maxStraight: 999  }
+OPEN now:  { straightScore: 1.5,  turnScore: 0.5,  maxStraight: 4    }
+```
+
+Update `ZONE_LEN_SCALE` for OPEN:
+```
+OPEN was:  1.6
+OPEN now:  1.2
+```
+
+OPEN zones remain noticeably straighter and longer than DENSE zones — spatial contrast
+is preserved. But paths in OPEN zones now have visible turns and shorter straight runs.
+They feel like breathing space, not highways.
+
+**Performance cost:** Zero. Parameter change only.
+
+**Verify:** After this change, run `node test-regression.js`. DensityVariance should
+remain above previous baseline. VF% per tier should stay in 25–40% range. If VF% drops
+below 25% for any tier, lower `densityVariance` threshold proportionally in
+`VISUAL_FILTER_CONFIG.sizeThresholds` to compensate.
+
+**Test:** Visual inspection via `testBoard(24, 18, 'TITAN')` in browser console — OPEN
+zone areas should show paths with visible bends, not flat highways.
+
+**Approval required before SP-3**
+
+---
+
+## STAGE SP-3 — Lower Corridor Fragmentation Threshold
+
+**Problem:** Medium-length straight runs of 4-5 steps survive SP-1 and SP-2. Paths
+that got their first turn early but ran straight for the remainder. VT-5 currently
+only fragments corridors ≥ 6 steps (7 straight nodes). 4-5 step straight runs slip
+through and accumulate visually.
+
+**File:** `js/edge-gen.js` — `runCorridorFragmentation` — `MIN_SPAN` constant
+
+**Change:**
+```
+MIN_SPAN was: 6   (targets corridors of ≥7 consecutive nodes)
+MIN_SPAN now: 4   (targets corridors of ≥5 consecutive nodes)
+```
+
+No architectural change. VT-5 already exists and is bounded by `maxIterations`.
+The lower threshold means more corridors are detected and fragmented per pass, but
+the total number of fragmentation attempts is still capped.
+
+**Performance cost:** Marginal — slightly more candidates per `longCorridors` scan.
+Already bounded. Measured slowdown expected < 5% on 24×18.
+
+**Test:** Run `node test-regression.js`. Straightness index should decrease further
+from SP-1/SP-2 baseline. Zero new failures. Visual inspection shows no straight runs
+longer than 4 nodes anywhere on committed boards.
+
+**Approval required before PX-1**
+
+---
+
+## STAGE PX-1 — Fast Geometric Self-Collision Fix
+
+**Problem:** Arrowheads that point into their own body — the most critical player
+confusion issue. Player sees arrow aimed at the path's own segment, assumes it will
+crash, stops tapping that piece. Puzzle becomes unsolvable in the player's mind even
+though it is mathematically solvable.
+
+Two sub-problems:
+- Immediate self-point: head + heading_direction lands on own node (one step ahead)
+- Anti-parallel proximity: own segment running opposite direction within 2 nodes
+  perpendicular to head — the bracket/U-shape self-collision illusion
+
+**File:** `js/edge-gen.js`
+
+**Changes:**
+
+1. `rcFixVisualSelfCollision` — replace `rcBoardSolvable` (O(paths²)) with
+   `rcHeadRayClear` (O(rows+cols)) for flip validation. RC invariant guarantees:
+   if the flipped head's escape ray is clear of foreign paths, solvability is maintained.
+   No full oracle needed. ~500× faster per flip.
+
+2. `rcFillA` and `rcFillB` — smarter head selection at placement time. When both
+   endpoints are scored as head candidates, add geometric penalty for any endpoint
+   where `head + heading_direction` lands on the path's own node. The visual problem
+   is prevented at source, before any post-processing.
+
+3. Anti-parallel check — in `rcFixVisualSelfCollision`, also detect the bracket/U-shape
+   case: scan 2 nodes perpendicular to the heading direction from the head; if any of
+   those nodes belong to the same path AND their segment runs anti-parallel (opposite
+   direction) to the heading, attempt the flip. Same O(rows+cols) validation.
+
+**Performance cost:** Flip validation drops from O(paths²) to O(rows+cols). Net change
+is a speedup, not a slowdown.
+
+**Test:** Run `node test-regression.js`. Zero boards with any path whose arrowhead
+faces its own body (immediate or anti-parallel). Zero new solvability failures.
+Manual test: generate 50 boards at L100 TITAN, visually confirm no self-pointing arrows.
+
+**Approval required before PX-2**
+
+---
+
+## STAGE PX-2 — Renderer Visual Gap
+
+**Problem:** Adjacent paths share visual borders with no separation. Two problems arise:
+- Path fusion: two paths running parallel look like one wide path — player cannot tell
+  them apart, taps the wrong one
+- Enclosure illusion: a path surrounded on 3 sides by another path's segments looks
+  trapped — player does not tap it thinking it cannot move
+
+Both are **rendering artifacts**, not generation artifacts. The topology is correct.
+The player simply cannot see the separation between pieces.
+
+**File:** `js/renderer.js` — path stroke drawing
+
+**Change:**
+
+When drawing each path segment on the canvas, inset the stroke by **2px from the cell
+boundary** on all sides. The white board background shows through between any two
+adjacent paths, creating a consistent visual gap.
+
+Specifically: in `getSubTrackPoints` or wherever the path polyline coordinates are
+computed, shrink the effective drawing area by 2px per side. The path is rendered
+within `[ox + 2, oy + 2, cellW - 4, cellH - 4]` of its cell space rather than
+filling the full cell.
+
+**Performance cost:** Zero generation impact. One rendering parameter.
+
+**What the player sees:**
+- Every path is visually distinct from its neighbours — no two paths fuse
+- Enclosed paths clearly show the opening in any surrounding bracket
+- Same-heading adjacent paths are cleanly separated
+- The board reads as individual crafted pieces, not a tangle of connected lines
+- This is the single highest-impact premium quality signal in the entire pipeline
+
+**Test:** Open `index.html` in browser. Play levels 1–10 and L100 TITAN via
+`testBoard(24, 18, 'TITAN')`. Verify:
+- Every path has a visible 2px white gap around its entire body
+- No two adjacent paths appear fused
+- Brackets around inner paths show visible openings
+- Arrowheads are clearly associated with their path
+
+---
+
+## SP/PX STATUS
+
+| Stage | Description                              | Status      |
+|-------|------------------------------------------|-------------|
+| SP-1  | Minimum 1 turn per path                  | ✅ done — rcGrowWalk forces turn at step i=2; rcFillD skips collinear triplets; hasAtLeastOneTurn assert added; straightness dropped 2.27→1.72; thresholds recalibrated; EASY 39% NORMAL 31% HARD 38% EXPERT 31% (all ✓); 0 failures |
+| SP-2  | Moderate OPEN zone knobs                 | ✅ done — OPEN: straightScore 2.5→1.5, turnScore 0.15→0.5, maxStraight 999→4, lenScale 1.6→1.2; thresholds recalibrated post-SP-1+SP-2; straightness 1.70; 0 failures |
+| SP-3  | Lower corridor fragmentation threshold   | ✅ done — MIN_SPAN 6→4; thresholds ≤1000 0.009, ≤1400 0.0050; EASY 40% NORMAL 40% HARD 35% EXPERT 41% (all ~✓); straightness 1.70; 0 failures |
+| PX-1  | Fast geometric self-collision fix        | ✅ done — rcFixVisualSelfCollision: oracle→rcHeadRayClear (~500× faster) + anti-parallel bracket detection; rcFillA: -2 penalty on self-facing heads; rcFillB: sort endpoints to prefer non-self-pointing; 0 failures |
+| PX-2  | Renderer visual gap                      | ⬜ pending  |

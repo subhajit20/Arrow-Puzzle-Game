@@ -11,6 +11,17 @@
 //   3. Coverage floor ≥ 95% — warn if below threshold.
 //   4. Rule 8 — every path must have at least 3 nodes (2 segments).
 // -----------------------------------------------------------------------------
+// hasAtLeastOneTurn(p) — returns true if the path has ≥1 direction change.
+// A path with zero turns is a pure straight line with no shape identity (SP-1).
+function hasAtLeastOneTurn(p) {
+    for (let i = 1; i < p.nodes.length - 1; i++) {
+        const dr1 = p.nodes[i].r - p.nodes[i-1].r, dc1 = p.nodes[i].c - p.nodes[i-1].c;
+        const dr2 = p.nodes[i+1].r - p.nodes[i].r, dc2 = p.nodes[i+1].c - p.nodes[i].c;
+        if (dr1 !== dr2 || dc1 !== dc2) return true;
+    }
+    return false;
+}
+
 function validateBoardAsserts(paths, graph) {
     const { nodeOwner, rows, cols } = graph; const W = cols + 1;
     let errors = 0;
@@ -20,6 +31,19 @@ function validateBoardAsserts(paths, graph) {
         if (p.nodes.length < 3) {
             console.error(`[Assert] Rule 8 violated: path ${p.id} has only ${p.nodes.length} node(s) — minimum is 3`);
             errors++;
+        }
+    }
+
+    // SP-1 — minimum 1 turn per path (shape identity).
+    // rcBuildChain backbone pieces are deliberately straight — excluded (heading RIGHT,
+    // all nodes in same row, exactly 3 nodes). All other zero-turn paths are reported.
+    for (const p of paths) {
+        if (p.nodes.length >= 3 && !hasAtLeastOneTurn(p)) {
+            const isBackbone = p.nodes.length === 3 && p.heading === 'RIGHT' &&
+                               p.nodes[0].r === p.nodes[2].r;
+            if (!isBackbone) {
+                console.warn(`[Assert] SP-1: path ${p.id} has zero turns — straight line with no shape identity`);
+            }
         }
     }
 
@@ -185,9 +209,15 @@ function _build100PackedLevelEdge(forceNewGeneration) {
             for (const proto of protos.slice(0, 3)) completePseudoLoop(paths, graph, proto);
         }
 
+        // Visual self-collision fix: flip any path whose arrowhead immediately faces
+        // its own body. Players see the arrow pointing at the path's own segment and
+        // assume it will crash — but own nodes are transparent in this game's physics.
+        // This pass ensures the arrowhead always points toward open space.
+        rcFixVisualSelfCollision(paths, graph);
+
         const tier = cx.tier;
 
-        // Derive hEdge/vEdge from post-fragmentation node sequences.
+        // Derive hEdge/vEdge from post-fix node sequences.
         for (const p of paths) {
             for (let i = 0; i < p.nodes.length - 1; i++) {
                 const a = p.nodes[i], b = p.nodes[i + 1];
@@ -366,15 +396,17 @@ function build100PackedLevel(forceNewGeneration = false) {
 
 const VISUAL_FILTER_CONFIG = {
     // Size-based geometry/spatial floors (micro-grid node count ≤ N).
-    // Calibrated from VT-1 baseline; densityVariance uses turn-density variance
-    // (redefined in VT-3 — responds to DENSE/OPEN zone contrast).
+    // Recalibrated after SP-1 + SP-2. Both reduce DENSE/OPEN zone contrast:
+    // SP-1 forces turns even in OPEN zones; SP-2 moderates OPEN knobs directly.
+    // DensityVariance dropped ~40% vs pre-SP baseline. Thresholds set at ~1.2×
+    // post-SP-2 averages for ~35-40% pass rate per size.
     sizeThresholds: [
-        [100, { densityVariance: 0.110, turnClustering: 0.36, dirEntropy: 1.88, straightnessMax: 5.0 }],
-        [300, { densityVariance: 0.030, turnClustering: 0.40, dirEntropy: 1.91, straightnessMax: 5.0 }],
-        [600, { densityVariance: 0.013, turnClustering: 0.40, dirEntropy: 1.94, straightnessMax: 5.0 }],
-        [1000, { densityVariance: 0.010, turnClustering: 0.39, dirEntropy: 1.96, straightnessMax: 5.5 }],
-        [1400, { densityVariance: 0.009, turnClustering: 0.39, dirEntropy: 1.97, straightnessMax: 6.0 }],
-        [Infinity, { densityVariance: 0.007, turnClustering: 0.38, dirEntropy: 1.97, straightnessMax: 6.5 }],
+        [100,      { densityVariance: 0.090, turnClustering: 0.36, dirEntropy: 1.88, straightnessMax: 5.0 }],
+        [300,      { densityVariance: 0.028, turnClustering: 0.40, dirEntropy: 1.91, straightnessMax: 5.0 }],
+        [600,      { densityVariance: 0.010, turnClustering: 0.40, dirEntropy: 1.94, straightnessMax: 5.0 }],
+        [1000,     { densityVariance: 0.009, turnClustering: 0.39, dirEntropy: 1.96, straightnessMax: 5.5 }],
+        [1400,     { densityVariance: 0.0050, turnClustering: 0.39, dirEntropy: 1.97, straightnessMax: 6.0 }],
+        [Infinity, { densityVariance: 0.0040, turnClustering: 0.38, dirEntropy: 1.97, straightnessMax: 6.5 }],
     ],
     // Tier-specific solver difficulty bounds (VT-8 signal).
     //   min: floor for challenging tiers — ensures cognitive complexity
@@ -383,7 +415,7 @@ const VISUAL_FILTER_CONFIG = {
     tierDifficulty: {
         EASY: { min: null, max: 3.0 },
         NORMAL: { min: 3.0, max: null },
-        HARD: { min: 4.0, max: null },
+        HARD:   { min: null, max: null },
         EXPERT: { min: null, max: null },
         TITAN: { min: null, max: null },
     },

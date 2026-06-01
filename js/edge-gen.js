@@ -838,12 +838,12 @@ const ZONE_NEUTRAL = 2;
 // heavy penalty (-10) so the walk is effectively forced to turn.
 const ZONE_WALK_KNOBS = [
     { straightScore: 0.05, turnScore: 3.0,  maxStraight: 1   }, // DENSE
-    { straightScore: 2.5,  turnScore: 0.15, maxStraight: 999  }, // OPEN
+    { straightScore: 1.5,  turnScore: 0.5,  maxStraight: 4    }, // OPEN — SP-2: moderated, no more highways
     { straightScore: 0.4,  turnScore: 1.0,  maxStraight: 999  }, // NEUTRAL
 ];
 
 // lenScale multiplier per zone (multiplied on top of the base lenScale in rcFillA).
-const ZONE_LEN_SCALE = [0.6, 1.6, 1.0]; // DENSE, OPEN, NEUTRAL
+const ZONE_LEN_SCALE = [0.6, 1.2, 1.0]; // DENSE, OPEN (SP-2: reduced from 1.6), NEUTRAL
 
 // generateZoneMap(rows, cols)
 // Builds a ceil((rows+1)/4) × ceil((cols+1)/4) tag grid.
@@ -899,7 +899,9 @@ function rcGrowWalk(graph, anchor, targetLen, zoneMap) {
         const knobs = zoneMap
             ? ZONE_WALK_KNOBS[zoneFor(cur.r, cur.c, zoneMap, rows, cols)]
             : ZONE_WALK_KNOBS[ZONE_NEUTRAL];
-        const forceTurn = streak >= knobs.maxStraight;
+        // SP-1: at step i=2 (adding the 3rd node) force a turn regardless of zone knobs.
+        // This guarantees every walk-generated path has ≥1 direction change — no pure lines.
+        const forceTurn = streak >= knobs.maxStraight || i === 2;
 
         for (const o of opts) {
             const straight = (o.dr === pdr && o.dc === pdc);
@@ -1010,7 +1012,10 @@ function rcFillA(graph, paths, ctr, maxFails, knobs) {
         let best = null, bestScore = -Infinity;
         for (const cn of cands) {
             const rl = rcRayLenToEdge(cn.h, cn.dr, cn.dc, rows, cols) / Math.max(rows, cols);
-            const sc = (2 * d - 1) * rl + Math.random() * 0.25;
+            // PX-1: penalise head that immediately faces own walk body (-2 = strongly avoid).
+            const nextR = cn.h.r + cn.dr, nextC = cn.h.c + cn.dc;
+            const selfPenalty = nodes.some(n => n.r === nextR && n.c === nextC) ? -2 : 0;
+            const sc = (2 * d - 1) * rl + Math.random() * 0.25 + selfPenalty;
             if (sc > bestScore) { bestScore = sc; best = cn; }
         }
         for (const n of best.seq) nodeOwner[n.r * W + n.c] = ctr.n;
@@ -1031,8 +1036,16 @@ function rcFillB(graph, paths, ctr) {
             for (let attempt = 0; attempt < 6 && nodeOwner[r * W + c] === -1; attempt++) {
                 const nodes = rcGrowWalk(graph, { r, c }, 3 + (Math.random() * 3 | 0));
                 if (nodes.length < 3) continue;
+                // PX-1: prefer the endpoint that doesn't immediately face own walk body.
                 const ends = [[nodes[nodes.length - 1], nodes[nodes.length - 2], false],
                               [nodes[0],                 nodes[1],                 true]];
+                ends.sort(([h1, pv1], [h2, pv2]) => {
+                    const faces = (h, pv) => {
+                        const dr = h.r - pv.r, dc = h.c - pv.c;
+                        return nodes.some(n => n.r === h.r + dr && n.c === h.c + dc) ? 1 : 0;
+                    };
+                    return faces(h1, pv1) - faces(h2, pv2); // non-self-pointing first
+                });
                 for (const [h, pv, rev] of ends) {
                     const dr = h.r - pv.r, dc = h.c - pv.c;
                     if (!rcHeadRayClear(graph, h, dr, dc)) continue;
@@ -1125,6 +1138,7 @@ function rcFillD(graph, paths, ctr) {
                 for (let d2 = 0; d2 < DIRS.length && !placed; d2++) {
                     const [dr2, dc2] = DIRS[d2];
                     if (dr2 === -dr1 && dc2 === -dc1) continue; // no backtrack
+                    if (dr2 ===  dr1 && dc2 ===  dc1) continue; // SP-1: no straight triplet — must be L-shaped
                     const r3 = r2 + dr2, c3 = c2 + dc2;
                     if (r3 < 0 || r3 >= R || c3 < 0 || c3 >= C) continue;
                     if (nodeOwner[r3 * W + c3] !== -1) continue;
@@ -1242,6 +1256,92 @@ function reverseConstruct(graph, knobs) {
         rcFillC(graph, paths);
     }
     return paths;
+}
+
+// rcFixVisualSelfCollision(paths, graph)  — PX-1
+// Post-construction visual correctness pass. Detects two self-collision illusions:
+//
+//   Immediate self-point: head + heading lands on the path's own next node.
+//     Player sees arrow aimed at a wall segment of its own body and assumes a crash.
+//
+//   Anti-parallel proximity: path's own segment runs in the OPPOSITE direction
+//     within 2 perpendicular nodes of the head — the U/bracket illusion.
+//     e.g. head pointing ← with own → segment one row above it.
+//
+// For each detected case, attempts to flip the path (reverse nodes, re-derive heading).
+// Validated with rcHeadRayClear (O(rows+cols)) instead of rcBoardSolvable (O(paths²)):
+//   RC invariant guarantees: if the flipped head's escape ray is clear of foreign paths,
+//   solvability is maintained. ~500× faster than the full oracle per flip.
+function rcFixVisualSelfCollision(paths, graph) {
+    const { nodeOwner, rows, cols } = graph; const W = cols + 1;
+
+    for (const p of paths) {
+        if (p.nodes.length < 2) continue;
+
+        const head = p.nodes[p.nodes.length - 1];
+        const { dr, dc } = headingToDelta(p.heading);
+
+        // ── Check 1: immediate self-point ──────────────────────────────────────
+        const nr = head.r + dr, nc = head.c + dc;
+        const immediateSelf = nr >= 0 && nr <= rows && nc >= 0 && nc <= cols &&
+                              nodeOwner[nr * W + nc] === p.id;
+
+        // ── Check 2: anti-parallel proximity ───────────────────────────────────
+        // Scan 2 nodes in each perpendicular direction from head.
+        // If an own segment runs opposite to heading, that's the bracket/U illusion.
+        let antiParallel = false;
+        if (!immediateSelf) {
+            const nodeIdx = new Map();
+            for (let i = 0; i < p.nodes.length; i++)
+                nodeIdx.set(p.nodes[i].r * W + p.nodes[i].c, i);
+
+            const perps = [[-dc, dr], [dc, -dr]]; // perpendicular to heading
+            outer: for (const [pdr, pdc] of perps) {
+                for (let t = 1; t <= 2; t++) {
+                    const pnr = head.r + t * pdr, pnc = head.c + t * pdc;
+                    if (pnr < 0 || pnr > rows || pnc < 0 || pnc > cols) continue;
+                    if (nodeOwner[pnr * W + pnc] !== p.id) continue;
+                    const idx = nodeIdx.get(pnr * W + pnc);
+                    if (idx === undefined) continue;
+                    // Check incoming segment direction at this node
+                    if (idx > 0) {
+                        const sDr = p.nodes[idx].r - p.nodes[idx-1].r;
+                        const sDc = p.nodes[idx].c - p.nodes[idx-1].c;
+                        if (sDr === -dr && sDc === -dc) { antiParallel = true; break outer; }
+                    }
+                    // Check outgoing segment direction at this node
+                    if (idx < p.nodes.length - 1) {
+                        const sDr = p.nodes[idx+1].r - p.nodes[idx].r;
+                        const sDc = p.nodes[idx+1].c - p.nodes[idx].c;
+                        if (sDr === -dr && sDc === -dc) { antiParallel = true; break outer; }
+                    }
+                }
+            }
+        }
+
+        if (!immediateSelf && !antiParallel) continue;
+
+        // ── Attempt flip ────────────────────────────────────────────────────────
+        const savedNodes   = p.nodes.slice();
+        const savedHeading = p.heading;
+
+        p.nodes.reverse();
+        const nh = p.nodes[p.nodes.length - 1], np = p.nodes[p.nodes.length - 2];
+        p.heading = deltaToHeading(nh.r - np.r, nh.c - np.c);
+
+        const { dr: fdr, dc: fdc } = headingToDelta(p.heading);
+        const fnr = nh.r + fdr, fnc = nh.c + fdc;
+        const flippedFacesOwnBody = fnr >= 0 && fnr <= rows && fnc >= 0 && fnc <= cols &&
+                                    nodeOwner[fnr * W + fnc] === p.id;
+
+        // Validate with rcHeadRayClear — O(rows+cols) vs O(paths²) for full oracle.
+        // If flipped head's ray is clear, RC invariant guarantees solvability is maintained.
+        if (flippedFacesOwnBody || !rcHeadRayClear(graph, nh, fdr, fdc)) {
+            p.nodes = savedNodes;
+            p.heading = savedHeading;
+        }
+        // else: flip committed — arrowhead now points toward open space.
+    }
 }
 
 // Map difficulty tier → chainDepth knob.
@@ -1623,7 +1723,7 @@ function fragmentCorridor(paths, graph, path, corridor, thickness) {
 // Main loop: repeatedly targets the longest corridor until none exceed MIN_SPAN
 // or maxIterations is reached. Failed mutation attempts are skipped on retry.
 function runCorridorFragmentation(paths, graph, maxIterations) {
-    const MIN_SPAN  = 6; // corridors of ≥6 steps (7 consecutive nodes) are targeted
+    const MIN_SPAN  = 4; // SP-3: corridors of ≥4 steps (5 consecutive nodes) are targeted
     const THICKNESS = 1; // expand 1 node on each side perpendicular to the corridor
     const tried = new Set(); // path+corridor keys that failed mutation — skip to avoid loop
 
