@@ -1252,17 +1252,20 @@ function rcChainDepthForTier(tier) {
 // Generate up to `batch` boards, return the one whose measured tier matches target
 // (or the closest-scoring one if no exact match within the batch).
 // After returning, graph.nodeOwner is always consistent with the returned paths.
-function rcConstructForTier(graph, tier, batch) {
+// zoneMap (optional): if provided, reuses the caller's zone map so that VT-5/VT-6
+// post-processing operates on the same spatial layout used during generation.
+function rcConstructForTier(graph, tier, batch, zoneMap) {
     const TIER_CENTER = { EASY: 3, NORMAL: 9.5, HARD: 17.5, EXPERT: 25.5, TITAN: 33 };
     const cd = rcChainDepthForTier(tier);
     const d  = (tier === 'EASY') ? 0 : 0.5;
-    // VT-3: generate one zone map per rcConstructForTier call so all batch attempts
-    // share the same spatial layout (apples-to-apples difficulty comparison).
-    const zoneMap = generateZoneMap(graph.rows, graph.cols);
+    // VT-3: zone map is now accepted as a parameter so _build100PackedLevelEdge can reuse
+    // the same map for VT-5 (corridor fragmentation) and VT-6 (topological compression).
+    // If not provided, generate internally (backward-compatible default).
+    const zm = zoneMap || generateZoneMap(graph.rows, graph.cols);
     let best = null, bestDelta = Infinity;
     for (let i = 0; i < batch; i++) {
         const cdi = Math.max(0, cd + ((i % 3) - 1));   // bracket cd-1 .. cd+1
-        const paths = reverseConstruct(graph, { d, chainDepth: cdi, zoneMap });
+        const paths = reverseConstruct(graph, { d, chainDepth: cdi, zoneMap: zm });
 
         // Score complexity BEFORE Phase D — gap-fill pieces are cosmetic and must
         // not dilute the difficulty measurement from the Phase A/B/C structure.
@@ -1378,20 +1381,25 @@ function boundaryEndpoints(stubs) {
     }));
 }
 
-// rcFillRegion(graph, paths, freedKeys, endpoints, ctr)
+// rcFillRegion(graph, paths, freedKeys, endpoints, ctr, options)
 // Oracle-gated fill confined strictly to freedKeys.
+// options.walkKnobs — overrides straight/turn scoring (default: ZONE_NEUTRAL).
+//   Pass ZONE_WALK_KNOBS[ZONE_DENSE] for corridor fragmentation (high-turn bias).
 // Grows walks only through nodes that are still free AND in freedKeys.
 // Enforces Rule 8: rejects walks shorter than 3 nodes.
 // Falls back to single-node tail-append for isolated leftover freed nodes.
-function rcFillRegion(graph, paths, freedKeys, endpoints, ctr) {
+function rcFillRegion(graph, paths, freedKeys, endpoints, ctr, options) {
     const { nodeOwner, rows, cols } = graph; const W = cols + 1, R = rows + 1, C = cols + 1;
     const DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
     const byId = new Map(paths.map(p => [p.id, p]));
 
+    // walkKnobs lets callers bias the fill toward tight turns (e.g. corridor fragmentation).
+    const wk = (options && options.walkKnobs) || ZONE_WALK_KNOBS[ZONE_NEUTRAL];
+
     function growInRegion(anchor) {
         const walk = [anchor];
         const loc = new Set([anchor.r * W + anchor.c]);
-        let cur = anchor, pdr = 0, pdc = 0;
+        let cur = anchor, pdr = 0, pdc = 0, streak = 0;
         for (let step = 1; step < 16; step++) {
             const opts = DIRS.map(([dr,dc]) => ({r: cur.r+dr, c: cur.c+dc, dr, dc}))
                 .filter(o => o.r >= 0 && o.r < R && o.c >= 0 && o.c < C &&
@@ -1399,12 +1407,18 @@ function rcFillRegion(graph, paths, freedKeys, endpoints, ctr) {
                              freedKeys.has(o.r * W + o.c) &&
                              !loc.has(o.r * W + o.c));
             if (!opts.length) break;
-            for (const o of opts)
-                o.score = (o.dr === pdr && o.dc === pdc ? 0.4 : 1.0) + Math.random();
+            const forceTurn = streak >= wk.maxStraight;
+            for (const o of opts) {
+                const straight = (o.dr === pdr && o.dc === pdc);
+                o.score = (straight ? (forceTurn ? -10 : wk.straightScore) : wk.turnScore)
+                          + Math.random();
+            }
             opts.sort((a,b) => b.score - a.score);
             const pick = opts[0];
             walk.push({r: pick.r, c: pick.c});
             loc.add(pick.r * W + pick.c);
+            const isStraight = (pick.dr === pdr && pick.dc === pdc);
+            streak = isStraight ? streak + 1 : 0;
             pdr = pick.dr; pdc = pick.dc; cur = pick;
         }
         return walk;
@@ -1503,10 +1517,11 @@ function reconnectStubs(stubs, paths, graph) {
     }
 }
 
-// mutateRegion(paths, graph, nodeSet)
+// mutateRegion(paths, graph, nodeSet, options)
 // Full mutation pipeline. Returns true on commit, false on revert (board unchanged).
 // nodeSet: array or iterable of {r, c} nodes defining the region to mutate.
-function mutateRegion(paths, graph, nodeSet) {
+// options.walkKnobs: passed to rcFillRegion to control fill turn/straight bias.
+function mutateRegion(paths, graph, nodeSet, options) {
     // Deep-copy state for revert
     const savedPaths = paths.map(p => ({
         ...p, nodes: p.nodes.map(n => ({...n})),
@@ -1519,7 +1534,7 @@ function mutateRegion(paths, graph, nodeSet) {
 
     const ctr  = { n: paths.reduce((m, p) => Math.max(m, p.id), -1) + 1 };
     const eps  = boundaryEndpoints(stubs);
-    rcFillRegion(graph, paths, freedKeys, eps, ctr);
+    rcFillRegion(graph, paths, freedKeys, eps, ctr, options);
     reconnectStubs(stubs, paths, graph);
     rcRecomputePlaceOrder(paths, graph);
 
@@ -1532,4 +1547,188 @@ function mutateRegion(paths, graph, nodeSet) {
     }
 
     return true;
+}
+
+// =============================================================================
+// VT-5: Corridor Fragmentation
+// Identifies long straight runs (corridors) in paths and reroutes them through
+// a thickened mutation region with high-turn bias, destroying visible backbone flow.
+// =============================================================================
+
+// extractCorridors(p)
+// Returns [{startIdx, endIdx, dir:{dr,dc}, span}] for every maximal straight run.
+// span = number of node-to-node steps (endIdx - startIdx). A corridor with span N
+// has N+1 nodes all moving in the same direction.
+function extractCorridors(p) {
+    if (p.nodes.length < 2) return [];
+    const corridors = [];
+    let startIdx = 0;
+    let dr = p.nodes[1].r - p.nodes[0].r, dc = p.nodes[1].c - p.nodes[0].c;
+    for (let i = 2; i < p.nodes.length; i++) {
+        const ndr = p.nodes[i].r - p.nodes[i-1].r, ndc = p.nodes[i].c - p.nodes[i-1].c;
+        if (ndr !== dr || ndc !== dc) {
+            corridors.push({ startIdx, endIdx: i - 1, dir: { dr, dc }, span: i - 1 - startIdx });
+            startIdx = i - 1; dr = ndr; dc = ndc;
+        }
+    }
+    corridors.push({ startIdx, endIdx: p.nodes.length - 1,
+                     dir: { dr, dc }, span: p.nodes.length - 1 - startIdx });
+    return corridors;
+}
+
+// longCorridors(paths, minSpan)
+// Returns [{path, corridor}] for every corridor with span ≥ minSpan,
+// sorted descending by corridor.span so the worst offenders are hit first.
+function longCorridors(paths, minSpan) {
+    const result = [];
+    for (const p of paths) {
+        for (const c of extractCorridors(p))
+            if (c.span >= minSpan) result.push({ path: p, corridor: c });
+    }
+    return result.sort((a, b) => b.corridor.span - a.corridor.span);
+}
+
+// thickenCorridor(path, corridor, graph, thickness)
+// Expands the corridor's node set by thickness cells in both perpendicular
+// directions (clamped to board bounds). For a horizontal corridor, this adds
+// thickness rows above and below, giving a (2×thickness+1)-row mutation window.
+function thickenCorridor(path, corridor, graph, thickness) {
+    const { rows, cols } = graph; const R = rows + 1, C = cols + 1;
+    const { startIdx, endIdx, dir } = corridor;
+    const isHoriz = dir.dc !== 0; // horizontal corridor → expand vertically
+    const seen = new Set(); const nodeSet = [];
+
+    for (let i = startIdx; i <= endIdx; i++) {
+        const { r, c } = path.nodes[i];
+        for (let t = -thickness; t <= thickness; t++) {
+            const nr = isHoriz ? r + t : r;
+            const nc = isHoriz ? c     : c + t;
+            if (nr < 0 || nr >= R || nc < 0 || nc >= C) continue;
+            const key = nr * C + nc;
+            if (!seen.has(key)) { seen.add(key); nodeSet.push({ r: nr, c: nc }); }
+        }
+    }
+    return nodeSet;
+}
+
+// fragmentCorridor(paths, graph, path, corridor, thickness)
+// Applies mutateRegion on the thickened corridor window using DENSE walk knobs
+// (turnScore=3.0, maxStraight=1) to maximise turn density in the replacement paths.
+function fragmentCorridor(paths, graph, path, corridor, thickness) {
+    const nodeSet = thickenCorridor(path, corridor, graph, thickness == null ? 1 : thickness);
+    return mutateRegion(paths, graph, nodeSet, { walkKnobs: ZONE_WALK_KNOBS[ZONE_DENSE] });
+}
+
+// runCorridorFragmentation(paths, graph, maxIterations)
+// Main loop: repeatedly targets the longest corridor until none exceed MIN_SPAN
+// or maxIterations is reached. Failed mutation attempts are skipped on retry.
+function runCorridorFragmentation(paths, graph, maxIterations) {
+    const MIN_SPAN  = 6; // corridors of ≥6 steps (7 consecutive nodes) are targeted
+    const THICKNESS = 1; // expand 1 node on each side perpendicular to the corridor
+    const tried = new Set(); // path+corridor keys that failed mutation — skip to avoid loop
+
+    for (let iter = 0; iter < maxIterations; iter++) {
+        const candidates = longCorridors(paths, MIN_SPAN)
+            .filter(({ path, corridor }) =>
+                !tried.has(path.id + ':' + corridor.startIdx + ':' + corridor.endIdx));
+        if (!candidates.length) break;
+
+        const { path, corridor } = candidates[0];
+        const ok = fragmentCorridor(paths, graph, path, corridor, THICKNESS);
+        if (!ok) tried.add(path.id + ':' + corridor.startIdx + ':' + corridor.endIdx);
+    }
+}
+
+// =============================================================================
+// VT-6: Topological Compression
+// Finds DENSE zones whose actual turn density is below the target and applies
+// mutateRegion patches with maximum-turn walk knobs until the zone is compressed
+// or the iteration budget is exhausted.
+// =============================================================================
+
+// turnDensityInZone(paths, graph, zoneBounds)
+// Returns (turn-node count / total nodes in zone) × 100 — turns per 100 nodes.
+// zoneBounds: { rMin, rMax, cMin, cMax } in micro-grid node coordinates.
+function turnDensityInZone(paths, graph, zoneBounds) {
+    const { rows, cols } = graph; const R = rows + 1, C = cols + 1;
+    const { rMin, rMax, cMin, cMax } = zoneBounds;
+
+    let total = 0;
+    for (let r = rMin; r <= rMax && r < R; r++)
+        for (let c = cMin; c <= cMax && c < C; c++) total++;
+
+    if (!total) return 0;
+
+    let turns = 0;
+    for (const p of paths) {
+        for (let i = 1; i < p.nodes.length - 1; i++) {
+            const n = p.nodes[i];
+            if (n.r < rMin || n.r > rMax || n.c < cMin || n.c > cMax) continue;
+            const dr1 = n.r - p.nodes[i-1].r, dc1 = n.c - p.nodes[i-1].c;
+            const dr2 = p.nodes[i+1].r - n.r, dc2 = p.nodes[i+1].c - n.c;
+            if (dr1 !== dr2 || dc1 !== dc2) turns++;
+        }
+    }
+    return (turns / total) * 100;
+}
+
+// undercompressedZones(paths, graph, zoneMap)
+// Returns DENSE zones whose turn density is below TARGET_TURN_DENSITY,
+// sorted ascending by density (worst-compressed first).
+function undercompressedZones(paths, graph, zoneMap) {
+    const { rows, cols } = graph; const R = rows + 1, C = cols + 1;
+    const { zRows, zCols, tags } = zoneMap;
+    const TARGET = 25; // turns per 100 nodes — DENSE zones must exceed this
+
+    const result = [];
+    for (let zr = 0; zr < zRows; zr++) {
+        for (let zc = 0; zc < zCols; zc++) {
+            if (tags[zr * zCols + zc] !== ZONE_DENSE) continue;
+
+            const rMin = Math.floor(zr       * R / zRows);
+            const rMax = Math.min(R - 1, Math.floor((zr + 1) * R / zRows) - 1);
+            const cMin = Math.floor(zc       * C / zCols);
+            const cMax = Math.min(C - 1, Math.floor((zc + 1) * C / zCols) - 1);
+            if (rMax < rMin || cMax < cMin) continue;
+
+            const bounds  = { rMin, rMax, cMin, cMax };
+            const density = turnDensityInZone(paths, graph, bounds);
+            if (density < TARGET) result.push({ zr, zc, density, bounds });
+        }
+    }
+    return result.sort((a, b) => a.density - b.density);
+}
+
+// runTopologicalCompression(paths, graph, zoneMap, maxIterations)
+// For each undercompressed DENSE zone: picks random patches within the zone and
+// applies mutateRegion with DENSE walk knobs (turnScore=3.0, maxStraight=1).
+// maxIterations caps the total number of successful mutation attempts per call.
+function runTopologicalCompression(paths, graph, zoneMap, maxIterations) {
+    if (!zoneMap) return;
+    const PATCH  = 5;          // patch size (nodes) per side within the zone
+    const ZONE_ATTEMPTS = 4;   // mutation attempts per undercompressed zone
+    let committed = 0;
+
+    for (const zone of undercompressedZones(paths, graph, zoneMap)) {
+        if (committed >= maxIterations) break;
+        const { rMin, rMax, cMin, cMax } = zone.bounds;
+        const zH = rMax - rMin + 1, zW = cMax - cMin + 1;
+        if (zH < 3 || zW < 3) continue; // zone too small for meaningful mutation
+
+        const pH = Math.min(PATCH, zH), pW = Math.min(PATCH, zW);
+
+        for (let attempt = 0; attempt < ZONE_ATTEMPTS; attempt++) {
+            if (committed >= maxIterations) break;
+            const r0 = rMin + ((Math.random() * (zH - pH + 1)) | 0);
+            const c0 = cMin + ((Math.random() * (zW - pW + 1)) | 0);
+            const nodeSet = [];
+            for (let r = r0; r < r0 + pH; r++)
+                for (let c = c0; c < c0 + pW; c++)
+                    nodeSet.push({ r, c });
+
+            const ok = mutateRegion(paths, graph, nodeSet,
+                                    { walkKnobs: ZONE_WALK_KNOBS[ZONE_DENSE] });
+            if (ok) committed++;
+        }
+    }
 }

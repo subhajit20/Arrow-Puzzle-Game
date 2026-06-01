@@ -156,8 +156,11 @@ function _build100PackedLevelEdge(forceNewGeneration) {
     const candidatesByTier = {};
 
     for (let round = 0; round < MAX_ROUNDS; round++) {
+        // VT-6: generate zone map once per round so VT-5 (corridor fragmentation) and
+        // VT-6 (topological compression) operate on the same spatial layout used during RC.
+        const zoneMap = generateZoneMap(rows, cols);
         const graph = buildEdgeGraph(rows, cols);
-        const { paths, cx } = rcConstructForTier(graph, targetTier, BATCH);
+        const { paths, cx } = rcConstructForTier(graph, targetTier, BATCH, zoneMap);
 
         // Post-build solvability assert (should always pass; logs if not).
         if (!isBoardFullySolvable(paths, graph)) {
@@ -165,10 +168,20 @@ function _build100PackedLevelEdge(forceNewGeneration) {
             continue;
         }
 
+        // VT-5: Corridor Fragmentation — break long straight runs before hEdge/vEdge derivation.
+        // Difficulty tier (cx) was already scored pre-fragmentation.
+        const fragIter = totalNodes > 1000 ? 5 : 10;
+        runCorridorFragmentation(paths, graph, fragIter);
+
+        // VT-6: Topological Compression — compress underperforming DENSE zones.
+        // Runs after corridor fragmentation; reuses the same zoneMap as RC generation.
+        const compIter = totalNodes > 1000 ? 3 : 6;
+        runTopologicalCompression(paths, graph, zoneMap, compIter);
+
         const tier   = cx.tier;
         const aScore = computeAestheticScore(paths, graph);
 
-        // Derive hEdge/vEdge from final node sequences (same as forward pipeline).
+        // Derive hEdge/vEdge from post-fragmentation node sequences.
         for (const p of paths) {
             for (let i = 0; i < p.nodes.length - 1; i++) {
                 const a = p.nodes[i], b = p.nodes[i + 1];

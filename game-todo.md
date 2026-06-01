@@ -1427,7 +1427,7 @@ Each step requires explicit approval before starting.
 **Test:** Turn clustering coefficient in DENSE zones improves vs Phase 5 baseline. OPEN zones unaffected.
 
 **Approval required before Phase 7**
-
+  
 ---
 
 ## PHASE 7 — Pseudo-Loop Composition
@@ -1494,8 +1494,8 @@ Each step requires explicit approval before starting.
 | VT-2  | 8      | Aesthetic Quality Filter (skeleton)      | ✅ done — boardPassesVisualFilter wired; pass rates: 4×3=80% 8×6=93% 12×9=97% 16×12=93% 20×15=73% 24×18=40%; primary discriminator=densityVariance; gen time 2.1× at 24×18 (expected — loop exhausts MAX_ROUNDS at 40% pass rate) |
 | VT-3  | 6      | Topology Rhythm System                   | ✅ done — DENSE/OPEN/NEUTRAL zone map wired; densityVariance metric fixed to turn-density variance; density variance 0.005–0.079 (up from ~0); filter 20–57%; 0 solvability/rulebook failures; coverage improved to 97–99% |
 | VT-4  | 1+2    | Mutation Engine                          | ✅ done — extractRegion/boundaryEndpoints/rcFillRegion/reconnectStubs/mutateRegion; 100/100 3×3 mutations at 16×12: 0 owner violations, 0 solvability failures, 0 Rule 8 violations (19 no-ops); key bug fixed: stubs must update nodeOwner to new stub id |
-| VT-5  | 1      | Corridor Fragmentation                   | ⬜ pending  |
-| VT-6  | 3      | Topological Compression                  | ⬜ pending  |
+| VT-5  | 1      | Corridor Fragmentation                   | ✅ done — extractCorridors/longCorridors/thickenCorridor/fragmentCorridor/runCorridorFragmentation; rcFillRegion+mutateRegion accept walkKnobs; straightness 2.03–2.29 (all < 4.0 target); wired before reserveEdge in board-gen; 0 failures |
+| VT-6  | 3      | Topological Compression                  | ✅ done — turnDensityInZone/undercompressedZones/runTopologicalCompression; zoneMap threaded from board-gen through rcConstructForTier; turnClustering +0.003–0.016 across sizes; densityVariance +11–31% on small-medium boards; 0 failures |
 | VT-7  | 5      | Pseudo-Loop Composition                  | ⬜ pending  |
 | VT-8  | 7      | Advanced Solver Simulation               | ⬜ pending  |
 | VT-9  | 8      | Aesthetic Quality Filter (complete)      | ⬜ pending  |
