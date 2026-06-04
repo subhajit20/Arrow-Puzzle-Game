@@ -114,7 +114,7 @@
                 padding-bottom: 0.5rem !important;
             }
 
-            #game-controls > button:first-child {
+            #game-controls>button:first-child {
                 padding: 0.5rem !important;
             }
         }
@@ -333,7 +333,7 @@
             <p id="win-quote" class="text-xs text-slate-500 px-10 text-center font-medium italic">"The long vectors
                 slide free seamlessly."</p>
             <p id="win-points" class="text-sm font-bold text-emerald-600">+100 Level Bonus awarded!</p>
-            <button onclick="actions.triggerNextLevel()"
+            <button onclick="triggerNextLevel()"
                 class="mt-2 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl tracking-wide shadow-md transition-all duration-200 glow-btn">
                 Next Puzzle
             </button>
@@ -351,7 +351,7 @@
             <h3 class="text-2xl font-extrabold text-rose-600 tracking-tight">Board Jammed!</h3>
             <p class="text-xs text-slate-500 px-8 text-center font-medium">You triggered a collision loop. Let's trace
                 carefully.</p>
-            <button onclick="actions.retryCurrentLevel()"
+            <button onclick="retryCurrentLevel()"
                 class="mt-2 px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm rounded-xl tracking-wide shadow-md transition-all duration-200 glow-btn">
                 Retry Level
             </button>
@@ -372,7 +372,7 @@
         </button>
 
         <!-- Auto Solver Button -->
-        <button id="hint-btn" onclick="actions.useHint()"
+        <button id="hint-btn" onclick="useHint()"
             class="flex-1 py-3 px-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl font-bold tracking-wider uppercase flex justify-center items-center gap-2 transition-all duration-200 glow-btn">
             <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round"
@@ -383,75 +383,30 @@
         </button>
     </div>
 
-    <script src="js/edge-gen.js"></script>
-    <script src="js/edge-logic.js"></script>
-    <script src="js/audio.js"></script>
-    <script src="js/state.js"></script>
-    <script src="js/topologies.js"></script>
-    <script src="js/persistence.js"></script>
-    <script src="js/camera.js"></script>
-    <script src="js/board-gen.js"></script>
-    <script src="js/game-logic.js"></script>
-    <script src="js/renderer.js"></script>
-    <script src="js/input.js"></script>
-    <script src="js/daily.js"></script>
-    <script>
-        window.onload = () => {
-            resizeCanvas();
-            animationUpdateTick();
-            initDailySplash();
-        };
-
-        // Dev helper — call from browser console to play any size + tier:
-        //   testBoard(24, 18, 'TITAN')
-        window.testBoard = function(rootRows, rootCols, tier) {
-            tier = tier || 'TITAN';
-            State.rootRows    = rootRows;
-            State.rootCols    = rootCols;
-            State.gridRows    = rootRows * State.subdivFactor;
-            State.gridCols    = rootCols * State.subdivFactor;
-            State.gridSize    = rootRows;
-            State.shapeName   = 'Test';
-            State.level       = 100;
-            State.dailyPuzzleMode = false;
-            resetCamera();
-            resizeCanvas();
-
-            const rows  = State.gridRows;
-            const cols  = State.gridCols;
-            const graph = buildEdgeGraph(rows, cols);
-            const { paths, cx } = rcConstructForTier(graph, tier, 6);
-
-            // Derive hEdge/vEdge
-            for (const p of paths) {
-                for (let i = 0; i < p.nodes.length - 1; i++) {
-                    const a = p.nodes[i], b = p.nodes[i + 1];
-                    reserveEdge(graph, a.r, a.c, b.r, b.c, p.id);
-                }
-                p.originalNodes = p.nodes.slice();
-            }
-
-            State.paths = paths;
-            State.hEdge = graph.hEdge;
-            State.vEdge = graph.vEdge;
-            State.boardDifficulty = cx.tier;
-            State.lives = 3;
-            State.animatingCount = 0;
-
-            const W = cols + 1;
-            State.nodeOwner = new Int32Array((rows + 1) * W).fill(-1);
-            for (const p of State.paths)
-                for (const { r, c } of p.nodes)
-                    State.nodeOwner[r * W + c] = p.id;
-
-            validateBoardAsserts(State.paths, graph);
-            const used = paths.reduce((s, p) => s + p.nodes.length, 0);
-            const cov  = Math.round(used / ((rows + 1) * (cols + 1)) * 100);
-            console.log(`[testBoard] ${rootRows}x${rootCols} ${cx.tier} | paths: ${paths.length} | coverage: ${cov}%`);
-            updateDomUI();
-            startPathRevealAnimation();
-        };
-    </script>
+    <!-- Foundation -->
+    <script src="js/Grid.js"></script>
+    <script src="js/Path.js"></script>
+    <script src="js/SolvabilityOracle.js"></script>
+    <!-- Generation core -->
+    <script src="js/ZoneMap.js"></script>
+    <script src="js/RCBuilder.js"></script>
+    <script src="js/DifficultyEngine.js"></script>
+    <script src="js/Validator.js"></script>
+    <script src="js/Generator.js"></script>
+    <!-- Presentation -->
+    <script src="js/Camera.js"></script>
+    <script src="js/Renderer.js"></script>
+    <script src="js/AnimationEngine.js"></script>
+    <!-- Interaction -->
+    <script src="js/InputHandler.js"></script>
+    <script src="js/AudioEngine.js"></script>
+    <script src="js/GameController.js"></script>
+    <!-- Integration -->
+    <script src="js/Persistence.js"></script>
+    <script src="js/BoardLoader.js"></script>
+    <script src="js/DailyPuzzle.js"></script>
+    <script src="js/boards-data.js"></script>
+    <script src="js/main.js"></script>
 </body>
 
 </html>

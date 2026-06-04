@@ -1,0 +1,106 @@
+// =============================================================================
+// SolvabilityOracle.js — Board solvability simulation
+//
+// Uses the RC (Reverse Construction) escape model:
+//   A path can escape if its head ray reaches the board edge when walking
+//   in the heading direction, treating empty cells, own body nodes, and
+//   already-cleared path nodes as transparent.
+//
+// isBoardSolvable runs a greedy forward simulation:
+//   repeatedly find any path that can currently escape → clear it → repeat
+//   until no more paths can escape or all are cleared.
+//   Returns true only if every path was cleared.
+// =============================================================================
+
+class SolvabilityOracle {
+
+    // ── Core escape check ─────────────────────────────────────────────────────
+
+    // Returns true if path's head ray reaches the board edge.
+    // Transparent cells: empty (-1), own body (path.id), already removed paths.
+    canEscape(path, removed, grid) {
+        const { dr, dc } = Path.headingToDelta(path.heading);
+        const head       = path.head();
+        let r = head.r, c = head.c;
+
+        for (;;) {
+            const nr = r + dr, nc = c + dc;
+            if (!grid.inBounds(nr, nc)) return true;   // reached board edge
+            const o = grid.owner(nr, nc);
+            if (o === -1 || o === path.id || removed.has(o)) {
+                r = nr; c = nc; continue;              // transparent — keep walking
+            }
+            return false;                              // blocked by foreign path
+        }
+    }
+
+    // ── Self-clear check ──────────────────────────────────────────────────────
+
+    // Returns false if the path's head ray hits any node owned by the SAME path
+    // before reaching the board edge or a foreign path.
+    // A path whose arrowhead points into its own body is visually broken.
+    headSelfClear(path, grid) {
+        const { dr, dc } = Path.headingToDelta(path.heading);
+        const head = path.head();
+        let r = head.r + dr, c = head.c + dc;
+
+        while (grid.inBounds(r, c)) {
+            const o = grid.owner(r, c);
+            if (o === path.id) return false;  // own body in the ray
+            if (o !== -1)      return true;   // foreign path — self-clear up to here
+            r += dr; c += dc;
+        }
+        return true; // reached board edge cleanly
+    }
+
+    // ── Board-wide solvability ────────────────────────────────────────────────
+
+    // Greedy forward simulation: repeatedly clear any escapable path until
+    // stuck or done. Returns true only if all paths cleared.
+    isBoardSolvable(paths, grid) {
+        const removed = new Set();
+        let prog = true;
+
+        while (prog) {
+            prog = false;
+            for (const p of paths) {
+                if (removed.has(p.id)) continue;
+                if (this.canEscape(p, removed, grid)) {
+                    removed.add(p.id);
+                    prog = true;
+                }
+            }
+        }
+
+        return removed.size === paths.length;
+    }
+
+    // ── Place order assignment ────────────────────────────────────────────────
+
+    // Derives placeOrder for every path from the greedy clear order.
+    // First cleared = highest placeOrder (was placed last in RC construction).
+    // Returns false if the board is not fully solvable.
+    recomputePlaceOrder(paths, grid) {
+        const removed    = new Set();
+        const clearOrder = [];
+        let prog = true;
+
+        while (prog) {
+            prog = false;
+            for (const p of paths) {
+                if (removed.has(p.id)) continue;
+                if (this.canEscape(p, removed, grid)) {
+                    removed.add(p.id);
+                    clearOrder.push(p);
+                    prog = true;
+                }
+            }
+        }
+
+        if (removed.size !== paths.length) return false;
+
+        const N = clearOrder.length;
+        clearOrder.forEach((p, i) => { p.placeOrder = N - 1 - i; });
+        return true;
+    }
+}

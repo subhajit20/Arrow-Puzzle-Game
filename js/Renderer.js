@@ -1,0 +1,366 @@
+// =============================================================================
+// Renderer.js — Canvas 2D draw engine
+//
+// Owns the canvas context and all drawing logic.
+// Reads view state from Camera; reads board data from the board object passed
+// into drawFrame — no dependency on global State.
+//
+// Dependencies: Camera
+// =============================================================================
+
+class Renderer {
+    static DIFFICULTY_COLORS = {
+        EASY: '#10b981',
+        NORMAL: '#3b82f6',
+        HARD: '#f97316',
+        EXPERT: '#a855f7',
+        TITAN: '#ec4899',
+    };
+
+    constructor(canvas, camera) {
+        this.canvas = canvas;
+        this.camera = camera;
+        this.ctx = canvas.getContext('2d');
+        this._dpr = window.devicePixelRatio || 1;
+    }
+
+    // ── DOM utility ───────────────────────────────────────────────────────────
+
+    static getDifficultyLabel(difficulty) {
+        const diff = difficulty || 'NORMAL';
+        const color = Renderer.DIFFICULTY_COLORS[diff] || '#3b82f6';
+        return { label: diff, color };
+    }
+
+    // Updates level, score, lives and tier badge DOM elements.
+    updateDomUI(gameState) {
+        const lvl = document.getElementById('level-display');
+        if (lvl) lvl.innerText = `Level ${gameState.level}`;
+
+        const score = document.getElementById('score-display');
+        if (score) score.innerText = gameState.dailyMode ? gameState.dailyScore : gameState.score;
+
+        const badge = document.getElementById('tier-badge');
+        if (badge) {
+            if (gameState.dailyMode) {
+                badge.innerText = 'DAILY';
+                badge.style.color = '#d97706';
+            } else {
+                const d = Renderer.getDifficultyLabel(gameState.difficulty);
+                badge.innerText = d.label;
+                badge.style.color = d.color;
+            }
+        }
+
+        for (let i = 1; i <= 3; i++) {
+            const el = document.getElementById(`heart-${i}`);
+            if (!el) continue;
+            if (i <= gameState.lives) {
+                el.style.opacity = '1';
+                el.style.transform = 'scale(1)';
+            } else {
+                el.style.opacity = '0.15';
+                el.style.transform = 'scale(0.85)';
+            }
+        }
+    }
+
+    // ── Canvas resize ─────────────────────────────────────────────────────────
+
+    resize(containerEl, gridRows, gridCols) {
+        const bcr = containerEl.getBoundingClientRect();
+        this.camera.calculateMetrics(bcr.width, bcr.height, gridRows, gridCols);
+        this._dpr = window.devicePixelRatio || 1;
+
+        this.canvas.width = Math.round(this.camera.canvasW * this._dpr);
+        this.canvas.height = Math.round(this.camera.canvasH * this._dpr);
+        this.canvas.style.width = this.camera.canvasW + 'px';
+        this.canvas.style.height = this.camera.canvasH + 'px';
+        this.canvas.style.alignSelf = 'flex-start';
+
+        this.ctx.scale(this._dpr, this._dpr);
+        this.camera.clampPan(containerEl);
+    }
+
+    // ── Track interpolation ───────────────────────────────────────────────────
+
+    _getTrackPoint(track, d) {
+        if (d <= 0) return track[0];
+        if (d >= track.length - 1) return track[track.length - 1];
+        const idx = Math.floor(d);
+        const frac = d - idx;
+        const p1 = track[idx], p2 = track[idx + 1];
+        return { x: p1.x + (p2.x - p1.x) * frac, y: p1.y + (p2.y - p1.y) * frac };
+    }
+
+    _getSubTrackPoints(track, dStart, dEnd) {
+        const pts = [];
+        if (dStart < 0) dStart = 0;
+        if (dEnd > track.length - 1) dEnd = track.length - 1;
+        if (dStart >= dEnd) return pts;
+
+        pts.push(this._getTrackPoint(track, dStart));
+        for (let i = Math.ceil(dStart); i <= Math.floor(dEnd); i++) pts.push(track[i]);
+        pts.push(this._getTrackPoint(track, dEnd));
+        return pts;
+    }
+
+    // ── Arrow head ────────────────────────────────────────────────────────────
+
+    drawArrowHead(x, y, heading, size, isSelected, pathState) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.translate(x, y);
+
+        let angle = 0;
+        if (heading === 'UP') angle = -Math.PI / 2;
+        if (heading === 'DOWN') angle = Math.PI / 2;
+        if (heading === 'LEFT') angle = Math.PI;
+        ctx.rotate(angle);
+
+        let fillTop, fillBot, stroke;
+        if (pathState === 'CRASHING') {
+            fillTop = '#f87171'; fillBot = '#b91c1c'; stroke = '#7f1d1d';
+        } else if (isSelected) {
+            fillTop = '#60a5fa'; fillBot = '#1d4ed8'; stroke = '#1e3a8a';
+        } else {
+            fillTop = '#112540'; fillBot = '#112540'; stroke = '#112540';
+        }
+
+        const lw = Math.max(1.0, size * 0.08);
+        ctx.lineJoin = 'round';
+
+        // Top half
+        ctx.beginPath();
+        ctx.moveTo(0, 0); ctx.lineTo(0, -size * 0.58); ctx.lineTo(size, 0);
+        ctx.closePath();
+        ctx.fillStyle = fillTop; ctx.fill();
+        ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke();
+
+        // Bottom half
+        ctx.beginPath();
+        ctx.moveTo(0, 0); ctx.lineTo(0, size * 0.58); ctx.lineTo(size, 0);
+        ctx.closePath();
+        ctx.fillStyle = fillBot; ctx.fill();
+        ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke();
+
+        ctx.restore();
+    }
+
+    // ── Grid dots ─────────────────────────────────────────────────────────────
+
+    drawGrid(grid, mask) {
+        const ctx = this.ctx;
+        const cSize = this.camera.cellSize;
+        const ox = this.camera.offsetX;
+        const oy = this.camera.offsetY;
+        const rows = grid.rows;
+        const cols = grid.cols;
+        const bmW = cols + 1;
+        const dotR = Math.max(0.8, cSize * 0.07);
+
+        ctx.fillStyle = '#cbd5e1';
+        for (let r = 0; r <= rows; r++) {
+            for (let c = 0; c <= cols; c++) {
+                if (mask && !mask[r * bmW + c]) continue;
+                ctx.beginPath();
+                ctx.arc(ox + c * cSize, oy + r * cSize, dotR, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    }
+
+    // ── Single path ───────────────────────────────────────────────────────────
+
+    drawPath(path, revealState, selectedId, hintId) {
+        const ctx = this.ctx;
+        const cSize = this.camera.cellSize;
+        const ox = this.camera.offsetX;
+        const oy = this.camera.offsetY;
+        if (path.state === 'CLEARED') return;
+
+        const isSelected = selectedId === path.id || hintId === path.id;
+
+        let strokeColor = '#112540';
+        if (path.state === 'CRASHING') strokeColor = '#ef4444';
+        else if (isSelected) strokeColor = '#3b82f6';
+
+        // Crash flash cell overlay
+        if (path.state === 'CRASHING' && (path.crashFlashFrames || 0) > 0) {
+            ctx.fillStyle = 'rgba(239,68,68,0.35)';
+            const seen = new Set();
+            for (const { r, c } of path.nodes) {
+                const key = r + ',' + c;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    ctx.fillRect(ox + c * cSize, oy + r * cSize, cSize, cSize);
+                }
+            }
+        }
+
+        const len = path.nodes.length;
+        const headPt = path.nodes[len - 1];
+        const { dr, dc } = Path.headingToDelta(path.heading);
+
+        // Build full track (nodes + extension beyond head for animation)
+        const fullTrack = path.nodes.map(pt => ({
+            x: ox + pt.c * cSize,
+            y: oy + pt.r * cSize,
+        }));
+        const ext = Math.max(60, len * 2);
+        for (let j = 1; j <= ext; j++) {
+            fullTrack.push({
+                x: ox + (headPt.c + dc * j) * cSize,
+                y: oy + (headPt.r + dr * j) * cSize,
+            });
+        }
+
+        // Compute draw window
+        let drawPoints = [];
+        const totalSeg = len - 1;
+
+        if (revealState && revealState.active) {
+            const { progress, pathCount, pathIndex } = revealState;
+            const sf = 0.4;
+            const startR = pathCount > 1 ? (pathIndex / (pathCount - 1)) * sf : 0;
+            const durR = 1 - sf;
+            const p = progress > startR
+                ? Math.min(1, (progress - startR) / durR) : 0;
+            if (p > 0) drawPoints = this._getSubTrackPoints(fullTrack, 0, p * totalSeg);
+        } else if (path.state === 'IDLE') {
+            drawPoints = fullTrack.slice(0, len);
+        } else {
+            const dStart = path.animProgress;
+            const dEnd = totalSeg + path.animProgress;
+            drawPoints = this._getSubTrackPoints(fullTrack, dStart, dEnd);
+        }
+
+        if (drawPoints.length < 2) return;
+
+        ctx.save();
+        ctx.lineWidth = Math.max(2, cSize * 0.18);
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+
+        if (isSelected && path.state !== 'CRASHING') {
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = 'rgba(59,130,246,0.4)';
+        }
+
+        // Draw with rounded corners: at each turn, use a quadratic bezier
+        // that approaches the corner, curves around it, and exits cleanly.
+        const pts = drawPoints;
+        const radius = cSize * 0.25; // rounding radius — fraction of one cell
+
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+
+        for (let i = 1; i < pts.length - 1; i++) {
+            const prev = pts[i - 1], curr = pts[i], next = pts[i + 1];
+
+            const dx1 = curr.x - prev.x, dy1 = curr.y - prev.y;
+            const dx2 = next.x - curr.x, dy2 = next.y - curr.y;
+            const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+            const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+
+            // Only round genuine turns (cross product ≠ 0 → direction changed)
+            const cross = dx1 * dy2 - dy1 * dx2;
+            if (Math.abs(cross) > 0.01 && len1 > 0 && len2 > 0) {
+                const rr = Math.min(radius, len1 / 2, len2 / 2);
+                const inX = curr.x - (dx1 / len1) * rr;
+                const inY = curr.y - (dy1 / len1) * rr;
+                const outX = curr.x + (dx2 / len2) * rr;
+                const outY = curr.y + (dy2 / len2) * rr;
+                ctx.lineTo(inX, inY);
+                ctx.quadraticCurveTo(curr.x, curr.y, outX, outY);
+            } else {
+                ctx.lineTo(curr.x, curr.y);
+            }
+        }
+
+        ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+        ctx.strokeStyle = strokeColor;
+        ctx.stroke();
+        ctx.restore();
+
+        const hp = drawPoints[drawPoints.length - 1];
+        const aSize = Math.max(3.0, cSize * 0.32);
+        this.drawArrowHead(hp.x, hp.y, path.heading, aSize, isSelected, path.state);
+    }
+
+    // ── Confetti ──────────────────────────────────────────────────────────────
+
+    drawConfetti(particles) {
+        const ctx = this.ctx;
+        const remaining = [];
+        for (const pt of particles) {
+            pt.x += pt.vx; pt.y += pt.vy; pt.alpha -= pt.decay;
+            if (pt.alpha <= 0) continue;
+            ctx.save();
+            ctx.globalAlpha = pt.alpha;
+            ctx.fillStyle = pt.color;
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            remaining.push(pt);
+        }
+        // Mutate in place so AnimationEngine's reference stays valid
+        particles.length = 0;
+        for (const pt of remaining) particles.push(pt);
+    }
+
+    // ── Full frame ────────────────────────────────────────────────────────────
+
+    // board: { grid, paths, mask }
+    // gameState: { selectedPathId, hintPathId, revealState, particles }
+    drawFrame(board, gameState = {}) {
+        const ctx = this.ctx;
+        const cam = this.camera;
+        const cSize = cam.cellSize;
+        const ox = cam.offsetX;
+        const oy = cam.offsetY;
+
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.save();
+        ctx.translate(cam.matE, cam.matF);
+        ctx.scale(cam.cssZoom, cam.cssZoom);
+
+        // White board background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(ox, oy, board.grid.cols * cSize, board.grid.rows * cSize);
+
+        // Grid dots
+        this.drawGrid(board.grid, board.mask);
+
+        // Clip to board + 1-cell padding for arrowheads
+        const clipPad = Math.ceil(cSize * 0.6);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(
+            ox - clipPad, oy - clipPad,
+            board.grid.cols * cSize + clipPad * 2,
+            board.grid.rows * cSize + clipPad * 2
+        );
+        ctx.clip();
+
+        // Draw each path
+        const paths = board.paths || [];
+        paths.forEach((p, idx) => {
+            this.drawPath(p, gameState.revealState
+                ? { ...gameState.revealState, pathIndex: idx, pathCount: paths.length }
+                : null,
+                gameState.selectedPathId,
+                gameState.hintPathId
+            );
+        });
+
+        ctx.restore(); // end clip
+
+        // Confetti (no clip — can extend outside board area)
+        if (gameState.particles && gameState.particles.length > 0)
+            this.drawConfetti(gameState.particles);
+
+        ctx.restore(); // end camera transform
+    }
+}
