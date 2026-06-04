@@ -27,12 +27,16 @@ class Generator {
     // ── Grid sizes per level ──────────────────────────────────────────────────
 
     sizesForLevel(level) {
-        if (level <= 5)  return [{ rows:  8, cols:  6 }];
-        if (level <= 15) return [{ rows: 16, cols: 12 }];
-        if (level <= 30) return [{ rows: 24, cols: 18 }];
-        if (level <= 50) return [{ rows: 32, cols: 24 }];
-        if (level <= 75) return [{ rows: 40, cols: 30 }];
-        return [{ rows: 60, cols: 45 }, { rows: 60, cols: 36 }];
+        if (level <= 3)  return [{ rows: 10, cols:  6 }];
+        if (level <= 7)  return [{ rows: 14, cols:  8 }, { rows: 12, cols:  8 }];
+        if (level <= 12) return [{ rows: 18, cols: 10 }, { rows: 16, cols: 10 }];
+        if (level <= 20) return [{ rows: 24, cols: 14 }, { rows: 20, cols: 12 }];
+        if (level <= 30) return [{ rows: 30, cols: 18 }, { rows: 28, cols: 16 }];
+        if (level <= 40) return [{ rows: 36, cols: 22 }, { rows: 32, cols: 20 }];
+        if (level <= 55) return [{ rows: 42, cols: 26 }, { rows: 40, cols: 24 }];
+        if (level <= 70) return [{ rows: 50, cols: 30 }, { rows: 48, cols: 28 }];
+        if (level <= 85) return [{ rows: 56, cols: 34 }, { rows: 52, cols: 32 }];
+        return [{ rows: 60, cols: 38 }, { rows: 60, cols: 36 }, { rows: 58, cols: 40 }];
     }
 
     // ── Board shape mask ──────────────────────────────────────────────────────

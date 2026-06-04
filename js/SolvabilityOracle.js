@@ -44,13 +44,14 @@ class SolvabilityOracle {
         const head = path.head();
         let r = head.r + dr, c = head.c + dc;
 
+        // Walk the full ray to the board edge, passing through foreign paths.
+        // Foreign paths will eventually be cleared in solve order, so the only
+        // thing that must never appear on the ray is the path's own body/tail.
         while (grid.inBounds(r, c)) {
-            const o = grid.owner(r, c);
-            if (o === path.id) return false;  // own body in the ray
-            if (o !== -1)      return true;   // foreign path — self-clear up to here
+            if (grid.owner(r, c) === path.id) return false;
             r += dr; c += dc;
         }
-        return true; // reached board edge cleanly
+        return true;
     }
 
     // ── Board-wide solvability ────────────────────────────────────────────────
