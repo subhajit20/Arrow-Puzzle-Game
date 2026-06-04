@@ -27,6 +27,16 @@ class Generator {
     // ── Grid sizes per level ──────────────────────────────────────────────────
 
     sizesForLevel(level) {
+        // Every 10th level → square grid for circle/heart mask.
+        if (level % 10 === 0) {
+            if (level > 100) return [{ rows: 50, cols: 50 }];
+            // Level 10→100: scale 24×24 → 45×45 (3 nodes per decade, capped at 45)
+            const tier = Math.floor(level / 10);           // 1..10
+            const size = Math.min(45, 24 + (tier - 1) * 3); // 24, 27, 30...45
+            return [{ rows: size, cols: size }];
+        }
+
+        // All other levels → rectangular grids, no mask.
         if (level <= 3)  return [{ rows: 10, cols:  6 }];
         if (level <= 7)  return [{ rows: 14, cols:  8 }, { rows: 12, cols:  8 }];
         if (level <= 12) return [{ rows: 18, cols: 10 }, { rows: 16, cols: 10 }];
@@ -39,93 +49,10 @@ class Generator {
         return [{ rows: 60, cols: 38 }, { rows: 60, cols: 36 }, { rows: 58, cols: 40 }];
     }
 
-    // ── Board shape mask ──────────────────────────────────────────────────────
+    // ── Board shape mask — delegated to GridShape ─────────────────────────────
 
-    // Returns { mask: Uint8Array | null, activeCount: number }
-    // mask=null = full rectangle (normal levels)
-    // mask=Uint8Array = shaped board (milestone / daily levels)
     selectBoardMask(level, rows, cols, context = 'normal') {
-        const totalCells = (rows + 1) * (cols + 1);
-        const nullResult = { mask: null, activeCount: totalCells };
-
-        const isMilestone = (level % 10 === 0) || context === 'milestone';
-        const isDaily     = context === 'daily';
-        if (!isMilestone && !isDaily) return nullResult;
-        if (rows < 12 || cols < 10)   return nullResult;
-
-        const shapeFn = isDaily
-            ? this._dailyShapeFn()
-            : this._milestoneShapeFn(level);
-
-        const mask = shapeFn(rows, cols);
-        const { connected, activeCount } = this._validateMask(mask, rows, cols);
-
-        if (!connected || activeCount < totalCells * 0.3) {
-            console.warn(`[Generator] L${level} mask invalid — using rectangle`);
-            return nullResult;
-        }
-
-        return { mask, activeCount };
-    }
-
-    _dailyShapeFn() {
-        const jan1    = new Date(new Date().getFullYear(), 0, 1);
-        const dayOfYr = Math.floor((Date.now() - jan1.getTime()) / 86400000);
-        return dayOfYr % 2 === 0 ? this._heartMask : this._diamondMask;
-    }
-
-    _milestoneShapeFn(level) {
-        return ((level / 10) % 2 === 1) ? this._heartMask : this._diamondMask;
-    }
-
-    _heartMask(R, C) {
-        const W = C + 1;
-        const mask = new Uint8Array((R + 1) * W);
-        for (let r = 0; r <= R; r++) for (let c = 0; c <= C; c++) {
-            const x = (c - C * 0.5) / (C * 0.45);
-            const y = -(r - R * 0.5) / (R * 0.375);
-            const a = x * x + y * y - 1;
-            mask[r * W + c] = (a * a * a - x * x * y * y * y <= 0.01) ? 1 : 0;
-        }
-        return mask;
-    }
-
-    _diamondMask(R, C) {
-        const W = C + 1;
-        const mask = new Uint8Array((R + 1) * W);
-        for (let r = 0; r <= R; r++) for (let c = 0; c <= C; c++) {
-            const x = (c - C * 0.5) / (C * 0.45);
-            const y = (r - R * 0.5) / (R * 0.45);
-            mask[r * W + c] = (Math.abs(x) + Math.abs(y) <= 1.0) ? 1 : 0;
-        }
-        return mask;
-    }
-
-    _validateMask(mask, rows, cols) {
-        const W = cols + 1;
-        const total = (rows + 1) * W;
-        let activeCount = 0, firstActive = -1;
-        for (let i = 0; i < total; i++) {
-            if (mask[i]) { activeCount++; if (firstActive < 0) firstActive = i; }
-        }
-        if (activeCount === 0) return { connected: false, activeCount: 0 };
-
-        const visited = new Uint8Array(total);
-        const queue   = [firstActive];
-        visited[firstActive] = 1;
-        let visitedCount = 1, qi = 0;
-        while (qi < queue.length) {
-            const k = queue[qi++];
-            const r = (k / W) | 0, c = k % W;
-            const nbrs = [k - W, k + W, k - 1, k + 1];
-            const ok   = [r > 0, r < rows, c > 0, c < cols];
-            for (let n = 0; n < 4; n++) {
-                if (ok[n] && mask[nbrs[n]] && !visited[nbrs[n]]) {
-                    visited[nbrs[n]] = 1; visitedCount++; queue.push(nbrs[n]);
-                }
-            }
-        }
-        return { connected: visitedCount === activeCount, activeCount };
+        return GridShape.selectMask(level, rows, cols, context);
     }
 
     // ── Single board construction attempt ─────────────────────────────────────
@@ -181,7 +108,8 @@ class Generator {
             const zm = zoneMap || new ZoneMap().generate(grid.rows, grid.cols);
 
             // Clone grid for each attempt (except last — reuse to avoid final reset)
-            const attemptGrid = i < batch - 1 ? this._freshGrid(grid.rows, grid.cols) : grid;
+            // Pass the mask so every attempt respects the board shape.
+            const attemptGrid = i < batch - 1 ? this._freshGrid(grid.rows, grid.cols, grid.mask) : grid;
 
             // Temporarily override chainDepth
             const origChainDepth = this.difficulty.chainDepthForTier;
@@ -224,8 +152,10 @@ class Generator {
         return best;
     }
 
-    _freshGrid(rows, cols) {
-        return new Grid(rows, cols);
+    _freshGrid(rows, cols, mask = null) {
+        const g = new Grid(rows, cols);
+        g.mask  = mask;
+        return g;
     }
 
     _copyGridState(src, dst) {
@@ -251,15 +181,25 @@ class Generator {
 
         const zoneMap = new ZoneMap().generate(rows, cols);
         const grid    = new Grid(rows, cols);
+        grid.mask     = mask;   // wire mask into grid so RCBuilder respects it
 
         let result = null;
 
         for (let round = 0; round < MAX_ROUNDS; round++) {
             grid.reset();
+            grid.mask = mask;   // re-apply after reset (reset clears nodeOwner, not mask)
             const attempt = this.constructForTier(grid, tier, BATCH, zoneMap);
             if (!attempt) continue;
 
             const { paths, cx } = attempt;
+
+            // Rebuild nodeOwner from paths — attemptGrid may have been reset
+            // after being stored as `best`, so we always derive it from paths.
+            const W = grid.cols + 1;
+            grid.nodeOwner.fill(-1);
+            for (const p of paths)
+                for (const { r, c } of p.nodes)
+                    grid.nodeOwner[r * W + c] = p.id;
 
             // Reserve edges from path node sequences
             for (const p of paths) {

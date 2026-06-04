@@ -35,7 +35,7 @@ class RCBuilder {
     headRayClear(grid, head, dr, dc) {
         let r = head.r + dr, c = head.c + dc;
         while (grid.inBounds(r, c)) {
-            if (!grid.isFree(r, c)) return false;
+            if (!grid.isFree(r, c)) return false; // only owned nodes block the ray
             r += dr; c += dc;
         }
         return true;
@@ -80,7 +80,7 @@ class RCBuilder {
         for (let k = 0; k < 14; k++) {
             const r = (Math.random() * R) | 0;
             const c = (Math.random() * C) | 0;
-            if (!grid.isFree(r, c)) continue;
+            if (!grid.isAvailable(r, c)) continue;
 
             let empty = 0, tot = 0;
             for (let dr = -2; dr <= 2; dr++) {
@@ -88,7 +88,7 @@ class RCBuilder {
                     const rr = r + dr, cc = c + dc;
                     if (!grid.inBounds(rr, cc)) continue;
                     tot++;
-                    if (grid.isFree(rr, cc)) empty++;
+                    if (grid.isAvailable(rr, cc)) empty++;
                 }
             }
             const interior = Math.min(r, R - 1 - r, c, C - 1 - c) /
@@ -115,7 +115,7 @@ class RCBuilder {
                 .map(([dr, dc]) => ({ r: cur.r + dr, c: cur.c + dc, dr, dc }))
                 .filter(o =>
                     o.r >= 0 && o.r < R && o.c >= 0 && o.c < C &&
-                    grid.isFree(o.r, o.c) &&
+                    grid.isAvailable(o.r, o.c) &&
                     !local.has(o.r + ',' + o.c)
                 );
 
@@ -165,7 +165,7 @@ class RCBuilder {
                 { r: row, c: c0 + 1 },
                 { r: row, c: c0 + 2 },
             ];
-            if (!nodes.every(n => grid.isFree(n.r, n.c))) break;
+            if (!nodes.every(n => grid.isAvailable(n.r, n.c))) break;
             if (!this.headRayClear(grid, nodes[2], 0, 1))  break;
 
             for (const n of nodes) grid.setOwner(n.r, n.c, ctr.n);
@@ -253,9 +253,9 @@ class RCBuilder {
             progress = false;
             for (let r = 0; r < R; r++) {
                 for (let c = 0; c < C; c++) {
-                    if (!grid.isFree(r, c)) continue;
+                    if (!grid.isAvailable(r, c)) continue;
 
-                    for (let attempt = 0; attempt < 6 && grid.isFree(r, c); attempt++) {
+                    for (let attempt = 0; attempt < 6 && grid.isAvailable(r, c); attempt++) {
                         const nodes = this.growWalk(grid, { r, c }, 3 + (Math.random() * 3 | 0));
                         if (nodes.length < 3) continue;
 
@@ -303,7 +303,7 @@ class RCBuilder {
             progress = false;
             for (let r = 0; r < R; r++) {
                 for (let c = 0; c < C; c++) {
-                    if (!grid.isFree(r, c)) continue;
+                    if (!grid.isAvailable(r, c)) continue;
                     const nb = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
 
                     for (const [ar, ac] of nb) {
@@ -353,7 +353,7 @@ class RCBuilder {
             let n = 0;
             for (const [dr, dc] of DIRS) {
                 const nr = r + dr, nc = c + dc;
-                if (grid.inBounds(nr, nc) && grid.isFree(nr, nc)) n++;
+                if (grid.inBounds(nr, nc) && grid.isAvailable(nr, nc)) n++;
             }
             return n;
         };
@@ -367,26 +367,26 @@ class RCBuilder {
             const empty = [];
             for (let r = 0; r < R; r++)
                 for (let c = 0; c < C; c++)
-                    if (grid.isFree(r, c))
+                    if (grid.isAvailable(r, c))
                         empty.push({ r, c, ec: emptyNbCount(r, c) });
             empty.sort((a, b) => a.ec - b.ec);
 
             for (const { r, c } of empty) {
-                if (!grid.isFree(r, c)) continue;
+                if (!grid.isAvailable(r, c)) continue;
                 let placed = false;
 
                 // Option 1: 3-node L-shaped new piece
                 for (let d1 = 0; d1 < DIRS.length && !placed; d1++) {
                     const [dr1, dc1] = DIRS[d1];
                     const r2 = r + dr1, c2 = c + dc1;
-                    if (!grid.inBounds(r2, c2) || !grid.isFree(r2, c2)) continue;
+                    if (!grid.inBounds(r2, c2) || !grid.isAvailable(r2, c2)) continue;
 
                     for (let d2 = 0; d2 < DIRS.length && !placed; d2++) {
                         const [dr2, dc2] = DIRS[d2];
                         if (dr2 === -dr1 && dc2 === -dc1) continue; // no backtrack
                         if (dr2 ===  dr1 && dc2 ===  dc1) continue; // no straight — must be L
                         const r3 = r2 + dr2, c3 = c2 + dc2;
-                        if (!grid.inBounds(r3, c3) || !grid.isFree(r3, c3)) continue;
+                        if (!grid.inBounds(r3, c3) || !grid.isAvailable(r3, c3)) continue;
                         if (r3 === r && c3 === c) continue; // no self-loop
 
                         const seq  = [{ r, c }, { r: r2, c: c2 }, { r: r3, c: c3 }];
@@ -467,7 +467,7 @@ class RCBuilder {
                 for (let d = 0; d < DIRS.length && !placed; d++) {
                     const [dr, dc] = DIRS[d];
                     const r2 = r + dr, c2 = c + dc;
-                    if (!grid.inBounds(r2, c2) || !grid.isFree(r2, c2)) continue;
+                    if (!grid.inBounds(r2, c2) || !grid.isAvailable(r2, c2)) continue;
 
                     const seq  = [{ r, c }, { r: r2, c: c2 }];
                     const tries = [
@@ -498,7 +498,7 @@ class RCBuilder {
         while (revProgress) {
             revProgress = false;
             for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
-                if (!grid.isFree(r, c)) continue;
+                if (!grid.isAvailable(r, c)) continue;
                 let placed = false;
 
                 for (const [dr, dc] of DIRS) {
@@ -536,7 +536,7 @@ class RCBuilder {
         // Safe to attach to an adjacent tail without the oracle check.
         for (let r = 0; r < R; r++) {
             for (let c = 0; c < C; c++) {
-                if (!grid.isFree(r, c)) continue;
+                if (!grid.isAvailable(r, c)) continue;
                 if (emptyNbCount(r, c) > 0) continue; // only truly isolated
 
                 // Try adjacent tails — only safe if head is already self-clear.

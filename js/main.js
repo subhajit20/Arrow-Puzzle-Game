@@ -123,12 +123,12 @@
 
     // ── Public API (called from HTML onclick handlers) ────────────────────────
 
-    // ── TEST MODE — fixed level 100, HARD, 60×40 ─────────────────────────────
+    // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
     // Remove this block when test mode is no longer needed.
     const TEST_MODE = false;
-    const TEST_ROWS = 60;
+    const TEST_ROWS = 40;
     const TEST_COLS = 40;
-    const TEST_LEVEL = 100;
+    const TEST_LEVEL = 110;   // (70/10)%2 = 1 → heart mask
     const TEST_TIER = 'HARD';
 
     // Exposed on window so existing HTML onclick attributes still work.

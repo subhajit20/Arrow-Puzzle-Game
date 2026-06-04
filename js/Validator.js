@@ -78,12 +78,13 @@ class Validator {
     // Target is ≥96%; boards between 90–99% are valid and playable.
     checkCoverage(paths, grid) {
         const R = grid.rows + 1, C = grid.cols + 1;
-        const total   = R * C;
-        let empty = 0;
+        let total = 0, empty = 0;
         let firstEmpty = null;
 
         for (let r = 0; r < R; r++) {
             for (let c = 0; c < C; c++) {
+                if (!grid.isActive(r, c)) continue; // inactive nodes are not required
+                total++;
                 if (grid.isFree(r, c)) {
                     empty++;
                     if (!firstEmpty) firstEmpty = { r, c };
@@ -92,7 +93,7 @@ class Validator {
         }
 
         const covered  = total - empty;
-        const coverage = Math.round(covered / total * 100);
+        const coverage = total > 0 ? Math.round(covered / total * 100) : 100;
         const hardFail = coverage < 90;
 
         if (empty > 0) {
