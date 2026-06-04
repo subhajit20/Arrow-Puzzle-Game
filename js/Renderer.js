@@ -326,9 +326,27 @@ class Renderer {
         ctx.translate(cam.matE, cam.matF);
         ctx.scale(cam.cssZoom, cam.cssZoom);
 
-        // White board background
+        // White board background — respects mask shape.
+        // With no mask: single fillRect for the full rectangle.
+        // With a mask: fill only active node areas so the shape is visible.
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(ox, oy, board.grid.cols * cSize, board.grid.rows * cSize);
+        if (!board.mask) {
+            ctx.fillRect(ox, oy, board.grid.cols * cSize, board.grid.rows * cSize);
+        } else {
+            const rows = board.grid.rows, cols = board.grid.cols;
+            const W    = cols + 1;
+            const half = cSize * 0.5;
+            for (let r = 0; r <= rows; r++) {
+                for (let c = 0; c <= cols; c++) {
+                    if (!board.mask[r * W + c]) continue;
+                    ctx.fillRect(
+                        ox + c * cSize - half,
+                        oy + r * cSize - half,
+                        cSize, cSize
+                    );
+                }
+            }
+        }
 
         // Grid dots
         this.drawGrid(board.grid, board.mask);

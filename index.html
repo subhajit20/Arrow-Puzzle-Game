@@ -47,7 +47,7 @@
                 background: #ffffff !important;
                 backdrop-filter: none !important;
                 -webkit-backdrop-filter: none !important;
-                box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06) !important;
+                box-shadow: none !important;
                 padding-top: max(0.5rem, env(safe-area-inset-top)) !important;
                 padding-bottom: 0.5rem !important;
                 padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
@@ -80,7 +80,7 @@
                 background: #ffffff !important;
                 backdrop-filter: none !important;
                 -webkit-backdrop-filter: none !important;
-                box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.06) !important;
+                box-shadow: none !important;
                 padding-top: 0.5rem !important;
                 padding-bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
                 padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
@@ -371,7 +371,7 @@
             </svg>
         </button>
 
-        <!-- Auto Solver Button -->
+        <!-- Auto Solver Button — temporarily disabled
         <button id="hint-btn" onclick="useHint()"
             class="flex-1 py-3 px-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl font-bold tracking-wider uppercase flex justify-center items-center gap-2 transition-all duration-200 glow-btn">
             <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -381,6 +381,7 @@
             </svg>
             <span class="hint-label">Auto Solver</span>
         </button>
+        -->
     </div>
 
     <!-- Foundation -->
@@ -392,6 +393,7 @@
     <script src="js/RCBuilder.js"></script>
     <script src="js/DifficultyEngine.js"></script>
     <script src="js/Validator.js"></script>
+    <script src="js/GridShape.js"></script>
     <script src="js/Generator.js"></script>
     <!-- Presentation -->
     <script src="js/Camera.js"></script>

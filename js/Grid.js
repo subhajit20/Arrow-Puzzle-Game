@@ -36,6 +36,11 @@ class Grid {
                 return d;
             })
         );
+
+        // Optional shape mask — Uint8Array of (rows+1)*(cols+1).
+        // 1 = active (paths can be placed here), 0 = inactive.
+        // null = full rectangle (all nodes active).
+        this.mask = null;
     }
 
     // Width of the node lattice (cols + 1)
@@ -53,6 +58,16 @@ class Grid {
 
     isFree(r, c) {
         return this.nodeOwner[r * this.W + c] === -1;
+    }
+
+    // Returns true if the node is within the active mask area (or mask is null).
+    isActive(r, c) {
+        return !this.mask || this.mask[r * this.W + c] === 1;
+    }
+
+    // A node is available for path placement only if free AND active.
+    isAvailable(r, c) {
+        return this.isFree(r, c) && this.isActive(r, c);
     }
 
     // ── Bounds ────────────────────────────────────────────────────────────────
