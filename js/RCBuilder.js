@@ -315,6 +315,14 @@ class RCBuilder {
 
                         p.nodes.unshift({ r, c });
                         grid.setOwner(r, c, oid);
+
+                        // Reject immediately if the new tail lands in the head's ray.
+                        if (!this.oracle.headSelfClear(p, grid)) {
+                            p.nodes.shift();
+                            grid.setOwner(r, c, -1);
+                            continue;
+                        }
+
                         appends.push({ r, c, p });
                         progress = true; break;
                     }
