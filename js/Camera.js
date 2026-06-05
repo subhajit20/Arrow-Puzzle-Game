@@ -11,7 +11,7 @@
 class Camera {
     // Scale applied on top of the fit-to-screen cell size.
     // 1.0 = board fills viewport exactly; >1 = larger cells, board is pannable.
-    static CELL_SCALE = 0.8;
+    static CELL_SCALE = 0.2;
     static MAX_ZOOM = 6.0;
 
     constructor(canvas) {
@@ -43,46 +43,57 @@ class Camera {
     // Derives cellSize, canvasW/H, offsetX/Y from container size + grid dims.
     // Mobile: uses TRUE visible area (viewport − bars) to avoid overflow.
     // Desktop: uses container BCR directly.
+    // Dynamic cell scale: small grids → small scale (0.2), large grids → full scale (1.0).
+    // Interpolates linearly between the smallest and largest known grid sizes.
+    static dynamicScale(gridRows, gridCols) {
+        const nodes    = (gridRows + 1) * (gridCols + 1);
+        const minNodes = 63;    // 8×6  (level 1 smallest grid)
+        const maxNodes = 2806;  // 60×45 (level 76+ largest grid)
+        const t = Math.max(0, Math.min(1, (nodes - minNodes) / (maxNodes - minNodes)));
+        return 0.15 + t * 0.85;  // 0.15 → 1.0
+    }
+
     calculateMetrics(containerW, containerH, gridRows, gridCols) {
         this.gridRows = gridRows;
         this.gridCols = gridCols;
 
+        const scale    = Camera.dynamicScale(gridRows, gridCols);
         const isMobile = containerW < 768 && containerW < containerH;
 
         if (isMobile) {
-            const header = document.getElementById('game-header');
-            const ctrls = document.getElementById('game-controls');
+            const header  = document.getElementById('game-header');
+            const ctrls   = document.getElementById('game-controls');
             const topBarH = header ? header.getBoundingClientRect().height : 0;
-            const botBarH = ctrls ? ctrls.getBoundingClientRect().height : 0;
-            const PAD = 4;
+            const botBarH = ctrls  ? ctrls.getBoundingClientRect().height  : 0;
+            const PAD     = 4;
 
             const availW = containerW - PAD * 2;
             const availH = Math.max(20, window.innerHeight - topBarH - botBarH - PAD * 2);
 
             const cellByW = availW / gridCols;
             const cellByH = availH / gridRows;
-            this.cellSize = Math.max(1, Math.min(cellByW, cellByH)) * Camera.CELL_SCALE;
+            this.cellSize = Math.max(1, Math.min(cellByW, cellByH)) * scale;
 
-            const boardW = gridCols * this.cellSize;
-            const boardH = gridRows * this.cellSize;
-            this.canvasW = containerW;
-            this.canvasH = containerH;
-            this.offsetX = (containerW - boardW) / 2;
+            const boardW  = gridCols * this.cellSize;
+            const boardH  = gridRows * this.cellSize;
+            this.canvasW  = containerW;
+            this.canvasH  = containerH;
+            this.offsetX  = (containerW - boardW) / 2;
 
             const visibleH = Math.min(containerH, window.innerHeight - topBarH);
-            this.offsetY = Math.max(PAD, (visibleH - boardH) / 2);
+            this.offsetY   = Math.max(PAD, (visibleH - boardH) / 2);
         } else {
             this.cellSize = Math.min(
                 containerW / gridCols,
                 containerH / gridRows
-            ) * Camera.CELL_SCALE;
+            ) * scale;
 
-            const boardW = gridCols * this.cellSize;
-            const boardH = gridRows * this.cellSize;
-            this.canvasW = containerW;
-            this.canvasH = containerH;
-            this.offsetX = (containerW - boardW) / 2;
-            this.offsetY = (containerH - boardH) / 2;
+            const boardW  = gridCols * this.cellSize;
+            const boardH  = gridRows * this.cellSize;
+            this.canvasW  = containerW;
+            this.canvasH  = containerH;
+            this.offsetX  = (containerW - boardW) / 2;
+            this.offsetY  = (containerH - boardH) / 2;
         }
     }
 
@@ -158,8 +169,8 @@ class Camera {
         if (this._animReq) { cancelAnimationFrame(this._animReq); this._animReq = null; }
         if (!containerEl || !this.cellSize) { this.reset(); if (onComplete) onComplete(); return; }
 
-        const bcr          = containerEl.getBoundingClientRect();
-        const isMobile     = bcr.width < 768 && bcr.width < bcr.height;
+        const bcr = containerEl.getBoundingClientRect();
+        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
         const isLargeBoard = this.gridRows >= 36 || this.gridCols >= 22;
         if (!isMobile || !isLargeBoard) { this.reset(); if (onComplete) onComplete(); return; }
 
@@ -182,8 +193,8 @@ class Camera {
         const boardCY = this.offsetY + boardH / 2;
 
         // Screen centre
-        const screenCX = bcr.width  / 2;
-        const screenCY = visibleH   / 2;
+        const screenCX = bcr.width / 2;
+        const screenCY = visibleH / 2;
 
         // matE/matF that keeps the board centre on the screen centre at zoom z.
         const centredMat = z => ({
@@ -207,20 +218,20 @@ class Camera {
         this.cssZoom = startZ; this.matE = startE; this.matF = startF;
 
         const ANIM_MS = 1400;
-        const t0   = performance.now();
+        const t0 = performance.now();
         const self = this;
 
         const step = now => {
             const p = Math.min(1.0, (now - t0) / ANIM_MS);
             const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
             self.cssZoom = startZ + (targetZ - startZ) * t;
-            self.matE    = startE + (targetE - startE) * t;
-            self.matF    = startF + (targetF - startF) * t;
+            self.matE = startE + (targetE - startE) * t;
+            self.matF = startF + (targetF - startF) * t;
             if (p < 1.0) { self._animReq = requestAnimationFrame(step); }
             else {
                 self.cssZoom = targetZ;
-                self.matE    = targetE;
-                self.matF    = targetF;
+                self.matE = targetE;
+                self.matF = targetF;
                 self._animReq = null;
                 if (onComplete) onComplete();
             }
