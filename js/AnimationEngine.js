@@ -13,21 +13,21 @@
 
 class AnimationEngine {
     // Pixels per frame for head advancement
-    static MOVE_SPEED  = 0.52;
+    static MOVE_SPEED = 0.52;
     // Pixels per frame for crash retraction
     static CRASH_SPEED = 0.32;
 
     constructor(renderer) {
-        this.renderer  = renderer;
-        this._rafId    = null;
-        this._running  = false;
+        this.renderer = renderer;
+        this._rafId = null;
+        this._running = false;
 
         // Reveal state (set by startRevealAnimation)
         this.reveal = {
-            active:     false,
-            progress:   0,
-            duration:   600,
-            startTime:  0,
+            active: false,
+            progress: 0,
+            duration: 600,
+            startTime: 0,
             onComplete: null,
         };
 
@@ -42,7 +42,7 @@ class AnimationEngine {
 
     start(board, gameController) {
         if (this._running) return;
-        this._running      = true;
+        this._running = true;
         this._gameController = gameController;
         const self = this;
 
@@ -70,7 +70,7 @@ class AnimationEngine {
         // Update reveal state
         let revealState = null;
         if (this.reveal.active) {
-            const elapsed  = now - this.reveal.startTime;
+            const elapsed = now - this.reveal.startTime;
             const progress = Math.min(1.0, elapsed / this.reveal.duration);
             this.reveal.progress = progress;
             revealState = { active: true, progress };
@@ -93,9 +93,9 @@ class AnimationEngine {
         // Draw
         this.renderer.drawFrame(board, {
             selectedPathId: gameController ? gameController.selectedPathId : null,
-            hintPathId:     gameController ? gameController.hintPathId     : null,
+            hintPathId: gameController ? gameController.hintPathId : null,
             revealState,
-            particles:      this.particles,
+            particles: this.particles,
         });
     }
 
@@ -106,22 +106,22 @@ class AnimationEngine {
             this.animatingCount++;
             path.animProgress += AnimationEngine.MOVE_SPEED;
 
-            const head    = path.nodes[path.nodes.length - 1];
+            const head = path.nodes[path.nodes.length - 1];
             const { dr, dc } = Path.headingToDelta(path.heading);
-            const steps   = Math.round(path.animProgress);
-            const leadR   = head.r + dr * steps;
-            const leadC   = head.c + dc * steps;
+            const steps = Math.round(path.animProgress);
+            const leadR = head.r + dr * steps;
+            const leadC = head.c + dc * steps;
 
             // Collision detection
             if (grid.inBounds(leadR, leadC)) {
                 const ownerId = grid.owner(leadR, leadC);
                 if (ownerId >= 0 && ownerId !== path.id) {
-                    const allPaths  = gameController?.board?.paths || [];
+                    const allPaths = gameController?.board?.paths || [];
                     const ownerPath = allPaths.find(o => o.id === ownerId);
                     if (ownerPath &&
                         ownerPath.state !== 'CLEARED' &&
                         ownerPath.state !== 'MOVING') {
-                        path.state            = 'CRASHING';
+                        path.state = 'CRASHING';
                         path.crashFlashFrames = 8;
                         if (gameController) gameController.onCollision(path);
                     }
@@ -143,7 +143,7 @@ class AnimationEngine {
                 path.animProgress -= AnimationEngine.CRASH_SPEED;
                 if (path.animProgress <= 0) {
                     path.animProgress = 0;
-                    path.state        = 'IDLE';
+                    path.state = 'IDLE';
                 }
             }
         }
@@ -159,66 +159,76 @@ class AnimationEngine {
             return;
         }
 
-        const bcr          = containerEl.getBoundingClientRect();
-        const isMobile     = bcr.width < 768 && bcr.width < bcr.height;
+        const bcr = containerEl.getBoundingClientRect();
+        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
         const isLargeBoard = camera.gridRows >= 36 || camera.gridCols >= 22;
-        if (!isMobile || !isLargeBoard) { if (onComplete) onComplete(); return; }
+        if (!isMobile) { if (onComplete) onComplete(); return; }
 
         // Fit board into view at overview zoom
-        const header  = document.getElementById('game-header');
-        const ctrls   = document.getElementById('game-controls');
+        const header = document.getElementById('game-header');
+        const ctrls = document.getElementById('game-controls');
         const topBarH = header ? header.getBoundingClientRect().height : 0;
-        const botBarH = ctrls  ? ctrls.getBoundingClientRect().height  : 0;
-        const PAD     = 4;
+        const botBarH = ctrls ? ctrls.getBoundingClientRect().height : 0;
+        const PAD = 4;
         const visibleH = Math.min(bcr.height, window.innerHeight - topBarH);
-        const usableW  = bcr.width - PAD * 2;
-        const usableH  = Math.max(20, visibleH - botBarH - PAD * 2);
+        const usableW = bcr.width - PAD * 2;
+        const usableH = Math.max(20, visibleH - botBarH - PAD * 2);
 
-        const boardW  = camera.gridCols * camera.cellSize;
-        const boardH  = camera.gridRows * camera.cellSize;
+        const boardW = camera.gridCols * camera.cellSize;
+        const boardH = camera.gridRows * camera.cellSize;
         const fitZoom = Math.min(
             (usableW * 0.88) / boardW,
             (usableH * 0.88) / boardH,
             1.0
         );
         camera.minZoom = Math.max(fitZoom * 0.40, 0.08);
-        camera.cssZoom = fitZoom; camera.matE = 0; camera.matF = 0;
+
+        if (!isLargeBoard) {
+            // Small board: pre-zoom in slightly with no animation — just set zoom.
+            camera.cssZoom = 2.0;
+            camera.matE = 0; camera.matF = 0;
+            camera.clampPan(containerEl);
+        } else {
+            camera.cssZoom = fitZoom; camera.matE = 0; camera.matF = 0;
+        }
         camera.clampPan(containerEl);
 
-        const N        = paths.length;
+        const N = paths.length;
         const duration = Math.min(900, Math.max(300, N * 60));
 
-        // Run path reveal and entrance zoom simultaneously.
+        // Run path reveal — and entrance zoom only for large boards.
         this.reveal = {
-            active:     true,
-            progress:   0,
+            active: true,
+            progress: 0,
             duration,
-            startTime:  performance.now(),
+            startTime: performance.now(),
             onComplete: onComplete || null,
         };
-        camera.startEntranceAnimation(containerEl);
+        if (isLargeBoard) {
+            camera.startEntranceAnimation(containerEl);
+        }
     }
 
     // ── Confetti ──────────────────────────────────────────────────────────────
 
     spawnConfetti(camera) {
-        const colors  = ['#60a5fa','#34d399','#f472b6','#fbbf24','#a78bfa','#f87171'];
-        const cx      = camera.offsetX + (camera.gridCols * camera.cellSize) / 2;
-        const cy      = camera.offsetY + (camera.gridRows * camera.cellSize) / 2;
-        const sCx     = cx * camera.cssZoom + camera.matE;
-        const sCy     = cy * camera.cssZoom + camera.matF;
+        const colors = ['#60a5fa', '#34d399', '#f472b6', '#fbbf24', '#a78bfa', '#f87171'];
+        const cx = camera.offsetX + (camera.gridCols * camera.cellSize) / 2;
+        const cy = camera.offsetY + (camera.gridRows * camera.cellSize) / 2;
+        const sCx = cx * camera.cssZoom + camera.matE;
+        const sCy = cy * camera.cssZoom + camera.matF;
 
         for (let i = 0; i < 60; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = 2 + Math.random() * 4;
             this.particles.push({
-                x:     sCx + (Math.random() - 0.5) * 80,
-                y:     sCy + (Math.random() - 0.5) * 80,
-                vx:    Math.cos(angle) * speed,
-                vy:    Math.sin(angle) * speed - 2,
+                x: sCx + (Math.random() - 0.5) * 80,
+                y: sCy + (Math.random() - 0.5) * 80,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 2,
                 alpha: 0.9 + Math.random() * 0.1,
                 decay: 0.012 + Math.random() * 0.008,
-                size:  2 + Math.random() * 3,
+                size: 2 + Math.random() * 3,
                 color: colors[Math.floor(Math.random() * colors.length)],
             });
         }

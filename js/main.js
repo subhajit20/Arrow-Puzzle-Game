@@ -60,6 +60,17 @@
         }
     });
 
+    // ── Generation loader ─────────────────────────────────────────────────────
+
+    function showLoader() {
+        const el = document.getElementById('generation-loader');
+        if (el) el.classList.add('visible');
+    }
+    function hideLoader() {
+        const el = document.getElementById('generation-loader');
+        if (el) el.classList.remove('visible');
+    }
+
     // ── Board loading helpers ─────────────────────────────────────────────────
 
     function loadBoard(level) {
@@ -88,7 +99,7 @@
             if (board) return board;
         }
 
-        // 3. Dynamic generation
+        // 3. Dynamic generation — caller handles loader show/hide
         const sizes = generator.sizesForLevel(level);
         const size = sizes[Math.floor(Math.random() * sizes.length)];
         const board = generator.build(size.rows, size.cols, level, 4);
@@ -96,48 +107,14 @@
     }
 
     function startNormalLevel(level) {
-        const board = loadBoard(level);
-        if (!board) { console.error('[main] Failed to load level', level); return; }
+        showLoader();
 
-        // Cancel any in-flight entrance animation so the new board starts clean.
-        if (camera._animReq) {
-            cancelAnimationFrame(camera._animReq);
-            camera._animReq = null;
-        }
+        // Give browser one frame to paint the loader before generation blocks JS.
+        setTimeout(() => {
+            const board = loadBoard(level);
+            hideLoader();
 
-        // Detach input before re-attaching — prevents double event binding
-        // which causes every scroll/pinch to fire twice and makes zoom erratic.
-        input.detach();
-
-        // Stop and restart the animation loop with the new board.
-        // animation.start() returns early if already running, so stop first.
-        animation.stop();
-
-        renderer.resize(containerEl, board.grid.rows, board.grid.cols);
-        camera.reset();
-
-        animation.start(board, gc);
-        input.attach(containerEl);
-        gc.startLevel(level, board, containerEl);
-    }
-
-    // ── Public API (called from HTML onclick handlers) ────────────────────────
-
-    // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
-    // Remove this block when test mode is no longer needed.
-    const TEST_MODE = false;
-    const TEST_ROWS = 50;
-    const TEST_COLS = 50;
-    const TEST_LEVEL = 10;   // (70/10)%2 = 1 → heart mask
-    const TEST_TIER = 'HARD';
-
-    // Exposed on window so existing HTML onclick attributes still work.
-    window.startNormalGame = function () {
-        _hideSplash();
-        if (TEST_MODE) {
-            const board = generator.build(TEST_ROWS, TEST_COLS, TEST_LEVEL, 4, 'normal');
-            if (!board) { console.error('[main] Test board generation failed'); return; }
-            board.difficulty = TEST_TIER;
+            if (!board) { console.error('[main] Failed to load level', level); return; }
 
             if (camera._animReq) { cancelAnimationFrame(camera._animReq); camera._animReq = null; }
             input.detach();
@@ -146,12 +123,46 @@
             camera.reset();
             animation.start(board, gc);
             input.attach(containerEl);
-            gc.startLevel(TEST_LEVEL, board, containerEl);
-            return;
-        }
-        const saved = persistence.load(lvl => generator.sizesForLevel(lvl));
-        const level = saved ? saved.level : 1;
-        startNormalLevel(level);
+            gc.startLevel(level, board, containerEl);
+        }, 50);
+    }
+
+    // ── Public API (called from HTML onclick handlers) ────────────────────────
+
+    // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
+    // Remove this block when test mode is no longer needed.
+    const TEST_MODE = true;
+    const TEST_ROWS = 36;
+    const TEST_COLS = 22;
+    const TEST_LEVEL = 99;   // (70/10)%2 = 1 → heart mask
+    const TEST_TIER = 'HARD';
+
+    // Exposed on window so existing HTML onclick attributes still work.
+    window.startNormalGame = function () {
+        _hideSplash();
+        showLoader();
+
+        setTimeout(() => {
+            if (TEST_MODE) {
+                const board = generator.build(TEST_ROWS, TEST_COLS, TEST_LEVEL, 4, 'normal');
+                hideLoader();
+                if (!board) { console.error('[main] Test board generation failed'); return; }
+                board.difficulty = TEST_TIER;
+                if (camera._animReq) { cancelAnimationFrame(camera._animReq); camera._animReq = null; }
+                input.detach();
+                animation.stop();
+                renderer.resize(containerEl, board.grid.rows, board.grid.cols);
+                camera.reset();
+                animation.start(board, gc);
+                input.attach(containerEl);
+                gc.startLevel(TEST_LEVEL, board, containerEl);
+                return;
+            }
+            hideLoader();
+            const saved = persistence.load(lvl => generator.sizesForLevel(lvl));
+            const level = saved ? saved.level : 1;
+            startNormalLevel(level);
+        }, 50);
     };
 
     window.startDailyPuzzle = function () {
