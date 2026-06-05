@@ -159,11 +159,12 @@ class AnimationEngine {
             return;
         }
 
-        const bcr      = containerEl.getBoundingClientRect();
-        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
-        if (!isMobile) { if (onComplete) onComplete(); return; }
+        const bcr          = containerEl.getBoundingClientRect();
+        const isMobile     = bcr.width < 768 && bcr.width < bcr.height;
+        const isLargeBoard = camera.gridRows >= 36 || camera.gridCols >= 22;
+        if (!isMobile && !isLargeBoard) { if (onComplete) onComplete(); return; }
 
-        // Fit board into view
+        // Fit board into view at overview zoom
         const header  = document.getElementById('game-header');
         const ctrls   = document.getElementById('game-controls');
         const topBarH = header ? header.getBoundingClientRect().height : 0;
@@ -187,17 +188,15 @@ class AnimationEngine {
         const N        = paths.length;
         const duration = Math.min(900, Math.max(300, N * 60));
 
+        // Run path reveal and entrance zoom simultaneously.
         this.reveal = {
             active:     true,
             progress:   0,
             duration,
             startTime:  performance.now(),
-            onComplete: () => camera.startEntranceAnimation(containerEl),
+            onComplete: onComplete || null,
         };
-        if (onComplete) {
-            const orig = this.reveal.onComplete;
-            this.reveal.onComplete = () => { orig && orig(); onComplete(); };
-        }
+        camera.startEntranceAnimation(containerEl);
     }
 
     // ── Confetti ──────────────────────────────────────────────────────────────
