@@ -206,7 +206,7 @@ class Camera {
         if (!containerEl || !this.cellSize) { this.reset(); if (onComplete) onComplete(); return; }
 
         const bcr = containerEl.getBoundingClientRect();
-        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
+        const isMobile     = bcr.width < 768 && bcr.width < bcr.height;
         const isLargeBoard = this.gridRows >= 36 || this.gridCols >= 22;
         if (!isMobile || !isLargeBoard) { this.reset(); if (onComplete) onComplete(); return; }
 
@@ -238,7 +238,7 @@ class Camera {
             f: screenCY - boardCY * z,
         });
 
-        // Start: zoomed out overview (board fully visible)
+        // Start: zoomed out overview — dramatic zoom for large boards.
         const startZ = Math.min(
             (usableW * 0.85) / boardW,
             (usableH * 0.85) / boardH,
