@@ -229,10 +229,19 @@ class Renderer {
             if (p > 0) drawPoints = this._getSubTrackPoints(fullTrack, 0, p * totalSeg);
         } else if (path.state === 'IDLE') {
             drawPoints = fullTrack.slice(0, len);
+        } else if (path.state === 'MOVING') {
+            // Elastic rope: head races ahead, tail follows with spring lag.
+            // spring = 0 when head just started, → 1 as head travels far.
+            // This creates a stretch-then-settle feel — body pulled behind the head.
+            const head   = path.animProgress;
+            const spring = 1.0 - Math.exp(-head * 1.6);  // exponential spring
+            const tail   = head * spring;                  // tail lags behind
+            drawPoints   = this._getSubTrackPoints(fullTrack, tail, totalSeg + head);
         } else {
+            // CRASHING — uniform retract
             const dStart = path.animProgress;
-            const dEnd = totalSeg + path.animProgress;
-            drawPoints = this._getSubTrackPoints(fullTrack, dStart, dEnd);
+            const dEnd   = totalSeg + path.animProgress;
+            drawPoints   = this._getSubTrackPoints(fullTrack, dStart, dEnd);
         }
 
         if (drawPoints.length < 2) return;
@@ -283,9 +292,21 @@ class Renderer {
         ctx.stroke();
         ctx.restore();
 
-        const hp = drawPoints[drawPoints.length - 1];
+        // Arrowhead: during MOVING follow the animated head (front of elastic rope).
+        // During IDLE/CRASHING use the fixed end node position.
+        let hx, hy;
+        if (path.state === 'MOVING') {
+            const front = drawPoints[drawPoints.length - 1];
+            hx = front.x; hy = front.y;
+        } else {
+            const headNode = path.nodes[path.nodes.length - 1];
+            const { dr: hdr, dc: hdc } = Path.headingToDelta(path.heading);
+            const aHalf = Math.max(3.0, cSize * 0.32) * 0.35;
+            hx = ox + headNode.c * cSize + hdc * aHalf;
+            hy = oy + headNode.r * cSize + hdr * aHalf;
+        }
         const aSize = Math.max(3.0, cSize * 0.32);
-        this.drawArrowHead(hp.x, hp.y, path.heading, aSize, isSelected, path.state);
+        this.drawArrowHead(hx, hy, path.heading, aSize, isSelected, path.state);
     }
 
     // ── Confetti ──────────────────────────────────────────────────────────────
