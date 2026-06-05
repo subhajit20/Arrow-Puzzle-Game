@@ -162,7 +162,7 @@ class AnimationEngine {
         const bcr          = containerEl.getBoundingClientRect();
         const isMobile     = bcr.width < 768 && bcr.width < bcr.height;
         const isLargeBoard = camera.gridRows >= 36 || camera.gridCols >= 22;
-        if (!isMobile && !isLargeBoard) { if (onComplete) onComplete(); return; }
+        if (!isMobile || !isLargeBoard) { if (onComplete) onComplete(); return; }
 
         // Fit board into view at overview zoom
         const header  = document.getElementById('game-header');

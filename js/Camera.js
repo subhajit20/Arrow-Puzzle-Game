@@ -161,7 +161,7 @@ class Camera {
         const bcr          = containerEl.getBoundingClientRect();
         const isMobile     = bcr.width < 768 && bcr.width < bcr.height;
         const isLargeBoard = this.gridRows >= 36 || this.gridCols >= 22;
-        if (!isMobile && !isLargeBoard) { this.reset(); return; }
+        if (!isMobile || !isLargeBoard) { this.reset(); if (onComplete) onComplete(); return; }
 
         const header = document.getElementById('game-header');
         const ctrls = document.getElementById('game-controls');
