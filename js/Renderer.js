@@ -112,37 +112,55 @@ class Renderer {
         ctx.save();
         ctx.translate(x, y);
 
+        // Rotate: shape points RIGHT by default, rotate to match heading.
         let angle = 0;
         if (heading === 'UP') angle = -Math.PI / 2;
         if (heading === 'DOWN') angle = Math.PI / 2;
         if (heading === 'LEFT') angle = Math.PI;
         ctx.rotate(angle);
 
-        let fillTop, fillBot, stroke;
+        let fill, stroke;
         if (pathState === 'CRASHING') {
-            fillTop = '#f87171'; fillBot = '#b91c1c'; stroke = '#7f1d1d';
+            fill = '#f87171'; stroke = '#7f1d1d';
         } else if (isSelected) {
-            fillTop = '#60a5fa'; fillBot = '#1d4ed8'; stroke = '#1e3a8a';
+            fill = '#60a5fa'; stroke = '#1e3a8a';
         } else {
-            fillTop = '#112540'; fillBot = '#112540'; stroke = '#112540';
+            fill = '#112540'; stroke = '#112540';
         }
 
-        const lw = Math.max(1.0, size * 0.08);
+        // Sharp navigation arrow — pointed tip, sharp rear corners,
+        // concave notch at the back center. All corners are hard/sharp.
+        //
+        //         tip → (S, 0)
+        //              /        \
+        //             /          \
+        // top rear → (-B, -W)   (-B, W) ← bottom rear
+        //             \          /
+        //              (-N,−ny) /
+        //               \      /
+        //                (-N, 0) ← back notch center
+
+        const S = size * 0.60;  // tip reach forward
+        const B = size * 0.40;  // rear corner x position
+        const W = size * 0.60;  // rear corner half-width
+        const N = size * 0.10;  // notch x position (less far back than corners)
+        const NY = size * 0.16;  // notch half-width
+
+        ctx.beginPath();
+        ctx.moveTo(S, 0);    // 1. sharp tip
+        ctx.lineTo(-B, -W);    // 2. top rear corner (sharp)
+        ctx.lineTo(-N, -NY);   // 3. top notch inner
+        ctx.lineTo(-N * 1.6, 0); // 4. notch center (deepest point)
+        ctx.lineTo(-N, NY);   // 5. bottom notch inner
+        ctx.lineTo(-B, W);    // 6. bottom rear corner (sharp)
+        ctx.closePath();
+
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = Math.max(0.5, size * 0.04);
         ctx.lineJoin = 'round';
-
-        // Top half
-        ctx.beginPath();
-        ctx.moveTo(0, 0); ctx.lineTo(0, -size * 0.58); ctx.lineTo(size, 0);
-        ctx.closePath();
-        ctx.fillStyle = fillTop; ctx.fill();
-        ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke();
-
-        // Bottom half
-        ctx.beginPath();
-        ctx.moveTo(0, 0); ctx.lineTo(0, size * 0.58); ctx.lineTo(size, 0);
-        ctx.closePath();
-        ctx.fillStyle = fillBot; ctx.fill();
-        ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke();
+        ctx.stroke();
 
         ctx.restore();
     }
@@ -334,7 +352,7 @@ class Renderer {
             ctx.fillRect(ox, oy, board.grid.cols * cSize, board.grid.rows * cSize);
         } else {
             const rows = board.grid.rows, cols = board.grid.cols;
-            const W    = cols + 1;
+            const W = cols + 1;
             const half = cSize * 0.5;
             for (let r = 0; r <= rows; r++) {
                 for (let c = 0; c <= cols; c++) {
