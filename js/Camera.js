@@ -153,13 +153,15 @@ class Camera {
     // ── Entrance animation ────────────────────────────────────────────────────
 
     // Zooms from fitZoom → 1.65 over ~1100ms (cubic ease-in-out).
-    startEntranceAnimation(containerEl) {
+    // onComplete (optional) — called when the animation finishes.
+    startEntranceAnimation(containerEl, onComplete) {
         if (this._animReq) { cancelAnimationFrame(this._animReq); this._animReq = null; }
-        if (!containerEl || !this.cellSize) { this.reset(); return; }
+        if (!containerEl || !this.cellSize) { this.reset(); if (onComplete) onComplete(); return; }
 
-        const bcr = containerEl.getBoundingClientRect();
-        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
-        if (!isMobile) { this.reset(); return; }
+        const bcr          = containerEl.getBoundingClientRect();
+        const isMobile     = bcr.width < 768 && bcr.width < bcr.height;
+        const isLargeBoard = this.gridRows >= 36 || this.gridCols >= 22;
+        if (!isMobile && !isLargeBoard) { this.reset(); return; }
 
         const header = document.getElementById('game-header');
         const ctrls = document.getElementById('game-controls');
@@ -173,45 +175,54 @@ class Camera {
         const boardW = this.gridCols * this.cellSize;
         const boardH = this.gridRows * this.cellSize;
 
-        const fitZoom = Math.min(
-            (usableW * 0.88) / boardW,
-            (usableH * 0.88) / boardH,
-            1.0
+        this.minZoom = 0.15;
+
+        // Board centre in canvas space — fixed regardless of zoom level.
+        const boardCX = this.offsetX + boardW / 2;
+        const boardCY = this.offsetY + boardH / 2;
+
+        // Screen centre
+        const screenCX = bcr.width  / 2;
+        const screenCY = visibleH   / 2;
+
+        // matE/matF that keeps the board centre on the screen centre at zoom z.
+        const centredMat = z => ({
+            e: screenCX - boardCX * z,
+            f: screenCY - boardCY * z,
+        });
+
+        // Start: zoomed out overview (board fully visible)
+        const startZ = Math.min(
+            (usableW * 0.85) / boardW,
+            (usableH * 0.85) / boardH,
+            0.45
         );
-        this.minZoom = Math.max(fitZoom * 0.40, 0.08);
+        const { e: startE, f: startF } = centredMat(startZ);
 
-        if (fitZoom >= 0.96) { this.minZoom = 0.25; this.reset(); return; }
+        // Target: zoomed in deep to centre
+        const targetZ = 1.3;
+        const { e: targetE, f: targetF } = centredMat(targetZ);
 
-        // Snap to fit
-        this.cssZoom = fitZoom; this.matE = 0; this.matF = 0;
-        this.clampPan(containerEl);
-        const startZ = this.cssZoom, startE = this.matE, startF = this.matF;
-
-        // Compute target position (centred at targetZ)
-        const targetZ = 1.65;
-        this.cssZoom = targetZ;
-        this.matE = bcr.width / 2 - (this.offsetX + boardW / 2) * targetZ;
-        this.matF = visibleH / 2 - (this.offsetY + boardH / 2) * targetZ;
-        this.clampPan(containerEl);
-        const targetE = this.matE, targetF = this.matF;
-
-        // Restore start and animate
+        // Snap to start position immediately
         this.cssZoom = startZ; this.matE = startE; this.matF = startF;
 
-        const ANIM_MS = 1100;
-        const t0 = performance.now();
+        const ANIM_MS = 1400;
+        const t0   = performance.now();
         const self = this;
 
         const step = now => {
             const p = Math.min(1.0, (now - t0) / ANIM_MS);
             const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
             self.cssZoom = startZ + (targetZ - startZ) * t;
-            self.matE = startE + (targetE - startE) * t;
-            self.matF = startF + (targetF - startF) * t;
+            self.matE    = startE + (targetE - startE) * t;
+            self.matF    = startF + (targetF - startF) * t;
             if (p < 1.0) { self._animReq = requestAnimationFrame(step); }
             else {
-                self.cssZoom = targetZ; self.matE = targetE; self.matF = targetF;
-                self.clampPan(containerEl); self._animReq = null;
+                self.cssZoom = targetZ;
+                self.matE    = targetE;
+                self.matF    = targetF;
+                self._animReq = null;
+                if (onComplete) onComplete();
             }
         };
         this._animReq = requestAnimationFrame(step);

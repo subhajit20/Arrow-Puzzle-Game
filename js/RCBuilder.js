@@ -237,6 +237,14 @@ class RCBuilder {
             for (const n of best.seq) grid.setOwner(n.r, n.c, ctr.n);
             const p = new Path(ctr.n, best.seq, Path.deltaToHeading(best.dr, best.dc));
             p.placeOrder = ctr.n;
+
+            // Full-ray check after placement — nodes now in grid so headSelfClear
+            // correctly detects own body hidden beyond foreign paths.
+            if (!this.oracle.headSelfClear(p, grid)) {
+                for (const n of best.seq) grid.setOwner(n.r, n.c, -1);
+                fails++; continue;
+            }
+
             paths.push(p);
             ctr.n++; fails = 0;
         }
@@ -276,10 +284,18 @@ class RCBuilder {
                             const dr = h.r - pv.r, dc = h.c - pv.c;
                             if (!this.headRayClear(grid, h, dr, dc)) continue;
                             const seq = rev ? nodes.slice().reverse() : nodes;
-                            const id  = ctr.n++;
+                            const id  = ctr.n;
                             for (const n of seq) grid.setOwner(n.r, n.c, id);
                             const p = new Path(id, seq, Path.deltaToHeading(dr, dc));
                             p.placeOrder = id;
+
+                            // Full-ray check after placement.
+                            if (!this.oracle.headSelfClear(p, grid)) {
+                                for (const n of seq) grid.setOwner(n.r, n.c, -1);
+                                continue;
+                            }
+
+                            ctr.n++;
                             paths.push(p);
                             progress = true; break;
                         }
