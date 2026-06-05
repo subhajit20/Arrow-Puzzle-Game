@@ -252,7 +252,8 @@ class RCBuilder {
 
     // ── Phase B: Gap fill ─────────────────────────────────────────────────────
 
-    // Places small new pieces (3–6 nodes) in remaining empty pockets.
+    // Places pieces (4–9 nodes) in remaining empty pockets.
+    // Longer walks reduce the number of 3-node L-shapes created by Phase D.
     fillB(grid, paths, ctr) {
         const R = grid.rows + 1, C = grid.cols + 1;
         let progress = true;
@@ -263,8 +264,8 @@ class RCBuilder {
                 for (let c = 0; c < C; c++) {
                     if (!grid.isAvailable(r, c)) continue;
 
-                    for (let attempt = 0; attempt < 6 && grid.isAvailable(r, c); attempt++) {
-                        const nodes = this.growWalk(grid, { r, c }, 3 + (Math.random() * 3 | 0));
+                    for (let attempt = 0; attempt < 8 && grid.isAvailable(r, c); attempt++) {
+                        const nodes = this.growWalk(grid, { r, c }, 4 + (Math.random() * 5 | 0));
                         if (nodes.length < 3) continue;
 
                         // PX-1: prefer endpoint that doesn't immediately face own walk body.

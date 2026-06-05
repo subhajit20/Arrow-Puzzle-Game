@@ -132,8 +132,8 @@
     // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
     // Remove this block when test mode is no longer needed.
     const TEST_MODE = true;
-    const TEST_ROWS = 60;
-    const TEST_COLS = 38;
+    const TEST_ROWS = 36;
+    const TEST_COLS = 22;
     const TEST_LEVEL = 99;   // (70/10)%2 = 1 → heart mask
     const TEST_TIER = 'HARD';
 
