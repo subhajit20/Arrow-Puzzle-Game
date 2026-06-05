@@ -187,6 +187,15 @@ class RCBuilder {
         const lenScale = knobs?.lenScale != null ? knobs.lenScale : 1;
         const zoneMap  = knobs?.zoneMap  || null;
         const { rows, cols } = grid;
+
+        // Topology weight: how aggressively to create intentional blockers.
+        // d=0 (EASY) → 0% blocked-ray attempts (all paths free)
+        // d=0.5 (HARD) → 35% blocked-ray attempts
+        // d=1.0 (TITAN) → 70% blocked-ray attempts
+        // Blocked-ray paths point through existing paths → create dependencies →
+        // player must discover the correct solve order.
+        const topoWeight = d * 0.85;
+
         let fails = 0;
 
         while (fails < maxFails) {
@@ -201,10 +210,9 @@ class RCBuilder {
 
             if (nodes.length < 3) { fails++; continue; }
 
-            // Try both endpoints as head; hard-reject if head faces own walk body.
+            // Walk own-body check (pre-placement, local nodeSet)
             const nodeSet = new Set(nodes.map(n => n.r + ',' + n.c));
             const facesSelf = (h, dr, dc) => {
-                // Walk the ray through the walk's own nodes (not yet in grid).
                 let r = h.r + dr, c = h.c + dc;
                 while (grid.inBounds(r, c)) {
                     if (nodeSet.has(r + ',' + c)) return true;
@@ -214,39 +222,63 @@ class RCBuilder {
                 return false;
             };
 
-            const cands = [];
-            { const h = nodes[nodes.length - 1], pv = nodes[nodes.length - 2];
-              const dr = h.r - pv.r, dc = h.c - pv.c;
-              if (!facesSelf(h, dr, dc) && this.headRayClear(grid, h, dr, dc))
-                  cands.push({ seq: nodes, h, dr, dc }); }
-            { const h = nodes[0], pv = nodes[1];
-              const dr = h.r - pv.r, dc = h.c - pv.c;
-              if (!facesSelf(h, dr, dc) && this.headRayClear(grid, h, dr, dc))
-                  cands.push({ seq: nodes.slice().reverse(), h, dr, dc }); }
+            // Separate candidates into clear-ray and blocked-ray lists.
+            const clearCands   = [];
+            const blockedCands = [];
 
-            if (!cands.length) { fails++; continue; }
-
-            let best = null, bestScore = -Infinity;
-            for (const cn of cands) {
-                const rl = this._rayLenToEdge(cn.h, cn.dr, cn.dc, rows, cols) /
-                           Math.max(rows, cols);
-                const sc = (2 * d - 1) * rl + Math.random() * 0.25;
-                if (sc > bestScore) { bestScore = sc; best = cn; }
+            for (const [rev] of [[false], [true]]) {
+                const seq = rev ? nodes.slice().reverse() : nodes;
+                const h   = seq[seq.length - 1], pv = seq[seq.length - 2];
+                const dr  = h.r - pv.r, dc = h.c - pv.c;
+                if (facesSelf(h, dr, dc)) continue; // own body in ray → skip
+                if (this.headRayClear(grid, h, dr, dc)) {
+                    const rl = this._rayLenToEdge(h, dr, dc, rows, cols) / Math.max(rows, cols);
+                    clearCands.push({ seq, h, dr, dc, score: (2 * d - 1) * rl + Math.random() * 0.25 });
+                } else {
+                    blockedCands.push({ seq, h, dr, dc });
+                }
             }
 
-            for (const n of best.seq) grid.setOwner(n.r, n.c, ctr.n);
-            const p = new Path(ctr.n, best.seq, Path.deltaToHeading(best.dr, best.dc));
-            p.placeOrder = ctr.n;
+            // Attempt topology placement: with probability topoWeight, try a
+            // blocked-ray candidate first. Gate with isBoardSolvable + headSelfClear.
+            // This creates intentional dependencies — path is blocked until its
+            // blocker is cleared, forcing the player to discover the solve order.
+            let placed = false;
 
-            // Full-ray check after placement — nodes now in grid so headSelfClear
-            // correctly detects own body hidden beyond foreign paths.
-            if (!this.oracle.headSelfClear(p, grid)) {
-                for (const n of best.seq) grid.setOwner(n.r, n.c, -1);
-                fails++; continue;
+            if (blockedCands.length > 0 && Math.random() < topoWeight) {
+                for (const cn of blockedCands) {
+                    for (const n of cn.seq) grid.setOwner(n.r, n.c, ctr.n);
+                    const p = new Path(ctr.n, cn.seq, Path.deltaToHeading(cn.dr, cn.dc));
+                    p.placeOrder = ctr.n;
+                    paths.push(p);
+
+                    if (this.oracle.headSelfClear(p, grid) &&
+                        this.oracle.isBoardSolvable(paths, grid)) {
+                        ctr.n++; fails = 0; placed = true; break;
+                    }
+                    // Revert — this blocked candidate would break solvability
+                    paths.pop();
+                    for (const n of cn.seq) grid.setOwner(n.r, n.c, -1);
+                }
             }
 
-            paths.push(p);
-            ctr.n++; fails = 0;
+            // Fall back to best clear-ray candidate if topology placement skipped or failed.
+            if (!placed && clearCands.length > 0) {
+                clearCands.sort((a, b) => b.score - a.score);
+                const best = clearCands[0];
+                for (const n of best.seq) grid.setOwner(n.r, n.c, ctr.n);
+                const p = new Path(ctr.n, best.seq, Path.deltaToHeading(best.dr, best.dc));
+                p.placeOrder = ctr.n;
+
+                if (!this.oracle.headSelfClear(p, grid)) {
+                    for (const n of best.seq) grid.setOwner(n.r, n.c, -1);
+                    fails++; continue;
+                }
+                paths.push(p);
+                ctr.n++; fails = 0; placed = true;
+            }
+
+            if (!placed) { fails++; }
         }
     }
 

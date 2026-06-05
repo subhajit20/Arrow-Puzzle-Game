@@ -28,10 +28,12 @@ class GridShape {
         const W = C + 1;
         const mask = new Uint8Array((R + 1) * W);
         for (let r = 0; r <= R; r++) for (let c = 0; c <= C; c++) {
-            const x = (c - C * 0.5) / (C * 0.45);
-            const y = -(r - R * 0.5) / (R * 0.375);
+            // Adjusted scaling: wider x range + taller y range → rounder lobes,
+            // deeper V-notch at top, sharper bottom point.
+            const x = (c - C * 0.5) / (C * 0.42);
+            const y = -(r - R * 0.5) / (R * 0.38);
             const a = x * x + y * y - 1;
-            mask[r * W + c] = (a * a * a - x * x * y * y * y <= 0.01) ? 1 : 0;
+            mask[r * W + c] = (a * a * a - x * x * y * y * y <= 0.015) ? 1 : 0;
         }
         return mask;
     }
