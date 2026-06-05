@@ -9,10 +9,56 @@
 // =============================================================================
 
 class Camera {
-    // Scale applied on top of the fit-to-screen cell size.
-    // 1.0 = board fills viewport exactly; >1 = larger cells, board is pannable.
-    static CELL_SCALE = 0.8;
     static MAX_ZOOM = 6.0;
+
+    // Per-grid-size cell scale lookup table.
+    // Key: "rows×cols", value: scale (0.45–1.20).
+    // Falls back to linear interpolation for unlisted sizes.
+    static GRID_SCALES = {
+        // Normal levels
+        '8x6':   0.40,
+        '12x8':  0.41,
+        '14x8':  0.42,
+        '16x10': 0.43,
+        '18x10': 0.44,
+        '20x12': 0.46,
+        '24x14': 0.49,
+        '28x16': 0.53,
+        '30x18': 0.56,
+        '32x20': 0.60,
+        '36x22': 0.65,
+        '40x24': 0.70,
+        '42x26': 0.74,
+        '48x28': 0.83,
+        '50x30': 0.87,
+        '52x32': 0.92,
+        '56x34': 1.00,
+        '58x40': 1.14,
+        '60x36': 1.10,
+        '60x38': 1.13,
+        // Milestone levels (square grids with shape masks)
+        '24x24': 0.57,
+        '27x27': 0.63,
+        '30x30': 0.68,
+        '33x33': 0.74,
+        '36x36': 0.81,
+        '39x39': 0.88,
+        '42x42': 0.95,
+        '44x44': 1.02,
+        '45x45': 1.04,
+        '50x50': 1.20,
+    };
+
+    static gridScale(gridRows, gridCols) {
+        const key = `${gridRows}x${gridCols}`;
+        if (Camera.GRID_SCALES[key] !== undefined) return Camera.GRID_SCALES[key];
+        // Fallback: linear interpolation by node count
+        const nodes    = (gridRows + 1) * (gridCols + 1);
+        const minNodes = 63;
+        const maxNodes = 2806;
+        const t = Math.max(0, Math.min(1, (nodes - minNodes) / (maxNodes - minNodes)));
+        return 0.40 + t * 0.80;
+    }
 
     constructor(canvas) {
         this.canvas = canvas;
@@ -47,35 +93,36 @@ class Camera {
         this.gridRows = gridRows;
         this.gridCols = gridCols;
 
+        const scale    = Camera.gridScale(gridRows, gridCols);
         const isMobile = containerW < 768 && containerW < containerH;
 
         if (isMobile) {
-            const header = document.getElementById('game-header');
-            const ctrls = document.getElementById('game-controls');
+            const header  = document.getElementById('game-header');
+            const ctrls   = document.getElementById('game-controls');
             const topBarH = header ? header.getBoundingClientRect().height : 0;
-            const botBarH = ctrls ? ctrls.getBoundingClientRect().height : 0;
-            const PAD = 4;
+            const botBarH = ctrls  ? ctrls.getBoundingClientRect().height  : 0;
+            const PAD     = 4;
 
             const availW = containerW - PAD * 2;
             const availH = Math.max(20, window.innerHeight - topBarH - botBarH - PAD * 2);
 
             const cellByW = availW / gridCols;
             const cellByH = availH / gridRows;
-            this.cellSize = Math.max(1, Math.min(cellByW, cellByH)) * Camera.CELL_SCALE;
+            this.cellSize = Math.max(1, Math.min(cellByW, cellByH)) * scale;
 
-            const boardW = gridCols * this.cellSize;
-            const boardH = gridRows * this.cellSize;
-            this.canvasW = containerW;
-            this.canvasH = containerH;
-            this.offsetX = (containerW - boardW) / 2;
+            const boardW  = gridCols * this.cellSize;
+            const boardH  = gridRows * this.cellSize;
+            this.canvasW  = containerW;
+            this.canvasH  = containerH;
+            this.offsetX  = (containerW - boardW) / 2;
 
             const visibleH = Math.min(containerH, window.innerHeight - topBarH);
-            this.offsetY = Math.max(PAD, (visibleH - boardH) / 2);
+            this.offsetY   = Math.max(PAD, (visibleH - boardH) / 2);
         } else {
             this.cellSize = Math.min(
                 containerW / gridCols,
                 containerH / gridRows
-            ) * Camera.CELL_SCALE;
+            ) * scale;
 
             const boardW = gridCols * this.cellSize;
             const boardH = gridRows * this.cellSize;
@@ -158,8 +205,8 @@ class Camera {
         if (this._animReq) { cancelAnimationFrame(this._animReq); this._animReq = null; }
         if (!containerEl || !this.cellSize) { this.reset(); if (onComplete) onComplete(); return; }
 
-        const bcr          = containerEl.getBoundingClientRect();
-        const isMobile     = bcr.width < 768 && bcr.width < bcr.height;
+        const bcr = containerEl.getBoundingClientRect();
+        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
         const isLargeBoard = this.gridRows >= 36 || this.gridCols >= 22;
         if (!isMobile || !isLargeBoard) { this.reset(); if (onComplete) onComplete(); return; }
 
@@ -182,8 +229,8 @@ class Camera {
         const boardCY = this.offsetY + boardH / 2;
 
         // Screen centre
-        const screenCX = bcr.width  / 2;
-        const screenCY = visibleH   / 2;
+        const screenCX = bcr.width / 2;
+        const screenCY = visibleH / 2;
 
         // matE/matF that keeps the board centre on the screen centre at zoom z.
         const centredMat = z => ({
@@ -207,20 +254,20 @@ class Camera {
         this.cssZoom = startZ; this.matE = startE; this.matF = startF;
 
         const ANIM_MS = 1400;
-        const t0   = performance.now();
+        const t0 = performance.now();
         const self = this;
 
         const step = now => {
             const p = Math.min(1.0, (now - t0) / ANIM_MS);
             const t = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
             self.cssZoom = startZ + (targetZ - startZ) * t;
-            self.matE    = startE + (targetE - startE) * t;
-            self.matF    = startF + (targetF - startF) * t;
+            self.matE = startE + (targetE - startE) * t;
+            self.matF = startF + (targetF - startF) * t;
             if (p < 1.0) { self._animReq = requestAnimationFrame(step); }
             else {
                 self.cssZoom = targetZ;
-                self.matE    = targetE;
-                self.matF    = targetF;
+                self.matE = targetE;
+                self.matF = targetF;
                 self._animReq = null;
                 if (onComplete) onComplete();
             }
