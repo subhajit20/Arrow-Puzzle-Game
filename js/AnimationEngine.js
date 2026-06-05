@@ -12,8 +12,8 @@
 // =============================================================================
 
 class AnimationEngine {
-    // Pixels per frame for head advancement
-    static MOVE_SPEED = 0.52;
+    // Head speed — faster head creates more dramatic elastic stretch
+    static MOVE_SPEED = 0.72;
     // Pixels per frame for crash retraction
     static CRASH_SPEED = 0.32;
 
