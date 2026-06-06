@@ -600,7 +600,57 @@ class GridShape {
         return mask;
     }
 
-    // Cycles: circle → heart → star → donut → octagon → skull → shield → leaf → trophy → crown → badge → dinosaur → chromeDino → metamaskFox → camel → scorpion → seahorse → unicornHead → …
+    static petals(R, C) {
+        const ART = [
+            '0000000000000001111000000000000000',
+            '0000000000000001111000000000000000',
+            '0000000000000011111100000000000000',
+            '0000000100000011111100000010000000',
+            '0000011111000011111100001111100000',
+            '0000011111100011111100011111100000',
+            '0000011111110011111100111111100000',
+            '0000011111111011111101111111100000',
+            '0000011111111011111101111111100000',
+            '0000001111111111111111111111000000',
+            '0000000111111111111111111110000000',
+            '0000000011111111111111111100000000',
+            '0111111001111111111111111001111110',
+            '1111111111111110000111111111111111',
+            '1111111111111100000011111111111111',
+            '1111111111111000000001111111111111',
+            '1111111111111000000001111111111111',
+            '0111111111111000000001111111111110',
+            '0001111111111000000001111111111000',
+            '0000000111111100000011111110000000',
+            '0000011111111110000111111111100000',
+            '0001111111111111111111111111111000',
+            '0011111111111111111111111111111100',
+            '0011111111111111111111111111111100',
+            '0011111111111111111111111111111100',
+            '0011111111011111111111101111111100',
+            '0011111100111111111111110011111100',
+            '0000110000111111111111110000110000',
+            '0000000001111111111111111000000000',
+            '0000000001111111001111111000000000',
+            '0000000001111111001111111000000000',
+            '0000000001111110000111111000000000',
+            '0000000001111110000111111000000000',
+            '0000000000111100000011110000000000',
+        ];
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const aR = ART.length, aC = ART[0].length;
+        for (let r = 0; r <= R; r++) {
+            const ar = Math.min(aR - 1, Math.floor(r * aR / (R + 1)));
+            for (let c = 0; c <= C; c++) {
+                const ac = Math.min(aC - 1, Math.floor(c * aC / (C + 1)));
+                mask[r * W + c] = ART[ar][ac] === '1' ? 1 : 0;
+            }
+        }
+        return mask;
+    }
+
+    // Cycles: circle → heart → star → donut → octagon → skull → shield → leaf → trophy → crown → badge → dinosaur → chromeDino → metamaskFox → camel → scorpion → seahorse → unicornHead → petals → …
     static forLevel(level) {
         const shapes = [
             GridShape.circle,
@@ -621,6 +671,7 @@ class GridShape {
             GridShape.scorpion,
             GridShape.seahorse,
             GridShape.unicornHead,
+            GridShape.petals,
         ];
         return shapes[(Math.floor(level / 10) - 1) % shapes.length];
     }
@@ -649,6 +700,7 @@ class GridShape {
             GridShape.scorpion,
             GridShape.seahorse,
             GridShape.unicornHead,
+            GridShape.petals,
         ];
         return shapes[dayOfYr % shapes.length];
     }
