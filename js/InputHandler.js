@@ -32,6 +32,9 @@ class InputHandler {
         this._tapTime        = 0;
         this._ignoreTap      = false;
 
+        // Tap cooldown — prevents rapid double-tap from firing two paths
+        this._lastTapFiredAt = 0;
+
         // Mouse state
         this._mouseDown      = false;
         this._lastMX         = 0;
@@ -90,28 +93,32 @@ class InputHandler {
 
     // ── Hit test ──────────────────────────────────────────────────────────────
 
-    // Finds the nearest IDLE path whose edge midpoint is within hitRadius canvas px.
+    // Finds the nearest IDLE path within hitRadius canvas px.
+    // Checks both edge midpoints AND the head node (arrowhead position) so
+    // tapping the arrowhead tip — the most natural target — is always precise.
+    // Only IDLE paths participate; MOVING/CRASHING edges are ignored entirely
+    // so they cannot shadow a valid tap on a nearby IDLE path.
     hitTest(canvasX, canvasY) {
         const board = this.gc.board;
         if (!board || !board.grid) return null;
 
-        const grid   = board.grid;
-        const cSize  = this.camera.cellSize;
-        const ox     = this.camera.offsetX;
-        const oy     = this.camera.offsetY;
-        const hitR   = cSize * 0.7;
-        const paths  = board.paths || [];
+        const grid  = board.grid;
+        const cSize = this.camera.cellSize;
+        const ox    = this.camera.offsetX;
+        const oy    = this.camera.offsetY;
+        const hitR  = cSize * 0.7;
+        const paths = board.paths || [];
 
-        // Build a quick id→path lookup
-        const byId = new Map(paths.map(p => [p.id, p]));
+        const byId     = new Map(paths.map(p => [p.id, p]));
+        const idleSet  = new Set(paths.filter(p => p.state === 'IDLE').map(p => p.id));
 
         let bestDist = hitR, bestId = -1;
 
-        // Horizontal edges
+        // Horizontal edge midpoints — IDLE owners only
         for (let r = 0; r <= grid.rows; r++) {
             for (let c = 0; c < grid.cols; c++) {
                 const owner = grid.hEdge[r][c];
-                if (owner < 0) continue;
+                if (!idleSet.has(owner)) continue;
                 const d = Math.hypot(
                     canvasX - (ox + (c + 0.5) * cSize),
                     canvasY - (oy + r * cSize)
@@ -120,11 +127,11 @@ class InputHandler {
             }
         }
 
-        // Vertical edges
+        // Vertical edge midpoints — IDLE owners only
         for (let r = 0; r < grid.rows; r++) {
             for (let c = 0; c <= grid.cols; c++) {
                 const owner = grid.vEdge[r][c];
-                if (owner < 0) continue;
+                if (!idleSet.has(owner)) continue;
                 const d = Math.hypot(
                     canvasX - (ox + c * cSize),
                     canvasY - (oy + (r + 0.5) * cSize)
@@ -133,18 +140,35 @@ class InputHandler {
             }
         }
 
+        // Head node (arrowhead tip) — the primary visual tap target
+        for (const p of paths) {
+            if (p.state !== 'IDLE') continue;
+            const head = p.nodes[p.nodes.length - 1];
+            const d = Math.hypot(
+                canvasX - (ox + head.c * cSize),
+                canvasY - (oy + head.r * cSize)
+            );
+            if (d < bestDist) { bestDist = d; bestId = p.id; }
+        }
+
         if (bestId < 0) return null;
-        const p = byId.get(bestId);
-        return (p && p.state === 'IDLE') ? p : null;
+        return byId.get(bestId) || null;
     }
 
     // ── Tap / Click ───────────────────────────────────────────────────────────
 
     onTap(canvasX, canvasY) {
         if (this.gc.isWinState || this.gc.isFailState) return;
+
+        // Ignore taps within 150ms of the last fired tap — prevents rapid
+        // double-tap from queuing two setTimeout callbacks and firing two paths.
+        const now = Date.now();
+        if (now - this._lastTapFiredAt < 150) return;
+
         const path = this.hitTest(canvasX, canvasY);
         if (!path) return;
 
+        this._lastTapFiredAt = now;
         this.gc.audio.playTap();
         this.gc.selectedPathId = path.id;
 
