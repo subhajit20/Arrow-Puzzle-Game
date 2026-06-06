@@ -233,21 +233,26 @@ class Renderer {
             // Elastic rope: head races ahead, tail follows with spring lag.
             // spring = 0 when head just started, → 1 as head travels far.
             // This creates a stretch-then-settle feel — body pulled behind the head.
-            const head   = path.animProgress;
+            const head = path.animProgress;
             const spring = 1.0 - Math.exp(-head * 1.6);  // exponential spring
-            const tail   = head * spring;                  // tail lags behind
-            drawPoints   = this._getSubTrackPoints(fullTrack, tail, totalSeg + head);
+            const tail = head * spring;                  // tail lags behind
+            drawPoints = this._getSubTrackPoints(fullTrack, tail, totalSeg + head);
         } else {
             // CRASHING — uniform retract
             const dStart = path.animProgress;
-            const dEnd   = totalSeg + path.animProgress;
-            drawPoints   = this._getSubTrackPoints(fullTrack, dStart, dEnd);
+            const dEnd = totalSeg + path.animProgress;
+            drawPoints = this._getSubTrackPoints(fullTrack, dStart, dEnd);
         }
 
         if (drawPoints.length < 2) return;
 
         ctx.save();
-        ctx.lineWidth = Math.max(2, cSize * 0.18);
+        // Dynamic line width: thicker on small grids, thinner on large grids.
+        const _nodes  = (this.camera.gridRows + 1) * (this.camera.gridCols + 1);
+        const _t      = Math.max(0, Math.min(1, (_nodes - 63) / (2806 - 63)));
+        const _lwMult = 0.18 - _t * 0.07;  // 0.18 (small) → 0.11 (large)
+        const _lwMin  = 2.0  - _t * 0.7;   // 2.0  (small) → 1.3  (large)
+        ctx.lineWidth = Math.max(_lwMin, cSize * _lwMult);
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
 
@@ -292,20 +297,22 @@ class Renderer {
         ctx.stroke();
         ctx.restore();
 
-        // Arrowhead: during MOVING follow the animated head (front of elastic rope).
-        // During IDLE/CRASHING use the fixed end node position.
+        // Arrowhead position rules:
+        //   IDLE (no reveal)  → fixed end node (stable, centred on node)
+        //   REVEAL active     → front of growing reveal path (tracks drawPoints)
+        //   MOVING            → front of elastic rope (tracks drawPoints)
+        //   CRASHING          → front of retracting path (tracks drawPoints)
+        const aSize = Math.max(3.0, cSize * 0.32);
         let hx, hy;
-        if (path.state === 'MOVING') {
+        if (path.state === 'IDLE' && !(revealState && revealState.active)) {
+            const headNode = path.nodes[path.nodes.length - 1];
+            hx = ox + headNode.c * cSize;
+            hy = oy + headNode.r * cSize;
+        } else {
+            // Reveal, MOVING, CRASHING — follow the front of drawPoints
             const front = drawPoints[drawPoints.length - 1];
             hx = front.x; hy = front.y;
-        } else {
-            const headNode = path.nodes[path.nodes.length - 1];
-            const { dr: hdr, dc: hdc } = Path.headingToDelta(path.heading);
-            const aHalf = Math.max(3.0, cSize * 0.32) * 0.35;
-            hx = ox + headNode.c * cSize + hdc * aHalf;
-            hy = oy + headNode.r * cSize + hdr * aHalf;
         }
-        const aSize = Math.max(3.0, cSize * 0.32);
         this.drawArrowHead(hx, hy, path.heading, aSize, isSelected, path.state);
     }
 
@@ -355,7 +362,7 @@ class Renderer {
             ctx.fillRect(ox, oy, board.grid.cols * cSize, board.grid.rows * cSize);
         } else {
             const rows = board.grid.rows, cols = board.grid.cols;
-            const W    = cols + 1;
+            const W = cols + 1;
             const half = cSize * 0.5;
             for (let r = 0; r <= rows; r++) {
                 for (let c = 0; c <= cols; c++) {

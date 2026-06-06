@@ -16,16 +16,16 @@ class Camera {
     // Falls back to linear interpolation for unlisted sizes.
     static GRID_SCALES = {
         // Normal levels
-        '8x6':   0.40,
-        '12x8':  0.41,
-        '14x8':  0.42,
-        '16x10': 0.43,
-        '18x10': 0.44,
-        '20x12': 0.46,
-        '24x14': 0.49,
-        '28x16': 0.53,
-        '30x18': 0.56,
-        '32x20': 0.60,
+        '8x6': 0.8,
+        '12x8': 0.8,
+        '14x8': 0.8,
+        '16x10': 0.8,
+        '18x10': 0.8,
+        '20x12': 0.8,
+        '24x14': 0.8,
+        '28x16': 0.8,
+        '30x18': 0.8,
+        '32x20': 0.8,
         '36x22': 0.65,
         '40x24': 0.70,
         '42x26': 0.74,
@@ -53,7 +53,7 @@ class Camera {
         const key = `${gridRows}x${gridCols}`;
         if (Camera.GRID_SCALES[key] !== undefined) return Camera.GRID_SCALES[key];
         // Fallback: linear interpolation by node count
-        const nodes    = (gridRows + 1) * (gridCols + 1);
+        const nodes = (gridRows + 1) * (gridCols + 1);
         const minNodes = 63;
         const maxNodes = 2806;
         const t = Math.max(0, Math.min(1, (nodes - minNodes) / (maxNodes - minNodes)));
@@ -93,15 +93,15 @@ class Camera {
         this.gridRows = gridRows;
         this.gridCols = gridCols;
 
-        const scale    = Camera.gridScale(gridRows, gridCols);
+        const scale = Camera.gridScale(gridRows, gridCols);
         const isMobile = containerW < 768 && containerW < containerH;
 
         if (isMobile) {
-            const header  = document.getElementById('game-header');
-            const ctrls   = document.getElementById('game-controls');
+            const header = document.getElementById('game-header');
+            const ctrls = document.getElementById('game-controls');
             const topBarH = header ? header.getBoundingClientRect().height : 0;
-            const botBarH = ctrls  ? ctrls.getBoundingClientRect().height  : 0;
-            const PAD     = 4;
+            const botBarH = ctrls ? ctrls.getBoundingClientRect().height : 0;
+            const PAD = 4;
 
             const availW = containerW - PAD * 2;
             const availH = Math.max(20, window.innerHeight - topBarH - botBarH - PAD * 2);
@@ -110,14 +110,14 @@ class Camera {
             const cellByH = availH / gridRows;
             this.cellSize = Math.max(1, Math.min(cellByW, cellByH)) * scale;
 
-            const boardW  = gridCols * this.cellSize;
-            const boardH  = gridRows * this.cellSize;
-            this.canvasW  = containerW;
-            this.canvasH  = containerH;
-            this.offsetX  = (containerW - boardW) / 2;
+            const boardW = gridCols * this.cellSize;
+            const boardH = gridRows * this.cellSize;
+            this.canvasW = containerW;
+            this.canvasH = containerH;
+            this.offsetX = (containerW - boardW) / 2;
 
             const visibleH = Math.min(containerH, window.innerHeight - topBarH);
-            this.offsetY   = Math.max(PAD, (visibleH - boardH) / 2);
+            this.offsetY = Math.max(PAD, (visibleH - boardH) / 2);
         } else {
             this.cellSize = Math.min(
                 containerW / gridCols,
@@ -206,7 +206,7 @@ class Camera {
         if (!containerEl || !this.cellSize) { this.reset(); if (onComplete) onComplete(); return; }
 
         const bcr = containerEl.getBoundingClientRect();
-        const isMobile     = bcr.width < 768 && bcr.width < bcr.height;
+        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
         const isLargeBoard = this.gridRows >= 36 || this.gridCols >= 22;
         if (!isMobile || !isLargeBoard) { this.reset(); if (onComplete) onComplete(); return; }
 

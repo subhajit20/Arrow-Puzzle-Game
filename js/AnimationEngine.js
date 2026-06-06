@@ -159,10 +159,9 @@ class AnimationEngine {
             return;
         }
 
-        const bcr = containerEl.getBoundingClientRect();
-        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
+        const bcr          = containerEl.getBoundingClientRect();
+        const isMobile     = bcr.width < 768 && bcr.width < bcr.height;
         const isLargeBoard = camera.gridRows >= 36 || camera.gridCols >= 22;
-        if (!isMobile) { if (onComplete) onComplete(); return; }
 
         // Fit board into view at overview zoom
         const header = document.getElementById('game-header');
@@ -183,15 +182,12 @@ class AnimationEngine {
         );
         camera.minZoom = Math.max(fitZoom * 0.40, 0.08);
 
-        if (!isLargeBoard) {
-            // Small board: pre-zoom in slightly with no animation — just set zoom.
-            camera.cssZoom = 2.0;
-            camera.matE = 0; camera.matF = 0;
-            camera.clampPan(containerEl);
-        } else {
+        if (isLargeBoard) {
+            // Large board: fit to overview zoom before reveal + entrance animation.
             camera.cssZoom = fitZoom; camera.matE = 0; camera.matF = 0;
+            camera.clampPan(containerEl);
         }
-        camera.clampPan(containerEl);
+        // Small board: keep camera at current reset position — no zoom change.
 
         const N = paths.length;
         const duration = Math.min(900, Math.max(300, N * 60));
