@@ -127,15 +127,15 @@
         }, 50);
     }
 
-    // ── Public API (called from HTML onclick handlers) ────────────────────────
+    // ── Public API (called from HTML onclick attributes) ────────────────────────
 
     // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
     // Remove this block when test mode is no longer needed.
-    const TEST_MODE = false;
+    const TEST_MODE = true;
     const TEST_ROWS = 50;
-    const TEST_COLS = 30;
-    const TEST_LEVEL = 170;   // (70/10)%2 = 1 → heart mask
-    const TEST_TIER = 'NORMAL';
+    const TEST_COLS = 50;
+    const TEST_LEVEL = 200;   // (70/10)%2 = 1 → heart mask
+    const TEST_TIER = 'HARD';
 
     // Exposed on window so existing HTML onclick attributes still work.
     window.startNormalGame = function () {
