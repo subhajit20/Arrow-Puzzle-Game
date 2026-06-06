@@ -39,24 +39,24 @@ class GridShape {
     }
 
     static star(R, C) {
-        const W     = C + 1;
-        const mask  = new Uint8Array((R + 1) * W);
-        const n     = 5;
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const n = 5;
         const outer = 0.92;
         const inner = 0.38;
-        const PI    = Math.PI;
+        const PI = Math.PI;
 
         for (let r = 0; r <= R; r++) for (let c = 0; c <= C; c++) {
-            const x    = (c - C * 0.5) / (C * 0.50);
-            const y    = (r - R * 0.5) / (R * 0.50);
+            const x = (c - C * 0.5) / (C * 0.50);
+            const y = (r - R * 0.5) / (R * 0.50);
             const dist = Math.sqrt(x * x + y * y);
             if (dist > outer) { mask[r * W + c] = 0; continue; }
 
             // Angle from top (tip at 0°)
-            const angle  = Math.atan2(x, -y);
+            const angle = Math.atan2(x, -y);
             const sector = ((angle % (2 * PI / n)) + 2 * PI / n) % (2 * PI / n);
-            const t      = Math.abs(sector / (PI / n) - 1); // 0=tip, 1=valley
-            const bound  = inner + (outer - inner) * (1 - t);
+            const t = Math.abs(sector / (PI / n) - 1); // 0=tip, 1=valley
+            const bound = inner + (outer - inner) * (1 - t);
 
             mask[r * W + c] = dist <= bound ? 1 : 0;
         }
@@ -64,8 +64,8 @@ class GridShape {
     }
 
     static donut(R, C) {
-        const W     = C + 1;
-        const mask  = new Uint8Array((R + 1) * W);
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
         const outer = 1.0;
         const inner = 0.38;
 
@@ -79,13 +79,13 @@ class GridShape {
     }
 
     static octagon(R, C) {
-        const W    = C + 1;
+        const W = C + 1;
         const mask = new Uint8Array((R + 1) * W);
         for (let r = 0; r <= R; r++) for (let c = 0; c <= C; c++) {
             const x = (c - C * 0.5) / (C * 0.48);
             const y = (r - R * 0.5) / (R * 0.48);
             const inside = Math.abs(x) + Math.abs(y) <= 1.35 &&
-                           Math.max(Math.abs(x), Math.abs(y)) <= 0.96;
+                Math.max(Math.abs(x), Math.abs(y)) <= 0.96;
             mask[r * W + c] = inside ? 1 : 0;
         }
         return mask;
@@ -161,7 +161,7 @@ class GridShape {
             // Leaf: oval body + pointed tip at bottom
             const body = x * x / 0.70 + (y + 0.10) * (y + 0.10) / 0.88 <= 1.0;
             // Taper to a point at the bottom
-            const tip  = Math.abs(x) <= 0.18 * (0.95 - y) && y > 0.55 && y <= 0.95;
+            const tip = Math.abs(x) <= 0.18 * (0.95 - y) && y > 0.55 && y <= 0.95;
             const inside = body || tip;
             mask[r * W + c] = inside ? 1 : 0;
         }
@@ -208,14 +208,14 @@ class GridShape {
     }
 
     static badge(R, C) {
-        const W    = C + 1;
+        const W = C + 1;
         const mask = new Uint8Array((R + 1) * W);
-        const n    = 12;  // scallop points around edge
+        const n = 12;  // scallop points around edge
 
         for (let r = 0; r <= R; r++) for (let c = 0; c <= C; c++) {
-            const x     = (c - C * 0.5) / (C * 0.46);
-            const y     = (r - R * 0.5) / (R * 0.46);
-            const dist  = Math.sqrt(x * x + y * y);
+            const x = (c - C * 0.5) / (C * 0.46);
+            const y = (r - R * 0.5) / (R * 0.46);
+            const dist = Math.sqrt(x * x + y * y);
             const angle = Math.atan2(y, x);
             // Scalloped edge: base circle + small bumps
             const bound = 0.82 + 0.12 * Math.cos(n * angle);
@@ -227,7 +227,330 @@ class GridShape {
     // ── Shape selection ───────────────────────────────────────────────────────
 
     // Returns the shape function for a given milestone level.
-    // Cycles: circle → heart → star → donut → octagon → skull → shield → leaf → trophy → crown → badge → circle…
+    static dinosaur(R, C) {
+        // Brontosaurus — pixel-art pattern encoded directly and scaled to grid.
+        // Nearest-neighbour sampling guarantees the shape matches exactly.
+        const ART = [
+            '00000000000000000000000000',
+            '00001111100000000000000000',
+            '00011111110000000000000000',
+            '00111111111000000000000000',
+            '00111011111000000000000000',
+            '01111111110000000000000000',
+            '01111111000000000000000000',
+            '01111100000000000000000000',
+            '01111000000000000000000000',
+            '01111000000000000000000000',
+            '01110000000000000000000000',
+            '01110000000000000000000000',
+            '01110000000000000000000000',
+            '01111000000000000000000000',
+            '01111100000000000000000000',
+            '01111100000000000000000000',
+            '01111000000000000000000000',
+            '01111010001111100000000000',
+            '01111111111111110000000100',
+            '01111111111111111000001100',
+            '00111111011101111000001100',
+            '00111111111111111110111000',
+            '00111111111111111110111100',
+            '00011111111111111111111100',
+            '00011111111111111111111100',
+            '00001111111111111111111000',
+            '00000011111111111110100000',
+            '00000011110111111111000000',
+            '00000011111000011111000000',
+            '00000001110000001110000000',
+            '00000001110000001110000000',
+            '00000000000000000000000000',
+        ];
+
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const aR = ART.length;
+        const aC = ART[0].length;
+
+        for (let r = 0; r <= R; r++) {
+            const ar = Math.min(aR - 1, Math.floor(r * aR / (R + 1)));
+            for (let c = 0; c <= C; c++) {
+                const ac = Math.min(aC - 1, Math.floor(c * aC / (C + 1)));
+                mask[r * W + c] = ART[ar][ac] === '1' ? 1 : 0;
+            }
+        }
+        return mask;
+    }
+
+    static chromeDino(R, C) {
+        // T-Rex style dinosaur — pixel-art pattern, cropped to active region
+        // and scaled to grid via nearest-neighbour sampling.
+        const ART = [
+            '0000000000000111111111000000',
+            '0000000000001111111111110000',
+            '0000000000001100111111110000',
+            '0000000000001111111111110000',
+            '0000000000001111111111110000',
+            '0000000000001111111111110000',
+            '0000000000001111111111110000',
+            '0000000000001111110000000000',
+            '0000000000011111111110000000',
+            '0000000000111111100000000000',
+            '0000000000111111110000000000',
+            '0000000111111111111100000000',
+            '0001111111111111111100000000',
+            '0001111111111111101000000000',
+            '0001111111111111100000000000',
+            '0001111111111111100000000000',
+            '0000111111111111000000000000',
+            '0000111111111111000000000000',
+            '0000011111111110000000000000',
+            '0000001111111100000000000000',
+            '0000000111111000000000000000',
+            '0000000011111110000000000000',
+            '0000000001100110000000000000',
+            '0000000001000010000000000000',
+            '0000000001000010000000000000',
+            '0000000001100011000000000000',
+        ].map(r => r.padEnd(28, '0'));
+
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const aR = ART.length, aC = ART[0].length;
+
+        for (let r = 0; r <= R; r++) {
+            const ar = Math.min(aR - 1, Math.floor(r * aR / (R + 1)));
+            for (let c = 0; c <= C; c++) {
+                const ac = Math.min(aC - 1, Math.floor(c * aC / (C + 1)));
+                mask[r * W + c] = ART[ar][ac] === '1' ? 1 : 0;
+            }
+        }
+        return mask;
+    }
+
+    static metamaskFox(R, C) {
+        // Clean fox face silhouette: two pointed ears, wide rounded face,
+        // narrowing to a chin point. Fully connected single component.
+        const ART = [
+            '00000000000000000000000000000000',
+            '0001000000000000000000000000100',
+            '00010000000000000000000000001000',
+            '00011000000000000000000000011000',
+            '00011110000000000000000001111000',
+            '00011111000000000000000011111000',
+            '00011111100000000000000111111000',
+            '00011111110000000000001111111000',
+            '00011111111000000000011111111000',
+            '00111111111111111111111111111100',
+            '00111111111111111111111111111100',
+            '00111111111111111111111111111100',
+            '00111111111111111111111111111100',
+            '00111111111111111111111111111100',
+            '00111111111111111111111111111100',
+            '00111111001111111111110011111100',
+            '00111111000111111111100011111100',
+            '00111110011011111111011001111100',
+            '00111111000101111110100011111100',
+            '00111111100001111110000111111100',
+            '00111111110001111110001111111100',
+            '00011111111001111110011111111000',
+            '00011111111101111110111111111000',
+            '00001111111101111110111111110000',
+            '00000111111001111110011111100000',
+            '00000011110000111110001111000000',
+            '00000001100000000000000110000000',
+            '00000000111001111110011100000000',
+            '00000000011101111110111000000000',
+            '00000000001111111111110000000000',
+            '00000000000110000001100000000000',
+            '00000000000011111111000000000000',
+            '00000000000001111110000000000000',
+        ];
+
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const aR = ART.length, aC = ART[0].length;
+
+        for (let r = 0; r <= R; r++) {
+            const ar = Math.min(aR - 1, Math.floor(r * aR / (R + 1)));
+            for (let c = 0; c <= C; c++) {
+                const ac = Math.min(aC - 1, Math.floor(c * aC / (C + 1)));
+                mask[r * W + c] = ART[ar][ac] === '1' ? 1 : 0;
+            }
+        }
+        return mask;
+    }
+
+    static camel(R, C) {
+        const ART = [
+            '00000000000011100000000011111110',
+            '00000000001111110000000111111111',
+            '00000000011111111000000011111111',
+            '00000011111111111100000111111101',
+            '00000111111111111110000111110000',
+            '00001111111111111111001111110000',
+            '00001111111111111111111111100000',
+            '00011111111111111111111111100000',
+            '00011111111111111111111111000000',
+            '00011111111111111111111100000000',
+            '00011111111111111111110000000000',
+            '00111111111111111111100000000000',
+            '01111011110001111111000000000000',
+            '11101111110000110111000000000000',
+            '11101011100000110011000000000000',
+            '11000011000001110011100000000000',
+            '11000111000001110011100000000000',
+            '11000111000001100001100000000000',
+            '11000011000001100000100000000000',
+            '11000011000001000000110000000000',
+            '01100001100011000000110000000000',
+            '01110001100011100000011100000000',
+            '00010001110001100000011110000000',
+            '00000000111100000000000000000000',
+        ];
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const aR = ART.length, aC = ART[0].length;
+        for (let r = 0; r <= R; r++) {
+            const ar = Math.min(aR - 1, Math.floor(r * aR / (R + 1)));
+            for (let c = 0; c <= C; c++) {
+                const ac = Math.min(aC - 1, Math.floor(c * aC / (C + 1)));
+                mask[r * W + c] = ART[ar][ac] === '1' ? 1 : 0;
+            }
+        }
+        return mask;
+    }
+
+    static scorpion(R, C) {
+        // Dilated version — thin legs/claws expanded for a solid look
+        const ART = [
+            '000111111111000000111111111000',
+            '001111111110000000011111111100',
+            '011111111111000000111111111110',
+            '011111111110000000011111111110',
+            '111111111000000000000111111111',
+            '111111110000000000000011111111',
+            '111111100000000000000001111111',
+            '111111100000000000000000111111',
+            '111111000001000000100000011111',
+            '011110000011111111110000011110',
+            '111110000011111111110000011111',
+            '011111000001111111100000111110',
+            '001111101111111111111101111100',
+            '001111111111111111111111111100',
+            '010111111111111111111111111010',
+            '111101011111111111110110101111',
+            '011110111111111111111111011110',
+            '001111111111111111111111111100',
+            '000010110111111111111011010000',
+            '000000111111111111111111000000',
+            '111101111111111111111111101111',
+            '111111111111111111111111111111',
+            '111101111111111111111111101111',
+            '000001111111111111111111100000',
+            '000011111111111111111111110000',
+            '000011111111111111111111110000',
+            '001111111111111111111111111100',
+            '011110111111111111111111011110',
+            '111100111101111111101111001111',
+            '010000111001111111100111000010',
+            '000000111000111111000111000000',
+            '000001110000011110000011100000',
+            '000001110000111110000011100000',
+            '000000100001111100000001000000',
+            '000000000001111000001000000000',
+            '000000000011111000011111000000',
+            '000000000011111000111111100000',
+            '000000000011111000111111000000',
+            '000000000011111101111111000000',
+            '000000000001111111111110000000',
+            '000000000001111111111100000000',
+            '000000000000111111101000000000',
+        ];
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const aR = ART.length, aC = ART[0].length;
+        for (let r = 0; r <= R; r++) {
+            const ar = Math.min(aR - 1, Math.floor(r * aR / (R + 1)));
+            for (let c = 0; c <= C; c++) {
+                const ac = Math.min(aC - 1, Math.floor(c * aC / (C + 1)));
+                mask[r * W + c] = ART[ar][ac] === '1' ? 1 : 0;
+            }
+        }
+        return mask;
+    }
+
+    static seahorse(R, C) {
+        const ART = [
+            '0000000000000000100111010000000000000',
+            '0000000000000000111111111000000000000',
+            '0000000000000001111111111111000000000',
+            '0000000000001111111111111111100000000',
+            '0000000000000111111111111111100000000',
+            '0000000000001111111111111111100000000',
+            '0000000000011111111111111111110000000',
+            '0000000000011111111111111111110000000',
+            '0000000000000111111111111111111000000',
+            '0000000000000111111111111111111100000',
+            '0000000000000111111111111111111110000',
+            '0000000000001111111111011111111111000',
+            '0000000000011111111110011111111111100',
+            '0000000000111111111110001111111111110',
+            '0000000000111111111110000000001111111',
+            '0000000000111111111111000000000000111',
+            '0000000001111111111111100000000000000',
+            '0000000001111111111111111000000000000',
+            '0000000001111111111111111110000000000',
+            '0000000001111111111111111111100000000',
+            '0000000000111111111111111111110000000',
+            '0000000000111111111111111111111000000',
+            '0000000000011111111111111111111100000',
+            '0000000000001111111111111111111110000',
+            '0000000110000111111111111111111110000',
+            '0011111110000111111111111111111110000',
+            '0001111111000111111111111111111110000',
+            '0001111111111111111111111111111110000',
+            '0111111111111111111111111111111110000',
+            '0111111111111111111111111111111110000',
+            '0011111111111111111111111111111100000',
+            '0011111111111111111111111111111000000',
+            '1111111111111111111111111111110000000',
+            '0011111111111111111111111111000000000',
+            '0001111111111111111111111000000000000',
+            '0011000111111111111111100000000000000',
+            '0000000011111111111110000000000000000',
+            '0000000111111111111000000000000000000',
+            '0000000111111111110000000000000000000',
+            '0000001111111111100000000000000000000',
+            '0000001111111111000000000000000000000',
+            '0000001111111111000000000000000000000',
+            '0000001111111110000000011111110000000',
+            '0000001111111110000000110001111000000',
+            '0000001111111110000001000000111100000',
+            '0000001111111110000000000000011100000',
+            '0000000111111111000000000000011100000',
+            '0000000111111111000000000000011100000',
+            '0000000011111111100000000000111100000',
+            '0000000011111111100000000000111100000',
+            '0000000001111111110000000001111000000',
+            '0000000000111111111100000011111000000',
+            '0000000000011111111111111111110000000',
+            '0000000000000111111111111111100000000',
+            '0000000000000011111111111110000000000',
+            '0000000000000000011111111000000000000',
+        ];
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const aR = ART.length, aC = ART[0].length;
+        for (let r = 0; r <= R; r++) {
+            const ar = Math.min(aR - 1, Math.floor(r * aR / (R + 1)));
+            for (let c = 0; c <= C; c++) {
+                const ac = Math.min(aC - 1, Math.floor(c * aC / (C + 1)));
+                mask[r * W + c] = ART[ar][ac] === '1' ? 1 : 0;
+            }
+        }
+        return mask;
+    }
+
+    // Cycles: circle → heart → star → donut → octagon → skull → shield → leaf → trophy → crown → badge → dinosaur → chromeDino → metamaskFox → camel → scorpion → seahorse → …
     static forLevel(level) {
         const shapes = [
             GridShape.circle,
@@ -241,6 +564,12 @@ class GridShape {
             GridShape.trophy,
             GridShape.crown,
             GridShape.badge,
+            GridShape.dinosaur,
+            GridShape.chromeDino,
+            GridShape.metamaskFox,
+            GridShape.camel,
+            GridShape.scorpion,
+            GridShape.seahorse,
         ];
         return shapes[(Math.floor(level / 10) - 1) % shapes.length];
     }
@@ -248,9 +577,9 @@ class GridShape {
     // Returns the shape function for today's daily puzzle.
     // Cycles through all shapes based on day of year.
     static forDay() {
-        const jan1    = new Date(new Date().getFullYear(), 0, 1);
+        const jan1 = new Date(new Date().getFullYear(), 0, 1);
         const dayOfYr = Math.floor((Date.now() - jan1.getTime()) / 86400000);
-        const shapes  = [
+        const shapes = [
             GridShape.circle,
             GridShape.heart,
             GridShape.star,
@@ -262,6 +591,12 @@ class GridShape {
             GridShape.trophy,
             GridShape.crown,
             GridShape.badge,
+            GridShape.dinosaur,
+            GridShape.chromeDino,
+            GridShape.metamaskFox,
+            GridShape.camel,
+            GridShape.scorpion,
+            GridShape.seahorse,
         ];
         return shapes[dayOfYr % shapes.length];
     }
@@ -270,7 +605,7 @@ class GridShape {
 
     // Checks that all active nodes in the mask form a single connected region.
     static validate(mask, rows, cols) {
-        const W     = cols + 1;
+        const W = cols + 1;
         const total = (rows + 1) * W;
         let activeCount = 0, firstActive = -1;
 
@@ -280,7 +615,7 @@ class GridShape {
         if (activeCount === 0) return { connected: false, activeCount: 0 };
 
         const visited = new Uint8Array(total);
-        const queue   = [firstActive];
+        const queue = [firstActive];
         visited[firstActive] = 1;
         let visitedCount = 1, qi = 0;
 
@@ -288,14 +623,17 @@ class GridShape {
             const k = queue[qi++];
             const r = (k / W) | 0, c = k % W;
             const nbrs = [k - W, k + W, k - 1, k + 1];
-            const ok   = [r > 0, r < rows, c > 0, c < cols];
+            const ok = [r > 0, r < rows, c > 0, c < cols];
             for (let n = 0; n < 4; n++) {
                 if (ok[n] && mask[nbrs[n]] && !visited[nbrs[n]]) {
                     visited[nbrs[n]] = 1; visitedCount++; queue.push(nbrs[n]);
                 }
             }
         }
-        return { connected: visitedCount === activeCount, activeCount };
+        // Accept shape if largest connected component covers ≥10% of active nodes.
+        // Artistic pixel-art shapes (scorpion legs, fox face halves, etc.) have
+        // intentional separated parts that still produce valid playable boards.
+        return { connected: visitedCount >= activeCount * 0.10, activeCount };
     }
 
     // ── Main entry point ──────────────────────────────────────────────────────
@@ -307,14 +645,14 @@ class GridShape {
         const nullResult = { mask: null, activeCount: totalCells };
 
         const isMilestone = (level % 10 === 0) || context === 'milestone';
-        const isDaily     = context === 'daily';
+        const isDaily = context === 'daily';
         if (!isMilestone && !isDaily) return nullResult;
 
         // Minimum board size for shapes to look meaningful
         if (rows < 12 || cols < 10) return nullResult;
 
         const shapeFn = isDaily ? GridShape.forDay() : GridShape.forLevel(level);
-        const mask    = shapeFn(rows, cols);
+        const mask = shapeFn(rows, cols);
         const { connected, activeCount } = GridShape.validate(mask, rows, cols);
 
         if (!connected || activeCount < totalCells * 0.3) {
