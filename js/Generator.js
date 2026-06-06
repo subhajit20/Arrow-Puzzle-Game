@@ -19,9 +19,9 @@
 
 class Generator {
     constructor(builder, difficulty, validator) {
-        this.builder    = builder;    // RCBuilder
+        this.builder = builder;    // RCBuilder
         this.difficulty = difficulty; // DifficultyEngine
-        this.validator  = validator;  // Validator
+        this.validator = validator;  // Validator
     }
 
     // ── Grid sizes per level ──────────────────────────────────────────────────
@@ -37,16 +37,16 @@ class Generator {
         }
 
         // All other levels → rectangular grids, no mask.
-        if (level <= 3)  return [{ rows: 10, cols:  6 }];
-        if (level <= 7)  return [{ rows: 14, cols:  8 }, { rows: 12, cols:  8 }];
-        if (level <= 12) return [{ rows: 18, cols: 10 }, { rows: 16, cols: 10 }];
-        if (level <= 20) return [{ rows: 24, cols: 14 }, { rows: 20, cols: 12 }];
-        if (level <= 30) return [{ rows: 30, cols: 18 }, { rows: 28, cols: 16 }];
-        if (level <= 40) return [{ rows: 36, cols: 22 }, { rows: 32, cols: 20 }];
-        if (level <= 55) return [{ rows: 42, cols: 26 }, { rows: 40, cols: 24 }];
-        if (level <= 70) return [{ rows: 50, cols: 30 }, { rows: 48, cols: 28 }];
-        if (level <= 85) return [{ rows: 56, cols: 34 }, { rows: 52, cols: 32 }];
-        return [{ rows: 60, cols: 38 }, { rows: 60, cols: 36 }, { rows: 58, cols: 40 }];
+        if (level <= 3) return [{ rows: 10, cols: 6 }, { rows: 12, cols: 8 }];
+        if (level <= 7) return [{ rows: 14, cols: 8 }, { rows: 12, cols: 8 }, { rows: 14, cols: 10 }];
+        if (level <= 12) return [{ rows: 18, cols: 10 }, { rows: 16, cols: 10 }, { rows: 18, cols: 12 }];
+        if (level <= 20) return [{ rows: 24, cols: 14 }, { rows: 20, cols: 12 }, { rows: 22, cols: 14 }];
+        if (level <= 30) return [{ rows: 30, cols: 18 }, { rows: 28, cols: 16 }, { rows: 32, cols: 20 }];
+        if (level <= 40) return [{ rows: 36, cols: 22 }, { rows: 32, cols: 20 }, { rows: 38, cols: 24 }];
+        if (level <= 55) return [{ rows: 42, cols: 26 }, { rows: 40, cols: 24 }, { rows: 44, cols: 28 }];
+        if (level <= 70) return [{ rows: 50, cols: 30 }, { rows: 48, cols: 28 }, { rows: 52, cols: 32 }];
+        if (level <= 85) return [{ rows: 56, cols: 34 }, { rows: 52, cols: 32 }, { rows: 58, cols: 36 }];
+        return [{ rows: 60, cols: 38 }, { rows: 60, cols: 36 }, { rows: 58, cols: 40 }, { rows: 62, cols: 40 }];
     }
 
     // ── Board shape mask — delegated to GridShape ─────────────────────────────
@@ -62,7 +62,7 @@ class Generator {
     _constructAttempt(grid, tier, zoneMap) {
         const knobs = this.difficulty.knobsForTier(tier, zoneMap);
         const paths = [];
-        const ctr   = { n: 0 };
+        const ctr = { n: 0 };
 
         // 1. Chain backbone
         const chainRow = 1 + ((Math.random() * grid.rows) | 0);
@@ -71,7 +71,7 @@ class Generator {
 
         // 2. Main fill
         const totalNodes = (grid.rows + 1) * (grid.cols + 1);
-        const maxFails   = Math.max(400, Math.floor(totalNodes * 0.55));
+        const maxFails = Math.max(400, Math.floor(totalNodes * 0.55));
         this.builder.fillA(grid, paths, ctr, maxFails, {
             d: knobs.d, lenScale: knobs.lenScale, zoneMap,
         });
@@ -96,12 +96,12 @@ class Generator {
     // Runs up to `batch` attempts, returns the best-scoring result.
     // "Best" = tier match first, then closest score to tier centre.
     constructForTier(grid, tier, batch, zoneMap) {
-        const CENTER  = { EASY: 3, NORMAL: 9.5, HARD: 17.5, EXPERT: 25.5, TITAN: 33 };
+        const CENTER = { EASY: 3, NORMAL: 9.5, HARD: 17.5, EXPERT: 25.5, TITAN: 33 };
         let best = null, bestDelta = Infinity;
 
         for (let i = 0; i < batch; i++) {
             // Bracket chainDepth ±1 across attempts for variety
-            const cd  = this.difficulty.chainDepthForTier(tier);
+            const cd = this.difficulty.chainDepthForTier(tier);
             const cdi = Math.max(0, cd + ((i % 3) - 1));
 
             // Override chainDepth in knobs for this attempt
@@ -154,14 +154,14 @@ class Generator {
 
     _freshGrid(rows, cols, mask = null) {
         const g = new Grid(rows, cols);
-        g.mask  = mask;
+        g.mask = mask;
         return g;
     }
 
     _copyGridState(src, dst) {
         dst.nodeOwner.set(src.nodeOwner);
         for (let r = 0; r <= src.rows; r++) dst.hEdge[r].set(src.hEdge[r]);
-        for (let r = 0; r < src.rows;  r++) dst.vEdge[r].set(src.vEdge[r]);
+        for (let r = 0; r < src.rows; r++) dst.vEdge[r].set(src.vEdge[r]);
     }
 
     // ── Main entry point ──────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ class Generator {
     // Returns: { grid, paths, difficulty, coverage, mask }
     build(rows, cols, level, batch = 4, context = 'normal') {
         const totalNodes = (rows + 1) * (cols + 1);
-        const BATCH      = totalNodes > 1000 ? 2 : batch;
+        const BATCH = totalNodes > 1000 ? 2 : batch;
         const MAX_ROUNDS = totalNodes > 1000 ? 3 : 5;
 
         // Board mask (null = full rectangle)
@@ -180,8 +180,8 @@ class Generator {
         const tier = this.difficulty.selectTier(level, []);
 
         const zoneMap = new ZoneMap().generate(rows, cols);
-        const grid    = new Grid(rows, cols);
-        grid.mask     = mask;   // wire mask into grid so RCBuilder respects it
+        const grid = new Grid(rows, cols);
+        grid.mask = mask;   // wire mask into grid so RCBuilder respects it
 
         let result = null;
 
