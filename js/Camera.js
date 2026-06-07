@@ -146,7 +146,6 @@ class Camera {
 
         const boardW = this.gridCols * this.cellSize;
         const boardH = this.gridRows * this.cellSize;
-        const os = this.cellSize * this.cssZoom; // overscroll = 1 cell
 
         // Horizontal
         const scaledW = boardW * this.cssZoom;
@@ -154,8 +153,10 @@ class Camera {
             // Board narrower than container — centre it
             this.matE = (bcr.width - this.canvasW * this.cssZoom) / 2;
         } else {
-            const maxE = -this.offsetX * this.cssZoom + os;
-            const minE = bcr.width - (this.offsetX + boardW) * this.cssZoom - os;
+            // Overscroll = half the screen width so the edge can reach the centre
+            const osH = bcr.width * 0.5;
+            const maxE = -this.offsetX * this.cssZoom + osH;
+            const minE = bcr.width - (this.offsetX + boardW) * this.cssZoom - osH;
             this.matE = Math.min(maxE, Math.max(minE, this.matE));
         }
 
@@ -171,8 +172,10 @@ class Camera {
             // Board shorter than visible area — centre it
             this.matF = visibleH / 2 - (this.offsetY + boardH / 2) * this.cssZoom;
         } else {
-            const maxF = -this.offsetY * this.cssZoom + os;
-            const minF = visibleH - (this.offsetY + boardH) * this.cssZoom - os;
+            // Overscroll = half the screen height so the edge can reach the centre
+            const osV = visibleH * 0.5;
+            const maxF = -this.offsetY * this.cssZoom + osV;
+            const minF = visibleH - (this.offsetY + boardH) * this.cssZoom - osV;
             this.matF = Math.min(maxF, Math.max(minF, this.matF));
         }
     }

@@ -106,7 +106,7 @@ class InputHandler {
         const cSize = this.camera.cellSize;
         const ox    = this.camera.offsetX;
         const oy    = this.camera.offsetY;
-        const hitR  = cSize * 0.7;
+        const hitR  = Math.max(cSize * 2.5, 15);
         const paths = board.paths || [];
 
         const byId     = new Map(paths.map(p => [p.id, p]));

@@ -112,8 +112,15 @@ class AnimationEngine {
             const leadR = head.r + dr * steps;
             const leadC = head.c + dc * steps;
 
-            // Collision detection
-            if (grid.inBounds(leadR, leadC)) {
+            const maskW        = grid.cols + 1;
+            const leadInBounds = grid.inBounds(leadR, leadC);
+            // Active = no mask (full rectangle) OR lead node is inside the mask.
+            // Masked-out nodes are inactive gaps — treat them as empty space.
+            const leadActive   = !grid.mask || (leadInBounds && grid.mask[leadR * maskW + leadC]);
+
+            // Collision detection — skip on inactive mask nodes so paths in one
+            // island never falsely collide with paths in a disconnected island.
+            if (leadInBounds && leadActive) {
                 const ownerId = grid.owner(leadR, leadC);
                 if (ownerId >= 0 && ownerId !== path.id) {
                     const allPaths = gameController?.board?.paths || [];
@@ -128,9 +135,13 @@ class AnimationEngine {
                 }
             }
 
-            // Exit detection — path has travelled beyond grid bounds
-            const maxLen = Math.max(grid.rows, grid.cols) * 1.5;
-            if (path.animProgress > maxLen) {
+            // Exit detection — grid bounds OR island boundary.
+            // For masked shapes with disconnected islands, a path clears as
+            // soon as its lead steps into an inactive node, so arrows never
+            // travel through gaps into other islands.
+            const maxLen       = Math.max(grid.rows, grid.cols) * 1.5;
+            const exitedIsland = steps >= 1 && leadInBounds && !!grid.mask && !grid.mask[leadR * maskW + leadC];
+            if (path.animProgress > maxLen || exitedIsland) {
                 path.state = 'CLEARED';
                 if (gameController) gameController.onPathCleared(path);
             }
