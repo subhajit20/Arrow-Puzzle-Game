@@ -761,7 +761,55 @@ class GridShape {
         return mask;
     }
 
-    // Cycles: circle → heart → star → donut → octagon → skull → shield → leaf → trophy → crown → badge → dinosaur → chromeDino → metamaskFox → camel → scorpion → seahorse → unicornHead → petals → elephant → pawPrint → …
+    static whale(R, C) {
+        const ART = [
+            '0000000000000000000000000000000000000000000000001111111100000000',
+            '0000000000000000000000000000000000000000000011111111111111100000',
+            '0000000000000000000000000000000000000000001111111111111111110000',
+            '0000000000000000000000000000000000000000111111111110111111111000',
+            '0000000000000000000000000000000000000111111111111001011111111100',
+            '0000000000000000000000000000000000001111111111111011011111111100',
+            '0000000000000000000000000000000000111111111111111001011111111000',
+            '0000001110000000000000000000000011111111111111111110111111000110',
+            '0000001111000000000000000000000111111111111111111111111100011111',
+            '0000001111100000000000000000011111111111111111111111111001111111',
+            '0000001111110000000000000000111111111111111111111111100111111111',
+            '0000001111110000000000000011111111111111111111111111001111111111',
+            '0000001111111000000000011111111111111111111111111110011111111111',
+            '0000001111111000000011111111111111111111111111111100111111111110',
+            '0000001111111111111111111111111111111111111111111101111111111110',
+            '0000001111111111111111111111111111111111111111111011111111111100',
+            '0000111111111111111111111111111111111111111111110011111111111000',
+            '0001111111111111111111111111111111111111111111110111111111110000',
+            '0011111111111111111111111111111111111111111111101111111111100000',
+            '0111111111111111111111111111111111111111111111101111111111000000',
+            '0111111111000111111111111111111111111111111111101111111100000000',
+            '1111111100000011111111111111111111111101111111011111111001000000',
+            '0000000000000000011111111111111111111101111111011111000111000000',
+            '0000000000000000000111111100111111111101111110011100011111000000',
+            '0000000000000000000001111101111111111101111110100001111110000000',
+            '0000000000000000000000011011111111111001111100000001111110000000',
+            '0000000000000000000000000011111111111010000000000000111100000000',
+            '0000000000000000000000000111111111100000000000000000111000000000',
+            '0000000000000000000000000111111111000000000000000000010000000000',
+            '0000000000000000000000000111111110000000000000000000000000000000',
+            '0000000000000000000000000111110000000000000000000000000000000000',
+            '0000000000000000000000000110000000000000000000000000000000000000',
+        ];
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const aR = ART.length, aC = ART[0].length;
+        for (let r = 0; r <= R; r++) {
+            const ar = Math.min(aR - 1, Math.floor(r * aR / (R + 1)));
+            for (let c = 0; c <= C; c++) {
+                const ac = Math.min(aC - 1, Math.floor(c * aC / (C + 1)));
+                mask[r * W + c] = ART[ar][ac] === '1' ? 1 : 0;
+            }
+        }
+        return mask;
+    }
+
+    // Cycles: circle → heart → star → donut → octagon → skull → shield → leaf → trophy → crown → badge → dinosaur → chromeDino → metamaskFox → camel → scorpion → seahorse → unicornHead → petals → elephant → pawPrint → whale → …
     static forLevel(level) {
         const shapes = [
             GridShape.circle,
@@ -785,6 +833,7 @@ class GridShape {
             GridShape.petals,
             GridShape.elephant,
             GridShape.pawPrint,
+            GridShape.whale,
         ];
         return shapes[(Math.floor(level / 10) - 1) % shapes.length];
     }
@@ -816,6 +865,7 @@ class GridShape {
             GridShape.petals,
             GridShape.elephant,
             GridShape.pawPrint,
+            GridShape.whale,
         ];
         return shapes[dayOfYr % shapes.length];
     }
@@ -833,26 +883,34 @@ class GridShape {
         }
         if (activeCount === 0) return { connected: false, activeCount: 0 };
 
+        // Find the LARGEST connected component.
+        // BFS from the first active pixel would fail for shapes with decorative
+        // island clusters (bulb sparkles, scorpion legs, etc.) if the first pixel
+        // belongs to a small island rather than the main body.
         const visited = new Uint8Array(total);
-        const queue = [firstActive];
-        visited[firstActive] = 1;
-        let visitedCount = 1, qi = 0;
+        let largestComponent = 0;
 
-        while (qi < queue.length) {
-            const k = queue[qi++];
-            const r = (k / W) | 0, c = k % W;
-            const nbrs = [k - W, k + W, k - 1, k + 1];
-            const ok = [r > 0, r < rows, c > 0, c < cols];
-            for (let n = 0; n < 4; n++) {
-                if (ok[n] && mask[nbrs[n]] && !visited[nbrs[n]]) {
-                    visited[nbrs[n]] = 1; visitedCount++; queue.push(nbrs[n]);
+        for (let start = 0; start < total; start++) {
+            if (!mask[start] || visited[start]) continue;
+            const queue = [start];
+            visited[start] = 1;
+            let size = 1, qi = 0;
+            while (qi < queue.length) {
+                const k = queue[qi++];
+                const r = (k / W) | 0, c = k % W;
+                const nbrs = [k - W, k + W, k - 1, k + 1];
+                const ok = [r > 0, r < rows, c > 0, c < cols];
+                for (let n = 0; n < 4; n++) {
+                    if (ok[n] && mask[nbrs[n]] && !visited[nbrs[n]]) {
+                        visited[nbrs[n]] = 1; size++; queue.push(nbrs[n]);
+                    }
                 }
             }
+            if (size > largestComponent) largestComponent = size;
         }
-        // Accept shape if largest connected component covers ≥10% of active nodes.
-        // Artistic pixel-art shapes (scorpion legs, fox face halves, etc.) have
-        // intentional separated parts that still produce valid playable boards.
-        return { connected: visitedCount >= activeCount * 0.10, activeCount };
+
+        // Accept if the largest single component covers ≥10% of all active nodes.
+        return { connected: largestComponent >= activeCount * 0.10, activeCount };
     }
 
     // ── Main entry point ──────────────────────────────────────────────────────
