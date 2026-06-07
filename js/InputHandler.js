@@ -140,15 +140,18 @@ class InputHandler {
             }
         }
 
-        // Head node (arrowhead tip) — the primary visual tap target
+        // All nodes (body + head) — tapping anywhere on the visible path line
+        // Body nodes were missing from the original check, causing equidistant
+        // edge midpoints from neighbouring paths to win over the correct path.
         for (const p of paths) {
             if (p.state !== 'IDLE') continue;
-            const head = p.nodes[p.nodes.length - 1];
-            const d = Math.hypot(
-                canvasX - (ox + head.c * cSize),
-                canvasY - (oy + head.r * cSize)
-            );
-            if (d < bestDist) { bestDist = d; bestId = p.id; }
+            for (const node of p.nodes) {
+                const d = Math.hypot(
+                    canvasX - (ox + node.c * cSize),
+                    canvasY - (oy + node.r * cSize)
+                );
+                if (d < bestDist) { bestDist = d; bestId = p.id; }
+            }
         }
 
         if (bestId < 0) return null;
@@ -205,6 +208,7 @@ class InputHandler {
             this._tapTime     = Date.now();
 
         } else if (e.touches.length === 2) {
+            this._ignoreTap   = true;   // pinch started — discard any pending tap
             this._touchMode   = 'pinch';
             const o1 = this._containerOffset(e.touches[0].clientX, e.touches[0].clientY);
             const o2 = this._containerOffset(e.touches[1].clientX, e.touches[1].clientY);
