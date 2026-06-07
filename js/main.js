@@ -83,9 +83,17 @@
             for (let r = 0; r <= saved.gridRows; r++) grid.hEdge[r].set(saved.hEdge[r]);
             for (let r = 0; r < saved.gridRows; r++) grid.vEdge[r].set(saved.vEdge[r]);
 
+            // Re-select the shape mask for this level so milestone boards
+            // (donut, heart, etc.) correctly hide inactive nodes on reload.
+            const { mask } = generator.selectBoardMask(
+                saved.level, saved.gridRows, saved.gridCols,
+                saved.dailyMode ? 'daily' : 'normal'
+            );
+            grid.mask = mask;
+
             const paths = saved.paths.map(p => Path.fromLegacy(p));
             return {
-                grid, paths, mask: null,
+                grid, paths, mask,
                 difficulty: saved.difficulty,
                 fromSave: true,   // tells startLevel not to reset path states
                 score: saved.score,
@@ -132,9 +140,9 @@
     // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
     // Remove this block when test mode is no longer needed.
     const TEST_MODE = false;
-    const TEST_ROWS = 12;
-    const TEST_COLS = 8;
-    const TEST_LEVEL = 1;   // (70/10)%2 = 1 → heart mask
+    const TEST_ROWS = 40;
+    const TEST_COLS = 40;
+    const TEST_LEVEL = 40;   // (70/10)%2 = 1 → heart mask
     const TEST_TIER = 'HARD';
 
     // Exposed on window so existing HTML onclick attributes still work.
