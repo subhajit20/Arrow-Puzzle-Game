@@ -248,10 +248,10 @@ class Renderer {
 
         ctx.save();
         // Dynamic line width: thicker on small grids, thinner on large grids.
-        const _nodes  = (this.camera.gridRows + 1) * (this.camera.gridCols + 1);
-        const _t      = Math.max(0, Math.min(1, (_nodes - 63) / (2806 - 63)));
-        const _lwMult = 0.18 - _t * 0.07;  // 0.18 (small) → 0.11 (large)
-        const _lwMin  = 2.0  - _t * 0.7;   // 2.0  (small) → 1.3  (large)
+        const _nodes = (this.camera.gridRows + 1) * (this.camera.gridCols + 1);
+        const _t = Math.max(0, Math.min(1, (_nodes - 63) / (2806 - 63)));
+        const _lwMult = 0.20 - _t * 0.7;  // 0.30 (small) → 0.08 (large)
+        const _lwMin = 2.0 - _t * 0.7;   // 3.0  (small) → 1.0  (large)
         ctx.lineWidth = Math.max(_lwMin, cSize * _lwMult);
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
@@ -354,11 +354,16 @@ class Renderer {
         ctx.translate(cam.matE, cam.matF);
         ctx.scale(cam.cssZoom, cam.cssZoom);
 
+        // Resolve mask — board.mask is canonical; fall back to grid.mask so
+        // persistence-loaded boards (which set mask:null on the board object
+        // but keep grid.mask intact) still render the correct shape.
+        const mask = board.mask ?? board.grid?.mask ?? null;
+
         // White board background — respects mask shape.
         // With no mask: single fillRect for the full rectangle.
         // With a mask: fill only active node areas so the shape is visible.
         ctx.fillStyle = '#ffffff';
-        if (!board.mask) {
+        if (!mask) {
             ctx.fillRect(ox, oy, board.grid.cols * cSize, board.grid.rows * cSize);
         } else {
             const rows = board.grid.rows, cols = board.grid.cols;
@@ -366,7 +371,7 @@ class Renderer {
             const half = cSize * 0.5;
             for (let r = 0; r <= rows; r++) {
                 for (let c = 0; c <= cols; c++) {
-                    if (!board.mask[r * W + c]) continue;
+                    if (!mask[r * W + c]) continue;
                     ctx.fillRect(
                         ox + c * cSize - half,
                         oy + r * cSize - half,
@@ -376,8 +381,8 @@ class Renderer {
             }
         }
 
-        // Grid dots
-        this.drawGrid(board.grid, board.mask);
+        // Grid dots — only active nodes drawn when mask is present
+        this.drawGrid(board.grid, mask);
 
         // Clip to board + 1-cell padding for arrowheads
         const clipPad = Math.ceil(cSize * 0.6);
