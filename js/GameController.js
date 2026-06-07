@@ -178,7 +178,11 @@ class GameController {
 
     checkWin() {
         if (this.isWinState) return;
-        const allCleared = this.board.paths.every(p => p.state === 'CLEARED');
+        // A path is "done" when its state is CLEARED or when its exit logic has
+        // already fired (_logicFired). The two-stage exit keeps paths in MOVING
+        // state while they fly off screen, so checking state alone would miss the
+        // win condition until the last path physically leaves the canvas.
+        const allCleared = this.board.paths.every(p => p.state === 'CLEARED' || p._logicFired);
         if (!allCleared) return;
 
         this.isWinState = true;
