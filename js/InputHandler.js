@@ -93,65 +93,63 @@ class InputHandler {
 
     // ── Hit test ──────────────────────────────────────────────────────────────
 
-    // Finds the nearest IDLE path within hitRadius canvas px.
-    // Checks both edge midpoints AND the head node (arrowhead position) so
-    // tapping the arrowhead tip — the most natural target — is always precise.
-    // Only IDLE paths participate; MOVING/CRASHING edges are ignored entirely
-    // so they cannot shadow a valid tap on a nearby IDLE path.
+    // Returns the nearest IDLE path whose LINE (not just endpoints) is within
+    // hitRadius canvas px of the tap.  Uses perpendicular distance to each path
+    // segment so tapping anywhere along the visible body of a path — not just
+    // near a node or midpoint — reliably identifies the correct path.
+    //
+    // This replaces the old edge-midpoint + node-point approach which failed on
+    // dense boards (e.g. donut inner ring) where a neighbouring path's node
+    // could be geometrically closer than the correct path's nearest node even
+    // though the tap was visually on the correct path's body.
     hitTest(canvasX, canvasY) {
         const board = this.gc.board;
-        if (!board || !board.grid) return null;
+        if (!board) return null;
 
-        const grid  = board.grid;
         const cSize = this.camera.cellSize;
         const ox    = this.camera.offsetX;
         const oy    = this.camera.offsetY;
         const hitR  = Math.max(cSize * 2.5, 15);
         const paths = board.paths || [];
 
-        const byId     = new Map(paths.map(p => [p.id, p]));
-        const idleSet  = new Set(paths.filter(p => p.state === 'IDLE').map(p => p.id));
-
+        const byId = new Map(paths.map(p => [p.id, p]));
         let bestDist = hitR, bestId = -1;
 
-        // Horizontal edge midpoints — IDLE owners only
-        for (let r = 0; r <= grid.rows; r++) {
-            for (let c = 0; c < grid.cols; c++) {
-                const owner = grid.hEdge[r][c];
-                if (!idleSet.has(owner)) continue;
-                const d = Math.hypot(
-                    canvasX - (ox + (c + 0.5) * cSize),
-                    canvasY - (oy + r * cSize)
-                );
-                if (d < bestDist) { bestDist = d; bestId = owner; }
-            }
-        }
-
-        // Vertical edge midpoints — IDLE owners only
-        for (let r = 0; r < grid.rows; r++) {
-            for (let c = 0; c <= grid.cols; c++) {
-                const owner = grid.vEdge[r][c];
-                if (!idleSet.has(owner)) continue;
-                const d = Math.hypot(
-                    canvasX - (ox + c * cSize),
-                    canvasY - (oy + (r + 0.5) * cSize)
-                );
-                if (d < bestDist) { bestDist = d; bestId = owner; }
-            }
-        }
-
-        // All nodes (body + head) — tapping anywhere on the visible path line
-        // Body nodes were missing from the original check, causing equidistant
-        // edge midpoints from neighbouring paths to win over the correct path.
         for (const p of paths) {
             if (p.state !== 'IDLE') continue;
-            for (const node of p.nodes) {
-                const d = Math.hypot(
-                    canvasX - (ox + node.c * cSize),
-                    canvasY - (oy + node.r * cSize)
-                );
+            const nodes = p.nodes;
+
+            // Perpendicular distance from tap to each path segment.
+            // This correctly identifies "which path's LINE is under the finger"
+            // rather than "which path's NODE or midpoint is nearest."
+            for (let i = 0; i < nodes.length - 1; i++) {
+                const x1 = ox + nodes[i].c     * cSize;
+                const y1 = oy + nodes[i].r     * cSize;
+                const x2 = ox + nodes[i + 1].c * cSize;
+                const y2 = oy + nodes[i + 1].r * cSize;
+
+                const dx = x2 - x1, dy = y2 - y1;
+                const lenSq = dx * dx + dy * dy;
+                let d;
+                if (lenSq === 0) {
+                    d = Math.hypot(canvasX - x1, canvasY - y1);
+                } else {
+                    const t = Math.max(0, Math.min(1,
+                        ((canvasX - x1) * dx + (canvasY - y1) * dy) / lenSq
+                    ));
+                    d = Math.hypot(canvasX - (x1 + t * dx), canvasY - (y1 + t * dy));
+                }
+
                 if (d < bestDist) { bestDist = d; bestId = p.id; }
             }
+
+            // Head node (arrowhead tip) — point check for precise tip tapping
+            const head = nodes[nodes.length - 1];
+            const dHead = Math.hypot(
+                canvasX - (ox + head.c * cSize),
+                canvasY - (oy + head.r * cSize)
+            );
+            if (dHead < bestDist) { bestDist = dHead; bestId = p.id; }
         }
 
         if (bestId < 0) return null;
