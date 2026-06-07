@@ -202,12 +202,15 @@ class Renderer {
         const headPt = path.nodes[len - 1];
         const { dr, dc } = Path.headingToDelta(path.heading);
 
-        // Build full track (nodes + extension beyond head for animation)
+        // Build full track (nodes + extension beyond head for animation).
+        // ext must be large enough to cover the full off-screen exit journey —
+        // 4× the larger grid dimension ensures the track reaches the screen edge.
         const fullTrack = path.nodes.map(pt => ({
             x: ox + pt.c * cSize,
             y: oy + pt.r * cSize,
         }));
-        const ext = Math.max(60, len * 2);
+        const gridMax = Math.max(this.camera.gridRows, this.camera.gridCols);
+        const ext = Math.max(gridMax * 4, len * 2);
         for (let j = 1; j <= ext; j++) {
             fullTrack.push({
                 x: ox + (headPt.c + dc * j) * cSize,
@@ -384,18 +387,8 @@ class Renderer {
         // Grid dots — only active nodes drawn when mask is present
         this.drawGrid(board.grid, mask);
 
-        // Clip to board + 1-cell padding for arrowheads
-        const clipPad = Math.ceil(cSize * 0.6);
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(
-            ox - clipPad, oy - clipPad,
-            board.grid.cols * cSize + clipPad * 2,
-            board.grid.rows * cSize + clipPad * 2
-        );
-        ctx.clip();
-
-        // Draw each path
+        // Draw each path — no clip so MOVING paths fly off screen during exit.
+        // The canvas boundary acts as the natural outer clip.
         const paths = board.paths || [];
         paths.forEach((p, idx) => {
             this.drawPath(p, gameState.revealState
@@ -405,8 +398,6 @@ class Renderer {
                 gameState.hintPathId
             );
         });
-
-        ctx.restore(); // end clip
 
         // Confetti (no clip — can extend outside board area)
         if (gameState.particles && gameState.particles.length > 0)

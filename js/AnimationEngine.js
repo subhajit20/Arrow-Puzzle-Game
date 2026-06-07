@@ -135,15 +135,25 @@ class AnimationEngine {
                 }
             }
 
-            // Exit detection — grid bounds OR island boundary.
-            // For masked shapes with disconnected islands, a path clears as
-            // soon as its lead steps into an inactive node, so arrows never
-            // travel through gaps into other islands.
+            // Reset exit flag on first tick of each new launch so retry works.
+            if (path.animProgress <= AnimationEngine.MOVE_SPEED) path._logicFired = false;
+
+            // Two-stage exit — applies to ALL boards including masked shapes:
+            //   Stage 1 (maxLen OR exitedIsland) — path left the active area
+            //     (grid boundary OR inactive masked zone e.g. donut outer edge).
+            //     Fire game logic (score + win) immediately but keep path MOVING
+            //     so the arrow continues flying off the visible screen.
+            //   Stage 2 (offScreenLen) — path has travelled far enough to leave
+            //     the visible screen → set CLEARED to stop drawing.
             const maxLen       = Math.max(grid.rows, grid.cols) * 1.5;
+            const offScreenLen = maxLen + Math.max(grid.rows, grid.cols) * 2;
             const exitedIsland = steps >= 1 && leadInBounds && !!grid.mask && !grid.mask[leadR * maskW + leadC];
-            if (path.animProgress > maxLen || exitedIsland) {
-                path.state = 'CLEARED';
+
+            if (!path._logicFired && (path.animProgress > maxLen || exitedIsland)) {
+                path._logicFired = true;
                 if (gameController) gameController.onPathCleared(path);
+            } else if (path._logicFired && path.animProgress > offScreenLen) {
+                path.state = 'CLEARED';
             }
 
         } else if (path.state === 'CRASHING') {
