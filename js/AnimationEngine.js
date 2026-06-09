@@ -203,26 +203,55 @@ class AnimationEngine {
         );
         camera.minZoom = Math.max(fitZoom * 0.40, 0.08);
 
-        if (isLargeBoard) {
-            // Large board: fit to overview zoom before reveal + entrance animation.
-            camera.cssZoom = fitZoom; camera.matE = 0; camera.matF = 0;
-            camera.clampPan(containerEl);
-        }
-        // Small board: keep camera at current reset position — no zoom change.
-
         const N = paths.length;
         const duration = Math.min(900, Math.max(300, N * 60));
 
-        // Run path reveal — and entrance zoom only for large boards.
-        this.reveal = {
-            active: true,
-            progress: 0,
-            duration,
-            startTime: performance.now(),
-            onComplete: onComplete || null,
-        };
         if (isLargeBoard) {
-            camera.startEntranceAnimation(containerEl);
+            // ── 3-phase large-board entrance ──────────────────────────────────
+            // Phase 1: Snap instantly to zoomed-in close-up view (centre of board)
+            const closeZoom = Math.min(1.4, Math.max(fitZoom * 1.8, 0.9));
+            const boardCX   = camera.offsetX + boardW / 2;
+            const boardCY   = camera.offsetY + boardH / 2;
+            const screenCX  = bcr.width / 2;
+            const screenCY  = visibleH / 2;
+            camera.cssZoom = closeZoom;
+            camera.matE    = screenCX - boardCX * closeZoom;
+            camera.matF    = screenCY - boardCY * closeZoom;
+
+            // matE/matF that keeps the board centre on the screen centre at fitZoom
+            const overviewE = screenCX - boardCX * fitZoom;
+            const overviewF = screenCY - boardCY * fitZoom;
+
+            // Phase 2: zoom-out + path reveal run simultaneously.
+            // Phase 3: zoom-in starts THE MOMENT zoom-out finishes — no waiting
+            //          for reveal. Reveal continues independently during zoom-in.
+            this.reveal = {
+                active:    true,
+                progress:  0,
+                duration,
+                startTime: performance.now(),
+                onComplete: onComplete || null, // called when reveal finishes
+            };
+
+            // Zoom-out duration matches reveal duration for synchronised finish.
+            // The instant zoom-out completes, zoom-in begins.
+            // Zoom-out uses ease-out-back easing — it overshoots fitZoom slightly
+            // then pulls back, giving a natural slow-pull-back feel at the end.
+            // The moment zoom-out settles, zoom-in begins immediately.
+            camera.startZoomOutAnimation(
+                containerEl, fitZoom, overviewE, overviewF, duration,
+                () => camera.startEntranceAnimation(containerEl, null, true)
+            );
+
+        } else {
+            // Small board: keep camera at current reset position, reveal only.
+            this.reveal = {
+                active:    true,
+                progress:  0,
+                duration,
+                startTime: performance.now(),
+                onComplete: onComplete || null,
+            };
         }
     }
 

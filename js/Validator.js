@@ -148,4 +148,39 @@ class Validator {
             errors:   [...r1.errors, ...r2.errors],
         };
     }
+
+    // ── Blueprint structural coverage (called before RCBuilder runs) ──────────
+
+    // Verifies that the routed fixed paths collectively cover ≥ 60% of each
+    // region's active nodes. Fires as a pre-generation gate — if a region is
+    // nearly empty of skeleton nodes, the blueprint is degraded and RCBuilder
+    // falls back to unstructured fill for that region.
+    checkBlueprintCoverage(routedPaths, blueprint) {
+        if (!routedPaths?.length || !blueprint?.regions?.regions) {
+            return { ok: true, errors: [] };
+        }
+
+        // Set of all routed node positions
+        const routedSet = new Set();
+        for (const rp of routedPaths)
+            for (const n of rp.nodes) routedSet.add(`${n.r},${n.c}`);
+
+        const errors = [];
+
+        for (const reg of blueprint.regions.regions) {
+            if (!reg.nodes.length) continue;
+
+            const covered  = reg.nodes.filter(n => routedSet.has(`${n.r},${n.c}`)).length;
+            const coverage = Math.round(covered / reg.nodes.length * 100);
+
+            if (coverage < 60) {
+                errors.push(
+                    `Region ${reg.id}: routed paths cover ${coverage}% of active nodes (need ≥60%)`
+                );
+                console.warn(`[Validator] ${errors[errors.length - 1]}`);
+            }
+        }
+
+        return { ok: errors.length === 0, errors };
+    }
 }

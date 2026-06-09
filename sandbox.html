@@ -3,172 +3,237 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Arrow Game — Pipeline Sandbox</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<title>Arrow — Pipeline Sandbox</title>
 <style>
-  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; height: 100vh; overflow: hidden; }
-  #board-container { position: relative; background: #1e293b; border-radius: 12px; overflow: hidden; }
-  canvas { display: block; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
-  .badge-green  { background: #166534; color: #bbf7d0; }
-  .badge-yellow { background: #713f12; color: #fef08a; }
-  .badge-red    { background: #7f1d1d; color: #fecaca; }
-  .badge-blue   { background: #1e3a5f; color: #bfdbfe; }
-  .badge-gray   { background: #334155; color: #cbd5e1; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0f172a; color: #e2e8f0;
+  display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+}
 
-  .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid #1e293b; font-size: 13px; }
-  .stat-label { color: #94a3b8; }
-  .stat-value { font-weight: 600; color: #f1f5f9; }
+/* ── Header ── */
+#header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: #1e293b;
+  border-bottom: 1px solid #334155; flex-shrink: 0;
+}
+#header h1 { font-size: 14px; font-weight: 700; color: #7dd3fc; letter-spacing: 1px; }
+#status-pill {
+  padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  background: #1e3a5f; color: #7dd3fc;
+}
 
-  .log-entry { font-size: 11px; padding: 3px 0; border-bottom: 1px solid #1e293b; line-height: 1.5; }
-  .log-ok   { color: #4ade80; }
-  .log-warn { color: #facc15; }
-  .log-err  { color: #f87171; }
-  .log-info { color: #94a3b8; }
+/* ── Main layout ── */
+#main { display: flex; flex: 1; overflow: hidden; }
 
-  .pill-btn { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid #334155; background: #1e293b; color: #94a3b8; transition: all 0.15s; }
-  .pill-btn.active { background: #3b82f6; border-color: #3b82f6; color: #fff; }
-  .pill-btn:hover:not(.active) { background: #334155; color: #e2e8f0; }
+/* ── Canvas panel ── */
+#canvas-wrap {
+  flex: 1; position: relative; background: #1e293b;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+#board-canvas { image-rendering: pixelated; cursor: crosshair; }
+#stage-label {
+  position: absolute; top: 10px; left: 10px;
+  font-size: 11px; font-weight: 700; color: #7dd3fc;
+  background: rgba(15,23,42,0.85); padding: 4px 10px; border-radius: 6px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+#hover-info {
+  position: absolute; bottom: 10px; left: 10px;
+  font-size: 11px; color: #94a3b8;
+  background: rgba(15,23,42,0.85); padding: 4px 8px; border-radius: 4px;
+  display: none;
+}
 
-  .gen-btn { background: #3b82f6; color: #fff; border: none; padding: 8px 20px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: background 0.15s; width: 100%; }
-  .gen-btn:hover { background: #2563eb; }
-  .gen-btn:disabled { background: #334155; color: #64748b; cursor: default; }
+/* ── Controls panel ── */
+#controls {
+  width: 272px; background: #1e293b;
+  border-left: 1px solid #334155;
+  display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+}
+#controls-scroll { flex: 1; overflow-y: auto; padding: 12px; }
 
-  input[type=range] { width: 100%; accent-color: #3b82f6; }
-  input[type=number] { background: #1e293b; border: 1px solid #334155; color: #f1f5f9; border-radius: 6px; padding: 4px 8px; font-size: 13px; width: 64px; text-align: center; }
+.section { margin-bottom: 16px; }
+.section-title {
+  font-size: 10px; font-weight: 700; color: #64748b;
+  text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;
+}
+label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 3px; }
+select, input[type=number] {
+  width: 100%; padding: 5px 8px; background: #0f172a;
+  color: #e2e8f0; border: 1px solid #334155; border-radius: 5px;
+  font-size: 12px; font-family: inherit; margin-bottom: 8px;
+}
+select:focus, input:focus { outline: none; border-color: #3b82f6; }
 
-  .panel { background: #1e293b; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
-  .panel-title { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.stage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.stage-btn {
+  padding: 7px 4px; border-radius: 6px; border: 1px solid #334155;
+  background: #0f172a; color: #94a3b8;
+  font-size: 10px; font-weight: 600; font-family: inherit; cursor: pointer;
+  text-align: center; transition: all 0.12s; line-height: 1.3;
+}
+.stage-btn:hover { border-color: #3b82f6; color: #7dd3fc; background: #1e3a5f; }
+.stage-btn.active { border-color: #3b82f6; background: #1e3a5f; color: #7dd3fc; }
+.stage-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.stage-btn .num { display: block; font-size: 9px; color: #475569; margin-bottom: 1px; }
 
-  #overlay-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
-  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+.run-btn {
+  width: 100%; padding: 8px; border-radius: 6px; border: none;
+  background: #2563eb; color: #fff; font-weight: 700;
+  font-size: 12px; font-family: inherit; cursor: pointer;
+  transition: background 0.12s; margin-bottom: 6px;
+}
+.run-btn:hover { background: #1d4ed8; }
+.run-btn.secondary { background: #334155; color: #cbd5e1; }
+.run-btn.secondary:hover { background: #475569; }
+
+#stats-box {
+  background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+  padding: 8px; font-size: 11px;
+}
+.stat-row { display: flex; justify-content: space-between; padding: 2px 0; }
+.stat-key { color: #64748b; }
+.stat-val { color: #e2e8f0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+#legend { display: flex; flex-direction: column; gap: 3px; }
+.legend-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #94a3b8; }
+.legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+/* ── Log panel ── */
+#log-panel {
+  height: 120px; background: #0f172a;
+  border-top: 1px solid #334155; flex-shrink: 0; overflow-y: auto;
+  padding: 6px 12px; font-size: 11px; font-family: 'Courier New', monospace;
+}
+.log-line { padding: 1px 0; line-height: 1.5; }
+.log-info  { color: #94a3b8; }
+.log-ok    { color: #4ade80; }
+.log-warn  { color: #facc15; }
+.log-err   { color: #f87171; }
+.log-stage { color: #7dd3fc; font-weight: 700; }
+.log-time  { color: #475569; }
 </style>
 </head>
 <body>
 
-<div style="display:flex; height:100vh; gap:10px; padding:10px; box-sizing:border-box;">
+<div id="header">
+  <h1>ARROW — PIPELINE SANDBOX</h1>
+  <span id="status-pill">ready</span>
+  <span style="margin-left:auto;font-size:11px;color:#475569" id="timing-display"></span>
+</div>
 
-  <!-- ── LEFT PANEL ─────────────────────────────────────── -->
-  <div style="width:260px; flex-shrink:0; display:flex; flex-direction:column; gap:0; overflow-y:auto;">
+<div id="main">
 
-    <div style="font-size:16px; font-weight:800; color:#f1f5f9; margin-bottom:10px; letter-spacing:-0.01em;">
-      🎮 Pipeline Sandbox
-    </div>
-
-    <!-- Controls -->
-    <div class="panel">
-      <div class="panel-title">Generate</div>
-
-      <div style="margin-bottom:10px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-          <span style="font-size:12px; color:#94a3b8;">Level</span>
-          <input type="number" id="levelInput" min="1" max="100" value="76">
-        </div>
-        <input type="range" id="levelSlider" min="1" max="100" value="76">
-      </div>
-
-      <div style="margin-bottom:10px;">
-        <div style="font-size:12px; color:#94a3b8; margin-bottom:6px;">Difficulty tier</div>
-        <div style="display:flex; flex-wrap:wrap; gap:4px;" id="tierPicker">
-          <button class="pill-btn active" data-tier="AUTO">AUTO</button>
-          <button class="pill-btn" data-tier="EASY">EASY</button>
-          <button class="pill-btn" data-tier="NORMAL">NORMAL</button>
-          <button class="pill-btn" data-tier="HARD">HARD</button>
-          <button class="pill-btn" data-tier="EXPERT">EXPERT</button>
-          <button class="pill-btn" data-tier="TITAN">TITAN</button>
-        </div>
-      </div>
-
-      <div style="margin-bottom:10px;">
-        <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#94a3b8; cursor:pointer;">
-          <input type="checkbox" id="overlayToggle" checked style="accent-color:#3b82f6;">
-          Show debug overlay
-        </label>
-      </div>
-
-      <button class="gen-btn" id="genBtn" onclick="sandboxGenerate()">Generate Board</button>
-    </div>
-
-    <!-- Load JSON Board -->
-    <div class="panel">
-      <div class="panel-title">Load JSON Board</div>
-      <div style="margin-bottom:8px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-          <span style="font-size:12px; color:#94a3b8;">Level</span>
-          <input type="number" id="jsonLevelInput" min="1" max="100" value="1"
-                 style="background:#0f172a; border:1px solid #334155; color:#f1f5f9; border-radius:6px; padding:4px 8px; font-size:13px; width:64px; text-align:center;">
-        </div>
-      </div>
-      <button class="gen-btn" onclick="sandboxLoadJSON()" style="background:#0e7490;">Load boards/level_NNN.json</button>
-      <div id="jsonLoadStatus" style="font-size:11px; color:#475569; margin-top:6px;">—</div>
-    </div>
-
-    <!-- Stats -->
-    <div class="panel" id="statsPanel">
-      <div class="panel-title">Last Generation</div>
-      <div id="statsContent" style="color:#475569; font-size:12px;">No board generated yet.</div>
-    </div>
-
-    <!-- Export Board -->
-    <div class="panel">
-      <div class="panel-title">Export → boards-data.js</div>
-
-      <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
-        <span style="font-size:12px; color:#94a3b8; white-space:nowrap;">Level key</span>
-        <input type="number" id="exportLevelKey" min="1" value="1"
-               style="background:#0f172a; border:1px solid #334155; color:#f1f5f9; border-radius:6px; padding:4px 8px; font-size:13px; width:64px; text-align:center;">
-        <button class="gen-btn" onclick="exportBoard()"
-                style="flex:1; background:#059669; font-size:12px; padding:6px 10px;">
-          Export
-        </button>
-      </div>
-
-      <div id="exportStatus" style="font-size:11px; color:#475569; margin-bottom:6px;">Generate a board first.</div>
-
-      <textarea id="exportOutput" readonly
-                style="width:100%; height:110px; background:#0f172a; border:1px solid #334155;
-                       color:#94a3b8; border-radius:6px; font-size:10px; font-family:monospace;
-                       padding:6px; resize:vertical; box-sizing:border-box; display:none;"></textarea>
-
-      <button id="exportCopyBtn" onclick="copyExport()"
-              style="display:none; width:100%; margin-top:6px; background:#1e3a5f; border:none;
-                     color:#bfdbfe; padding:5px; border-radius:6px; font-size:12px; cursor:pointer;">
-        Copy to clipboard
-      </button>
-    </div>
-
-    <!-- Pipeline Log -->
-    <div class="panel" style="flex:1; min-height:80px;">
-      <div class="panel-title">Pipeline Log</div>
-      <div id="pipelineLog" style="max-height:220px; overflow-y:auto;"></div>
-    </div>
-
+  <div id="canvas-wrap">
+    <canvas id="board-canvas"></canvas>
+    <div id="stage-label">No board yet</div>
+    <div id="hover-info"></div>
   </div>
 
-  <!-- ── BOARD AREA ──────────────────────────────────────── -->
-  <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:0;">
+  <div id="controls">
+    <div id="controls-scroll">
 
-    <!-- Board info bar -->
-    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-      <span id="boardLabel" style="font-size:13px; color:#64748b;">No board</span>
-      <span id="boardBadges" style="display:flex; gap:6px;"></span>
-      <span id="genTime" style="margin-left:auto; font-size:11px; color:#475569;"></span>
+      <div class="section">
+        <div class="section-title">Board Setup</div>
+        <label>Board Size</label>
+        <select id="sel-size">
+          <option value="10,6">10 × 6 (tiny)</option>
+          <option value="18,12">18 × 12 (small)</option>
+          <option value="24,14" selected>24 × 14 (medium)</option>
+          <option value="30,18">30 × 18 (standard)</option>
+          <option value="50,30">50 × 30 (large)</option>
+          <option value="60,38">60 × 38 (xl)</option>
+        </select>
+        <label>Level</label>
+        <input type="number" id="inp-level" value="31" min="1" max="101" step="1">
+        <button class="run-btn" id="btn-generate">Generate Board</button>
+        <button class="run-btn secondary" id="btn-step-all">Step Through All Stages</button>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Pipeline Stages</div>
+        <div class="stage-grid">
+          <button class="stage-btn" data-stage="grid">
+            <span class="num">Stage 1</span>Grid / Mask
+          </button>
+          <button class="stage-btn" data-stage="regions">
+            <span class="num">Stage 2</span>Regions
+          </button>
+          <button class="stage-btn" data-stage="connectivity">
+            <span class="num">Stage 3</span>Connectivity
+          </button>
+          <button class="stage-btn" data-stage="topology">
+            <span class="num">Stage 4</span>Topology
+          </button>
+          <button class="stage-btn" data-stage="motifs">
+            <span class="num">Stage 5</span>Motifs
+          </button>
+          <button class="stage-btn" data-stage="skeletons">
+            <span class="num">Stage 6</span>Skeletons
+          </button>
+          <button class="stage-btn" data-stage="nodegraph">
+            <span class="num">Stage 7–8</span>Node Graph
+          </button>
+          <button class="stage-btn" data-stage="routes">
+            <span class="num">Stage 9</span>Routing
+          </button>
+          <button class="stage-btn" data-stage="final">
+            <span class="num">Final</span>Full Board
+          </button>
+          <button class="stage-btn" data-stage="compare">
+            <span class="num">Debug</span>Compare
+          </button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Stage Stats</div>
+        <div id="stats-box">
+          <div class="stat-row"><span class="stat-key">Stage</span><span class="stat-val" id="stat-stage">—</span></div>
+          <div class="stat-row"><span class="stat-key">Regions</span><span class="stat-val" id="stat-regions">—</span></div>
+          <div class="stat-row"><span class="stat-key">Motif types</span><span class="stat-val" id="stat-motifs">—</span></div>
+          <div class="stat-row"><span class="stat-key">Skeleton nodes</span><span class="stat-val" id="stat-skel">—</span></div>
+          <div class="stat-row"><span class="stat-key">Routed paths</span><span class="stat-val" id="stat-routes">—</span></div>
+          <div class="stat-row"><span class="stat-key">Final paths</span><span class="stat-val" id="stat-paths">—</span></div>
+          <div class="stat-row"><span class="stat-key">Coverage</span><span class="stat-val" id="stat-cov">—</span></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Motif Colours</div>
+        <div id="legend">
+          <div class="legend-row"><div class="legend-swatch" style="background:#3b82f6"></div>CORRIDOR</div>
+          <div class="legend-row"><div class="legend-swatch" style="background:#8b5cf6"></div>SPIRAL</div>
+          <div class="legend-row"><div class="legend-swatch" style="background:#ec4899"></div>NESTED_RECT</div>
+          <div class="legend-row"><div class="legend-swatch" style="background:#10b981"></div>LOOP</div>
+          <div class="legend-row"><div class="legend-swatch" style="background:#f59e0b"></div>SNAKE</div>
+          <div class="legend-row"><div class="legend-swatch" style="background:#ef4444"></div>ZIGZAG</div>
+          <div class="legend-row"><div class="legend-swatch" style="background:#06b6d4"></div>RING</div>
+          <div class="legend-row"><div class="legend-swatch" style="background:#84cc16"></div>CHAMBER</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Node Role Colours</div>
+        <div id="legend">
+          <div class="legend-row"><div class="legend-swatch" style="background:#7dd3fc"></div>ANCHOR</div>
+          <div class="legend-row"><div class="legend-swatch" style="background:#fbbf24"></div>ENTRY / EXIT</div>
+          <div class="legend-row"><div class="legend-swatch" style="background:#a78bfa"></div>BRIDGE</div>
+          <div class="legend-row"><div class="legend-swatch" style="background:#64748b"></div>INTERNAL</div>
+        </div>
+      </div>
+
     </div>
-
-    <!-- Canvas container -->
-    <div id="board-container" style="flex:1; min-height:0; position:relative;">
-      <canvas id="gameCanvas" style="position:absolute; top:0; left:0; z-index:1;"></canvas>
-      <canvas id="overlay-canvas" style="position:absolute; top:0; left:0; z-index:2; pointer-events:none;"></canvas>
-
-    </div>
-
   </div>
 
 </div>
 
-<!-- New class-based engine -->
+<div id="log-panel"></div>
+
+<!-- Pipeline classes (same load order as index.html) -->
 <script src="js/Grid.js"></script>
 <script src="js/Path.js"></script>
 <script src="js/SolvabilityOracle.js"></script>
@@ -177,249 +242,549 @@
 <script src="js/DifficultyEngine.js"></script>
 <script src="js/Validator.js"></script>
 <script src="js/GridShape.js"></script>
+<script src="js/BoardBlueprint.js"></script>
+<script src="js/PipelineConfig.js"></script>
+<script src="js/RegionLayout.js"></script>
+<script src="js/RegionConnectivity.js"></script>
+<script src="js/TopologyGenerator.js"></script>
+<script src="js/MotifAssigner.js"></script>
+<script src="js/MotifSkeletonGenerator.js"></script>
+<script src="js/RegionNodeGraphBuilder.js"></script>
+<script src="js/GlobalNodeGraphBuilder.js"></script>
+<script src="js/PathRouter.js"></script>
+<script src="js/PathInteractionDetector.js"></script>
+<script src="js/DependencyGraphBuilder.js"></script>
+<script src="js/SolveOrderPlanner.js"></script>
+<script src="js/BoardRepairer.js"></script>
 <script src="js/Generator.js"></script>
-<script src="js/Camera.js"></script>
-<script src="js/Renderer.js"></script>
-<script src="js/AnimationEngine.js"></script>
-<script src="js/InputHandler.js"></script>
-<script src="js/AudioEngine.js"></script>
-<script src="js/GameController.js"></script>
-<script src="js/Persistence.js"></script>
-<script src="js/BoardLoader.js"></script>
-<script src="js/DailyPuzzle.js"></script>
-<script src="js/boards-data.js"></script>
 
 <script>
-// =============================================================================
-// Sandbox — class-based pipeline tester
-// =============================================================================
+'use strict';
 
-// ── Instantiate classes ────────────────────────────────────────────────────
-const oracle     = new SolvabilityOracle();
-const builder    = new RCBuilder(oracle);
-const difficulty = new DifficultyEngine();
-const validator  = new Validator(oracle);
-const generator  = new Generator(builder, difficulty, validator);
-const boardsData = typeof BOARDS !== 'undefined' ? BOARDS : {};
-const loader     = new BoardLoader(boardsData);
+// ── Instances ──────────────────────────────────────────────────────────────
+const oracle  = new SolvabilityOracle();
+const builder = new RCBuilder(oracle);
+const diff    = new DifficultyEngine();
+const val     = new Validator(oracle);
+const gen     = new Generator(builder, diff, val);
 
-const canvas      = document.getElementById('gameCanvas');
-const containerEl = document.getElementById('board-container');
-const camera      = new Camera(canvas);
-const renderer    = new Renderer(canvas, camera);
-const animation   = new AnimationEngine(renderer);
-const audio       = new AudioEngine();
-const gc          = new GameController(null, renderer, audio, new Persistence(), animation);
-
-// ── Sandbox state ─────────────────────────────────────────────────────────
-const SB = {
-  tier: 'AUTO',
-  log:  [],
-  lastGenMs: 0,
-  currentBoard: null,
+// ── Palettes ───────────────────────────────────────────────────────────────
+const MOTIF_COLOR = {
+  CORRIDOR:    '#3b82f6',
+  SPIRAL:      '#8b5cf6',
+  NESTED_RECT: '#ec4899',
+  LOOP:        '#10b981',
+  SNAKE:       '#f59e0b',
+  ZIGZAG:      '#ef4444',
+  RING:        '#06b6d4',
+  CHAMBER:     '#84cc16',
 };
 
-// ── Tier picker ───────────────────────────────────────────────────────────
-document.getElementById('tierPicker').addEventListener('click', e => {
-  const btn = e.target.closest('[data-tier]');
-  if (!btn) return;
-  SB.tier = btn.dataset.tier;
-  document.querySelectorAll('#tierPicker .pill-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-});
+const REGION_PALETTE = [
+  '#f87171','#fb923c','#fbbf24','#a3e635',
+  '#34d399','#22d3ee','#60a5fa','#a78bfa',
+  '#f472b6','#e879f9','#94a3b8','#4ade80',
+];
 
-// ── Level slider ↔ input ──────────────────────────────────────────────────
-const levelSlider = document.getElementById('levelSlider');
-const levelInput  = document.getElementById('levelInput');
-levelSlider.addEventListener('input', () => { levelInput.value = levelSlider.value; });
-levelInput.addEventListener('input', () => {
-  const v = Math.max(1, Math.min(100, parseInt(levelInput.value) || 1));
-  levelSlider.value = v; levelInput.value = v;
-});
+const TOPO_COLOR = {
+  ROOT: '#fbbf24', LEAF: '#4ade80', HUB: '#f87171',
+  BRANCH: '#c084fc', INTERNAL: '#64748b',
+};
 
-// ── Console interceptor ───────────────────────────────────────────────────
-const _origWarn = console.warn.bind(console);
-const _origErr  = console.error.bind(console);
-const _origLog  = console.log.bind(console);
-function interceptConsole() {
-  SB.log = [];
-  console.warn  = (...a) => { SB.log.push({ type:'warn', msg: a.join(' ') }); _origWarn(...a); };
-  console.error = (...a) => { SB.log.push({ type:'err',  msg: a.join(' ') }); _origErr(...a);  };
-  console.log   = (...a) => { SB.log.push({ type:'info', msg: a.join(' ') }); _origLog(...a);  };
+const FINAL_COLORS = [
+  '#3b82f6','#8b5cf6','#10b981','#f59e0b',
+  '#ef4444','#06b6d4','#ec4899','#84cc16',
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let DATA  = null;
+let STAGE = 'grid';
+let CELL  = 8;
+let OX    = 0, OY = 0;
+
+// ── Canvas ─────────────────────────────────────────────────────────────────
+const wrap   = document.getElementById('canvas-wrap');
+const canvas = document.getElementById('board-canvas');
+const ctx    = canvas.getContext('2d');
+
+function resizeCanvas() {
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  if (DATA) { computeMetrics(DATA.grid.rows, DATA.grid.cols); drawStage(); }
 }
-function restoreConsole() {
-  console.warn  = _origWarn;
-  console.error = _origErr;
-  console.log   = _origLog;
-}
+window.addEventListener('resize', resizeCanvas);
 
-// ── Generate ──────────────────────────────────────────────────────────────
-function sandboxGenerate() {
-  const btn = document.getElementById('genBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Generating…';
-
-  setTimeout(() => {
-    try { _doGenerate(); }
-    finally { btn.disabled = false; btn.textContent = 'Generate Board'; }
-  }, 30);
+function computeMetrics(rows, cols) {
+  const pad = 28;
+  CELL = Math.max(4, Math.min(
+    Math.floor((canvas.width  - pad * 2) / (cols + 1)),
+    Math.floor((canvas.height - pad * 2) / (rows + 1))
+  ));
+  OX = Math.round((canvas.width  - CELL * (cols + 1)) / 2);
+  OY = Math.round((canvas.height - CELL * (rows + 1)) / 2);
 }
 
-function _doGenerate() {
-  const level   = parseInt(levelInput.value) || 76;
-  const sizes   = generator.sizesForLevel(level);
-  const size    = sizes[Math.floor(Math.random() * sizes.length)];
-  const tier    = SB.tier !== 'AUTO'
-    ? SB.tier
-    : difficulty.selectTier(level, []);
+const nXY = (r, c) => [OX + c * CELL, OY + r * CELL];
 
-  interceptConsole();
+// ── Primitives ─────────────────────────────────────────────────────────────
+function clearBoard(bg = '#ffffff') {
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawDots(grid, color = '#334155', activeOnly = true) {
+  ctx.fillStyle = color;
+  const rad = Math.max(1, CELL * 0.10);
+  for (let r = 0; r <= grid.rows; r++)
+    for (let c = 0; c <= grid.cols; c++) {
+      if (activeOnly && !grid.isActive(r, c)) continue;
+      const [x, y] = nXY(r, c);
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
+    }
+}
+
+function fillNodes(nodes, color, alpha = 0.28) {
+  if (!nodes.length) return;
+  const rad = Math.max(CELL * 0.44, 1.5);
+  ctx.fillStyle = color; ctx.globalAlpha = alpha;
+  for (const { r, c } of nodes) {
+    const [x, y] = nXY(r, c);
+    ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPolyline(nodes, color, lineW, alpha = 1) {
+  if (nodes.length < 2) return;
+  ctx.strokeStyle = color; ctx.lineWidth = lineW;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  const [x0, y0] = nXY(nodes[0].r, nodes[0].c); ctx.moveTo(x0, y0);
+  for (let i = 1; i < nodes.length; i++) {
+    const [x, y] = nXY(nodes[i].r, nodes[i].c); ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  // Arrowhead at tail
+  const tail = nodes[nodes.length - 1], prev = nodes[nodes.length - 2];
+  const dr = tail.r - prev.r, dc = tail.c - prev.c;
+  const [tx, ty] = nXY(tail.r, tail.c);
+  const ang = Math.atan2(dr, dc);
+  const hs  = Math.max(4, CELL * 0.28);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(tx + Math.cos(ang) * hs,             ty + Math.sin(ang) * hs);
+  ctx.lineTo(tx + Math.cos(ang + 2.3) * hs * 0.65, ty + Math.sin(ang + 2.3) * hs * 0.65);
+  ctx.lineTo(tx + Math.cos(ang - 2.3) * hs * 0.65, ty + Math.sin(ang - 2.3) * hs * 0.65);
+  ctx.closePath(); ctx.fill();
+}
+
+function dot(r, c, color, radius = 0.25, label = null) {
+  const [x, y] = nXY(r, c);
+  const rad = CELL * radius;
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
+  if (label && CELL >= 14) {
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.max(7, CELL * 0.28)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y);
+  }
+}
+
+function line(r1, c1, r2, c2, color, w = 1, dashed = false) {
+  const [x1, y1] = nXY(r1, c1), [x2, y2] = nXY(r2, c2);
+  ctx.strokeStyle = color; ctx.lineWidth = w;
+  ctx.setLineDash(dashed ? [3, 3] : []);
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ── Stage drawers ──────────────────────────────────────────────────────────
+function draw_grid() {
+  clearBoard('#f8fafc');
+  const { grid } = DATA;
+  // Masked nodes
+  ctx.fillStyle = '#f1f5f9';
+  const r0 = Math.max(1, CELL * 0.07);
+  for (let r = 0; r <= grid.rows; r++)
+    for (let c = 0; c <= grid.cols; c++) {
+      if (grid.isActive(r, c)) continue;
+      const [x, y] = nXY(r, c);
+      ctx.beginPath(); ctx.arc(x, y, r0, 0, Math.PI * 2); ctx.fill();
+    }
+  drawDots(grid, '#1e293b');
+  label('Stage 1 — Grid / Mask');
+  stats({ stage: 'Grid', regions: '—', motifs: '—', skel: '—', routes: '—',
+    paths: '—', cov: `${(grid.rows+1)}×${(grid.cols+1)} nodes` });
+}
+
+function draw_regions() {
+  const rl = DATA.blueprint?.regions;
+  if (!rl) return log('warn', 'Regions not computed — generate board first');
+  clearBoard('#f8fafc');
+  const { grid } = DATA;
+  rl.regions.forEach((reg, i) => fillNodes(reg.nodes, REGION_PALETTE[i % REGION_PALETTE.length], 0.35));
+  drawDots(grid, '#1e293b');
+  rl.regions.forEach((reg, i) => {
+    if (reg.center) dot(reg.center.r, reg.center.c, REGION_PALETTE[i % REGION_PALETTE.length], 0.34, String(i));
+  });
+  label('Stage 2 — Regions');
+  const assigned = Array.from(rl.assignment).filter(v => v >= 0).length;
+  stats({ stage: 'Regions', regions: rl.regionCount, motifs: '—', skel: '—', routes: '—', paths: '—', cov: `${Math.round(assigned / rl.assignment.length * 100)}%` });
+}
+
+function draw_connectivity() {
+  const bp = DATA.blueprint;
+  if (!bp?.connectivity) return log('warn', 'Connectivity not computed');
+  draw_regions();
+  const { links } = bp.connectivity;
+  for (const lk of links) {
+    const ca = bp.regions.regions[lk.regionA].center;
+    const cb = bp.regions.regions[lk.regionB].center;
+    if (!ca || !cb) continue;
+    line(ca.r, ca.c, cb.r, cb.c, `rgba(148,163,184,${0.35 + lk.strength * 0.55})`, Math.max(1, lk.strength * 2.5), true);
+    for (const cn of lk.crossingNodes) dot(cn.r, cn.c, '#f59e0b', 0.22);
+  }
+  label('Stage 3 — Region Connectivity');
+  stats({ stage: 'Connectivity', regions: bp.regions.regionCount, motifs: '—', skel: `${links.length} links`, routes: '—', paths: '—', cov: '—' });
+}
+
+function draw_topology() {
+  const bp = DATA.blueprint;
+  if (!bp?.topology) return log('warn', 'Topology not computed');
+  draw_regions();
+  const { nodes: tn, edges: te } = bp.topology.graph;
+  for (const e of te) {
+    const ra = bp.regions.regions[e.from], rb = bp.regions.regions[e.to];
+    if (!ra?.center || !rb?.center) continue;
+    line(ra.center.r, ra.center.c, rb.center.r, rb.center.c, '#7dd3fc', 1.5);
+  }
+  for (const n of tn) {
+    const reg = bp.regions.regions[n.regionId];
+    if (!reg?.center) continue;
+    dot(reg.center.r, reg.center.c, TOPO_COLOR[n.role] || '#64748b', 0.36, n.role[0]);
+  }
+  label(`Stage 4 — Topology (${bp.topology.style})`);
+  stats({ stage: `Topology: ${bp.topology.style}`, regions: tn.length, motifs: '—', skel: `${te.length} edges`, routes: '—', paths: '—', cov: '—' });
+}
+
+function draw_motifs() {
+  const bp = DATA.blueprint;
+  if (!bp?.motifs) return log('warn', 'Motifs not computed');
+  clearBoard('#f8fafc');
+  const { grid } = DATA;
+  for (const m of bp.motifs) {
+    const reg = bp.regions.regions[m.regionId];
+    fillNodes(reg.nodes, MOTIF_COLOR[m.type] || '#64748b', 0.30);
+  }
+  drawDots(grid, '#1e293b');
+  for (const m of bp.motifs) {
+    const reg = bp.regions.regions[m.regionId];
+    if (!reg?.center) continue;
+    dot(reg.center.r, reg.center.c, MOTIF_COLOR[m.type] || '#64748b', 0.32);
+    if (CELL >= 8) {
+      const [x, y] = nXY(reg.center.r, reg.center.c);
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${Math.max(6, CELL * 0.27)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(m.type.slice(0, 3), x, y);
+    }
+  }
+  const counts = {};
+  for (const m of bp.motifs) counts[m.type] = (counts[m.type] || 0) + 1;
+  const summ = Object.entries(counts).map(([k, v]) => `${k.slice(0,3)}:${v}`).join(' ');
+  label('Stage 5 — Motif Assignment');
+  stats({ stage: 'Motifs', regions: bp.motifs.length, motifs: summ, skel: '—', routes: '—', paths: '—', cov: '—' });
+}
+
+function draw_skeletons() {
+  const bp = DATA.blueprint;
+  if (!bp?.skeletons) return log('warn', 'Skeletons not computed');
+  clearBoard('#f8fafc');
+  const { grid } = DATA;
+  if (bp.motifs) {
+    for (const m of bp.motifs)
+      fillNodes(bp.regions.regions[m.regionId].nodes, MOTIF_COLOR[m.type] || '#64748b', 0.08);
+  }
+  drawDots(grid, '#cbd5e1');
+  let total = 0;
+  for (const sk of bp.skeletons) {
+    const m   = bp.motifs?.find(x => x.regionId === sk.regionId);
+    const col = MOTIF_COLOR[m?.type] || '#64748b';
+    const op  = sk.orderedPath || [];
+    total += op.length;
+    if (op.length >= 2) drawPolyline(op, col, Math.max(2, CELL * 0.20), 0.95);
+    for (const n of (sk.entryNodes || [])) dot(n.r, n.c, '#fbbf24', 0.22);
+  }
+  label('Stage 6 — Motif Skeletons');
+  stats({ stage: 'Skeletons', regions: bp.skeletons.length, motifs: '—', skel: total, routes: '—', paths: '—', cov: '—' });
+}
+
+function draw_nodegraph() {
+  const bp = DATA.blueprint;
+  if (!bp?.globalGraph) return log('warn', 'Global node graph not computed');
+  clearBoard('#f8fafc');
+  const { grid } = DATA;
+  drawDots(grid, '#e2e8f0');
+  const byId = new Map(bp.globalGraph.nodes.map(n => [n.id, n]));
+  ctx.strokeStyle = '#475569'; ctx.lineWidth = 0.8; ctx.globalAlpha = 0.45;
+  for (const e of bp.globalGraph.edges) {
+    const na = byId.get(e.from), nb = byId.get(e.to);
+    if (!na || !nb) continue;
+    const [x1, y1] = nXY(na.r, na.c), [x2, y2] = nXY(nb.r, nb.c);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  const rcol = { ANCHOR: '#7dd3fc', ENTRY: '#fbbf24', EXIT: '#f87171', INTERNAL: '#94a3b8', BRIDGE: '#a78bfa', TRANSITION: '#ec4899' };
+  for (const n of bp.globalGraph.nodes)
+    dot(n.r, n.c, rcol[n.role] || '#64748b', n.role === 'INTERNAL' ? 0.10 : 0.20);
+  label('Stage 7–8 — Global Node Graph');
+  stats({ stage: 'Node Graph', regions: '—', motifs: '—',
+    skel: `${bp.globalGraph.nodes.length} nodes / ${bp.globalGraph.edges.length} edges`, routes: '—', paths: '—', cov: '—' });
+}
+
+function draw_routes() {
+  const bp = DATA.blueprint;
+  if (!bp?.routedPaths) return log('warn', 'Routes not computed');
+  clearBoard('#f8fafc');
+  const { grid } = DATA;
+  if (bp.motifs)
+    for (const m of bp.motifs)
+      fillNodes(bp.regions.regions[m.regionId].nodes, MOTIF_COLOR[m.type] || '#64748b', 0.06);
+  drawDots(grid, '#cbd5e1');
+  bp.routedPaths.forEach((rp, i) => {
+    const col = MOTIF_COLOR[rp.motifType] || FINAL_COLORS[i % FINAL_COLORS.length];
+    if (rp.nodes?.length >= 2) drawPolyline(rp.nodes, col, Math.max(2, CELL * 0.22), 1);
+  });
+  const total = bp.routedPaths.reduce((s, p) => s + (p.nodes?.length || 0), 0);
+  label('Stage 9 — Path Routing');
+  stats({ stage: 'Routes', regions: '—', motifs: '—', skel: '—',
+    routes: `${bp.routedPaths.length} paths / ${total} nodes`, paths: '—', cov: '—' });
+}
+
+function draw_final() {
+  clearBoard('#f8fafc');
+  const { grid, paths } = DATA;
+  drawDots(grid, '#e2e8f0');
+  paths.forEach((p, i) => {
+    if (p.nodes?.length >= 2)
+      drawPolyline(p.nodes, FINAL_COLORS[i % FINAL_COLORS.length], Math.max(1.5, CELL * 0.18), 0.88);
+  });
+  const total = (grid.rows + 1) * (grid.cols + 1);
+  const owned = paths.reduce((s, p) => s + p.nodes.length, 0);
+  label('Final Board');
+  stats({ stage: 'Final', regions: '—', motifs: '—', skel: '—', routes: '—',
+    paths: paths.length, cov: `${Math.round(owned / total * 100)}%` });
+}
+
+function draw_compare() {
+  clearBoard('#f8fafc');
+  const { grid, paths, blueprint: bp } = DATA;
+  const hw = canvas.width / 2;
+
+  // Left — skeletons
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, hw, canvas.height); ctx.clip();
+  drawDots(grid, '#cbd5e1');
+  if (bp?.skeletons && bp?.motifs) {
+    for (const sk of bp.skeletons) {
+      const m   = bp.motifs.find(x => x.regionId === sk.regionId);
+      const col = MOTIF_COLOR[m?.type] || '#64748b';
+      if (sk.orderedPath?.length >= 2) drawPolyline(sk.orderedPath, col, Math.max(2, CELL * 0.20), 0.9);
+    }
+  }
+  ctx.restore();
+
+  // Right — final board
+  ctx.save(); ctx.beginPath(); ctx.rect(hw, 0, hw, canvas.height); ctx.clip();
+  drawDots(grid, '#e2e8f0');
+  paths.forEach((p, i) => {
+    if (p.nodes?.length >= 2)
+      drawPolyline(p.nodes, FINAL_COLORS[i % FINAL_COLORS.length], Math.max(1.5, CELL * 0.18), 0.88);
+  });
+  ctx.restore();
+
+  // Divider + labels
+  ctx.strokeStyle = '#334155'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(hw, 0); ctx.lineTo(hw, canvas.height); ctx.stroke();
+  ctx.fillStyle = 'rgba(15,23,42,0.82)'; ctx.fillRect(4, 4, 88, 20); ctx.fillRect(hw + 4, 4, 96, 20);
+  ctx.fillStyle = '#7dd3fc'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('SKELETONS', 8, 17); ctx.fillText('FINAL BOARD', hw + 8, 17);
+  label('Debug — Skeletons vs Final Board');
+}
+
+// ── Dispatch ───────────────────────────────────────────────────────────────
+const DRAWERS = {
+  grid: draw_grid, regions: draw_regions, connectivity: draw_connectivity,
+  topology: draw_topology, motifs: draw_motifs, skeletons: draw_skeletons,
+  nodegraph: draw_nodegraph, routes: draw_routes, final: draw_final, compare: draw_compare,
+};
+
+function drawStage() {
+  if (!DATA) return;
+  (DRAWERS[STAGE] || draw_grid)();
+}
+
+// ── Generate ───────────────────────────────────────────────────────────────
+async function generate() {
+  const [rows, cols] = document.getElementById('sel-size').value.split(',').map(Number);
+  const level = parseInt(document.getElementById('inp-level').value) || 1;
+  setStatus('generating…', '#1e3a5f', '#7dd3fc');
+  log('stage', `Generating ${rows}×${cols} at level ${level}…`);
+  document.getElementById('btn-generate').disabled = true;
+  await sleep(10);
+
   const t0 = performance.now();
-  const board = generator.build(size.rows, size.cols, level, 4);
-  SB.lastGenMs = Math.round(performance.now() - t0);
-  restoreConsole();
-
-  if (!board) {
-    document.getElementById('boardLabel').textContent = 'Generation failed';
-    document.getElementById('statsContent').innerHTML = '<span style="color:#f87171">No board produced.</span>';
-    renderLog();
-    return;
+  let result;
+  try { result = gen.build(rows, cols, level, 2); }
+  catch (e) {
+    log('err', 'Crash: ' + e.message);
+    setStatus('error', '#7f1d1d', '#fca5a5');
+    document.getElementById('btn-generate').disabled = false; return;
   }
 
-  SB.currentBoard = board;
-  gc.board = board;
+  const ms = Math.round(performance.now() - t0);
+  document.getElementById('timing-display').textContent = ms + 'ms';
 
-  renderer.resize(containerEl, board.grid.rows, board.grid.cols);
-  animation.stop();
-  animation.start(board, gc);
-
-  updateUI(board);
-  renderLog();
-}
-
-// ── Load pre-built board ──────────────────────────────────────────────────
-function sandboxLoadJSON() {
-  const level    = parseInt(document.getElementById('jsonLevelInput').value) || 1;
-  const statusEl = document.getElementById('jsonLoadStatus');
-
-  const board = loader.load(level);
-  if (!board) {
-    statusEl.textContent = `No pre-built board for level ${level}`;
-    statusEl.style.color = '#f87171';
-    return;
+  if (!result) {
+    log('err', 'Generator returned null — no valid board produced');
+    setStatus('failed', '#7f1d1d', '#fca5a5');
+    document.getElementById('btn-generate').disabled = false; return;
   }
 
-  SB.currentBoard = board;
-  gc.board = board;
-  renderer.resize(containerEl, board.grid.rows, board.grid.cols);
-  animation.stop();
-  animation.start(board, gc);
+  DATA = result;
+  computeMetrics(rows, cols);
 
-  statusEl.textContent = `Loaded level ${level} — ${board.paths.length} paths`;
-  statusEl.style.color = '#4ade80';
-  updateUI(board);
-}
+  const bp = result.blueprint;
+  const stages = [];
+  if (bp?.regions)       stages.push('Regions');
+  if (bp?.connectivity)  stages.push('Connectivity');
+  if (bp?.topology)      stages.push(`Topology(${bp.topology.style})`);
+  if (bp?.motifs)        stages.push('Motifs');
+  if (bp?.skeletons)     stages.push('Skeletons');
+  if (bp?.globalGraph)   stages.push('NodeGraph');
+  if (bp?.routedPaths)   stages.push(`Routes(${bp.routedPaths.length})`);
+  if (bp?.solveOrder)    stages.push('SolveOrder');
 
-// ── Stats UI ──────────────────────────────────────────────────────────────
-const TIER_COLOR = { EASY:'badge-blue', NORMAL:'badge-green', HARD:'badge-yellow', EXPERT:'badge-red', TITAN:'badge-red' };
-
-function updateUI(board) {
-  const paths      = board.paths;
-  const grid       = board.grid;
-  const totalNodes = (grid.rows + 1) * (grid.cols + 1);
-  const usedNodes  = paths.reduce((s, p) => s + p.nodes.length, 0);
-  const coverage   = Math.round(usedNodes / totalNodes * 100);
-  const tier       = board.difficulty || 'NORMAL';
-
-  document.getElementById('boardLabel').textContent =
-    `${grid.rows}×${grid.cols} grid · Level ${parseInt(levelInput.value) || 76}`;
-
-  document.getElementById('boardBadges').innerHTML =
-    `<span class="badge ${TIER_COLOR[tier] || 'badge-gray'}">${tier}</span>` +
-    `<span class="badge badge-gray">${paths.length} paths</span>` +
-    `<span class="badge badge-gray" style="color:${coverage===100?'#4ade80':coverage>=95?'#fbbf24':'#f87171'}">${coverage}% coverage</span>`;
-
-  document.getElementById('genTime').textContent = SB.lastGenMs
-    ? `Generated in ${SB.lastGenMs}ms` : '';
-
-  document.getElementById('statsContent').innerHTML = `
-    <div class="stat-row"><span class="stat-label">Grid</span><span class="stat-value">${grid.rows}×${grid.cols}</span></div>
-    <div class="stat-row"><span class="stat-label">Paths</span><span class="stat-value">${paths.length}</span></div>
-    <div class="stat-row"><span class="stat-label">Coverage</span><span class="stat-value" style="color:${coverage===100?'#4ade80':'#fbbf24'}">${coverage}%</span></div>
-    <div class="stat-row"><span class="stat-label">Difficulty</span><span class="stat-value">${tier}</span></div>
-    <div class="stat-row"><span class="stat-label">Min path</span><span class="stat-value">${Math.min(...paths.map(p=>p.nodes.length))} nodes</span></div>
-    <div class="stat-row"><span class="stat-label">Max path</span><span class="stat-value">${Math.max(...paths.map(p=>p.nodes.length))} nodes</span></div>
-    <div class="stat-row"><span class="stat-label">Gen time</span><span class="stat-value">${SB.lastGenMs}ms</span></div>
-  `;
-}
-
-function renderLog() {
-  const logEl = document.getElementById('pipelineLog');
-  if (!SB.log.length) {
-    logEl.innerHTML = '<span style="color:#475569; font-size:11px;">No log entries.</span>';
-    return;
-  }
-  logEl.innerHTML = SB.log.map(e => {
-    const cls  = e.type === 'err' ? 'log-err' : e.type === 'warn' ? 'log-warn' : 'log-info';
-    const icon = e.type === 'err' ? '✕' : e.type === 'warn' ? '⚠' : '·';
-    const msg  = e.msg.length > 100 ? e.msg.slice(0, 97) + '…' : e.msg;
-    return `<div class="log-entry ${cls}">${icon} ${msg}</div>`;
-  }).join('');
-  logEl.scrollTop = logEl.scrollHeight;
-}
-
-// ── Export ────────────────────────────────────────────────────────────────
-function exportBoard() {
-  const statusEl = document.getElementById('exportStatus');
-  const outputEl = document.getElementById('exportOutput');
-  const copyBtn  = document.getElementById('exportCopyBtn');
-
-  if (!SB.currentBoard) {
-    statusEl.textContent = 'No board — generate one first.';
-    statusEl.style.color = '#f87171';
-    outputEl.style.display = 'none';
-    copyBtn.style.display  = 'none';
-    return;
+  log('ok', `Done ${ms}ms — ${result.paths.length} paths, ${result.coverage}% coverage, diff: ${result.difficulty}`);
+  if (stages.length) log('info', 'Blueprint: ' + stages.join(' → '));
+  else log('warn', 'Blueprint skipped (board too large or nodes > 3500)');
+  if (bp?.motifs) {
+    const c = {};
+    for (const m of bp.motifs) c[m.type] = (c[m.type] || 0) + 1;
+    log('info', 'Motifs: ' + Object.entries(c).map(([k,v]) => `${k}(${v})`).join(', '));
   }
 
-  const levelKey = parseInt(document.getElementById('exportLevelKey').value) || 1;
-  const board    = SB.currentBoard;
-  const entry    = loader.export(board, levelKey);
-
-  const totalNodes = (board.grid.rows + 1) * (board.grid.cols + 1);
-  const usedNodes  = board.paths.reduce((s, p) => s + p.nodes.length, 0);
-  const coverage   = Math.round(usedNodes / totalNodes * 100);
-
-  outputEl.value         = entry;
-  outputEl.style.display = 'block';
-  copyBtn.style.display  = 'block';
-  statusEl.textContent   = `${board.paths.length} paths · ${board.grid.rows}×${board.grid.cols} · ${coverage}% coverage`;
-  statusEl.style.color   = coverage === 100 ? '#4ade80' : coverage >= 95 ? '#fbbf24' : '#f87171';
+  setStatus('ready', '#14532d', '#4ade80');
+  document.getElementById('btn-generate').disabled = false;
+  syncStageBtns();
+  drawStage();
 }
 
-function copyExport() {
-  const outputEl = document.getElementById('exportOutput');
-  outputEl.select();
-  outputEl.setSelectionRange(0, 99999);
-  navigator.clipboard.writeText(outputEl.value).then(() => {
-    const btn = document.getElementById('exportCopyBtn');
-    btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = 'Copy to clipboard'; }, 1500);
+async function stepAll() {
+  const order = ['grid','regions','connectivity','topology','motifs','skeletons','nodegraph','routes','final'];
+  for (const s of order) {
+    const btn = document.querySelector(`[data-stage="${s}"]`);
+    if (btn && !btn.disabled) { setActiveStage(s); await sleep(700); }
+  }
+}
+
+// ── UI helpers ─────────────────────────────────────────────────────────────
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function setStatus(text, bg, col) {
+  const el = document.getElementById('status-pill');
+  el.textContent = text;
+  if (bg)  el.style.background = bg;
+  if (col) el.style.color = col;
+}
+
+function label(text) { document.getElementById('stage-label').textContent = text; }
+
+function stats({ stage, regions, motifs, skel, routes, paths, cov }) {
+  const s = id => document.getElementById(id);
+  s('stat-stage').textContent   = stage   || '—';
+  s('stat-regions').textContent = regions || '—';
+  s('stat-motifs').textContent  = motifs  || '—';
+  s('stat-skel').textContent    = skel    || '—';
+  s('stat-routes').textContent  = routes  || '—';
+  s('stat-paths').textContent   = paths   || '—';
+  s('stat-cov').textContent     = cov     || '—';
+}
+
+function setActiveStage(s) {
+  STAGE = s;
+  document.querySelectorAll('.stage-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.stage === s));
+  drawStage();
+}
+
+function syncStageBtns() {
+  const bp = DATA?.blueprint;
+  const avail = {
+    grid: true, final: true, compare: true,
+    regions:      !!bp?.regions,
+    connectivity: !!bp?.connectivity,
+    topology:     !!bp?.topology,
+    motifs:       !!bp?.motifs,
+    skeletons:    !!bp?.skeletons,
+    nodegraph:    !!bp?.globalGraph,
+    routes:       !!bp?.routedPaths,
+  };
+  document.querySelectorAll('.stage-btn').forEach(btn => {
+    btn.disabled = !avail[btn.dataset.stage];
   });
 }
 
-// ── Resize ────────────────────────────────────────────────────────────────
-window.addEventListener('resize', () => {
-  if (SB.currentBoard) {
-    renderer.resize(containerEl, SB.currentBoard.grid.rows, SB.currentBoard.grid.cols);
-  }
+function log(type, msg) {
+  const panel = document.getElementById('log-panel');
+  const now   = new Date();
+  const ts    = `${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const div   = document.createElement('div');
+  div.className = `log-line log-${type}`;
+  div.innerHTML = `<span class="log-time">[${ts}]</span> ${msg}`;
+  panel.appendChild(div);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+// ── Hover info ─────────────────────────────────────────────────────────────
+canvas.addEventListener('mousemove', e => {
+  if (!DATA) return;
+  const rect = canvas.getBoundingClientRect();
+  const col  = Math.round((e.clientX - rect.left - OX) / CELL);
+  const row  = Math.round((e.clientY - rect.top  - OY) / CELL);
+  const { grid } = DATA;
+  const info = document.getElementById('hover-info');
+  if (row >= 0 && row <= grid.rows && col >= 0 && col <= grid.cols) {
+    let txt = `(${row},${col})`;
+    const bp = DATA.blueprint;
+    if (bp?.regions?.assignment) {
+      const rid = bp.regions.assignment[row * (grid.cols + 1) + col];
+      if (rid >= 0) {
+        txt += `  region:${rid}`;
+        const m = bp.motifs?.find(x => x.regionId === rid);
+        if (m) txt += `  ${m.type}`;
+      }
+    }
+    const owner = grid.nodeOwner[row * (grid.cols + 1) + col];
+    if (owner >= 0) txt += `  path:${owner}`;
+    info.textContent = txt; info.style.display = 'block';
+  } else { info.style.display = 'none'; }
+});
+canvas.addEventListener('mouseleave', () => { document.getElementById('hover-info').style.display = 'none'; });
+
+// ── Wire events ────────────────────────────────────────────────────────────
+document.getElementById('btn-generate').addEventListener('click', generate);
+document.getElementById('btn-step-all').addEventListener('click', stepAll);
+document.querySelectorAll('.stage-btn').forEach(btn => {
+  btn.addEventListener('click', () => { if (!btn.disabled) setActiveStage(btn.dataset.stage); });
 });
 
-// ── Init ──────────────────────────────────────────────────────────────────
-window.onload = () => {
-  animation.start({ grid: new Grid(48, 36), paths: [], mask: null }, gc);
-  sandboxGenerate();
-};
+// ── Init ───────────────────────────────────────────────────────────────────
+resizeCanvas();
+syncStageBtns();
+log('info', 'Press "Generate Board" to start — then step through each pipeline stage');
+log('info', 'Hover over any node on the canvas to see its region, motif, and path ownership');
 </script>
 </body>
 </html>
