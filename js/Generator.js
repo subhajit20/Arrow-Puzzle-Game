@@ -19,9 +19,9 @@
 
 class Generator {
     constructor(builder, difficulty, validator) {
-        this.builder = builder;    // RCBuilder
+        this.builder    = builder;    // RCBuilder
         this.difficulty = difficulty; // DifficultyEngine
-        this.validator = validator;  // Validator
+        this.validator  = validator;  // Validator
     }
 
     // ── Grid sizes per level ──────────────────────────────────────────────────
@@ -36,17 +36,17 @@ class Generator {
             return [{ rows: size, cols: size }];
         }
 
-        // All other levels → rectangular grids, no mask.
-        if (level <= 3) return [{ rows: 10, cols: 6 }, { rows: 12, cols: 8 }];
-        if (level <= 7) return [{ rows: 14, cols: 8 }, { rows: 12, cols: 8 }, { rows: 14, cols: 10 }];
-        if (level <= 12) return [{ rows: 18, cols: 10 }, { rows: 16, cols: 10 }, { rows: 18, cols: 12 }];
-        if (level <= 20) return [{ rows: 24, cols: 14 }, { rows: 20, cols: 12 }, { rows: 22, cols: 14 }];
-        if (level <= 30) return [{ rows: 30, cols: 18 }, { rows: 28, cols: 16 }, { rows: 32, cols: 20 }];
-        if (level <= 40) return [{ rows: 36, cols: 22 }, { rows: 32, cols: 20 }, { rows: 38, cols: 24 }];
-        if (level <= 55) return [{ rows: 42, cols: 26 }, { rows: 40, cols: 24 }, { rows: 44, cols: 28 }];
-        if (level <= 70) return [{ rows: 50, cols: 30 }, { rows: 48, cols: 28 }, { rows: 52, cols: 32 }];
-        if (level <= 85) return [{ rows: 56, cols: 34 }, { rows: 52, cols: 32 }, { rows: 58, cols: 36 }];
-        return [{ rows: 60, cols: 38 }, { rows: 60, cols: 36 }, { rows: 58, cols: 40 }, { rows: 62, cols: 40 }];
+        // All other levels → rectangular + square grids.
+        if (level <= 3)  return [{ rows: 10, cols: 6  }, { rows: 12, cols: 8  }, { rows:  8, cols:  8 }];
+        if (level <= 7)  return [{ rows: 14, cols: 8  }, { rows: 12, cols: 8  }, { rows: 14, cols: 10 }, { rows: 12, cols: 12 }];
+        if (level <= 12) return [{ rows: 18, cols: 10 }, { rows: 16, cols: 10 }, { rows: 18, cols: 12 }, { rows: 14, cols: 14 }];
+        if (level <= 20) return [{ rows: 24, cols: 14 }, { rows: 20, cols: 12 }, { rows: 22, cols: 14 }, { rows: 18, cols: 18 }];
+        if (level <= 30) return [{ rows: 30, cols: 18 }, { rows: 28, cols: 16 }, { rows: 32, cols: 20 }, { rows: 22, cols: 22 }];
+        if (level <= 40) return [{ rows: 36, cols: 22 }, { rows: 32, cols: 20 }, { rows: 38, cols: 24 }, { rows: 28, cols: 28 }];
+        if (level <= 55) return [{ rows: 42, cols: 26 }, { rows: 40, cols: 24 }, { rows: 44, cols: 28 }, { rows: 34, cols: 34 }];
+        if (level <= 70) return [{ rows: 50, cols: 30 }, { rows: 48, cols: 28 }, { rows: 52, cols: 32 }, { rows: 40, cols: 40 }];
+        if (level <= 85) return [{ rows: 56, cols: 34 }, { rows: 52, cols: 32 }, { rows: 58, cols: 36 }, { rows: 46, cols: 46 }];
+        return [{ rows: 60, cols: 38 }, { rows: 60, cols: 36 }, { rows: 58, cols: 40 }, { rows: 62, cols: 40 }, { rows: 50, cols: 50 }];
     }
 
     // ── Board shape mask — delegated to GridShape ─────────────────────────────
@@ -59,24 +59,124 @@ class Generator {
 
     // Builds one board attempt for the given tier on the provided grid.
     // Returns { paths, cx } where cx is the evaluated difficulty before fillD.
-    _constructAttempt(grid, tier, zoneMap) {
+    _constructAttempt(grid, tier, zoneMap, blueprint = null) {
         const knobs = this.difficulty.knobsForTier(tier, zoneMap);
         const paths = [];
-        const ctr = { n: 0 };
+        const ctr   = { n: 0 };
 
-        // 1. Chain backbone
-        const chainRow = 1 + ((Math.random() * grid.rows) | 0);
-        if (knobs.chainDepth > 0)
-            this.builder.buildChain(grid, paths, ctr, knobs.chainDepth, chainRow);
+        // Stages 2–3 — Region layout and connectivity.
+        // Guard: only run once per blueprint (mask is constant across batch attempts).
+        // Skip on very large boards (> 2000 nodes) to stay within time budget.
+        const _bpNodes = (grid.rows + 1) * (grid.cols + 1);
+        if (blueprint && !blueprint.regions && _bpNodes <= 3500) {
+            const _activeCount = blueprint.config.activeCount ?? _bpNodes;
+            // Use the level passed to build() directly via blueprint.config.level.
+            // Fall back to boardRows/boardCols-derived estimate only if missing.
+            const _level       = blueprint.config.level ?? blueprint.config.boardRows ?? 1;
+            const _seed        = blueprint.config.seed  ?? 0;
+            const _count       = RegionLayout._determineRegionCount(_activeCount, _level);
+            console.log(`[Generator] Blueprint regions: ${_count} (level=${_level}, activeNodes=${_activeCount})`);
+            const _layout      = new RegionLayout().generate(grid, _count, _seed);
+            blueprint.regions  = _layout;
+            if (_layout) {
+                blueprint.connectivity = new RegionConnectivity().generate(_layout, grid);
+            }
+        }
 
-        // 2. Main fill
+        // Stages 4–5 — Topology and motif assignment.
+        // Guard: only run once per blueprint (depends on regions, constant per mask).
+        if (blueprint && blueprint.regions && blueprint.connectivity &&
+            !blueprint.topology && _bpNodes <= 3500) {
+            blueprint.topology = new TopologyGenerator().generate(
+                blueprint.connectivity, blueprint.config
+            );
+            if (blueprint.topology) {
+                blueprint.motifs = new MotifAssigner().assign(
+                    blueprint.regions, blueprint.topology, blueprint.config
+                );
+                if (blueprint.motifs?.length) {
+                    console.log(
+                        `[Blueprint] ${blueprint.motifs.length} regions | ` +
+                        blueprint.motifs.map(m => `${m.regionId}:${m.type}`).join(' ')
+                    );
+                }
+            }
+        }
+
+        // Stages 6–8 — Motif skeletons, region node graphs, global node graph.
+        if (blueprint && blueprint.motifs && !blueprint.skeletons && _bpNodes <= 3500) {
+            blueprint.skeletons = new MotifSkeletonGenerator().generate(
+                blueprint.motifs, blueprint.regions, grid
+            );
+            if (blueprint.skeletons) {
+                blueprint.regionGraphs = new RegionNodeGraphBuilder().build(
+                    blueprint.skeletons, blueprint.regions, blueprint.connectivity
+                );
+                if (blueprint.regionGraphs) {
+                    blueprint.globalGraph = new GlobalNodeGraphBuilder().build(
+                        blueprint.regionGraphs, blueprint.connectivity, blueprint.topology
+                    );
+                }
+            }
+        }
+
+        // Stages 9–12 — Path routing, interaction detection, dependency DAG, solve order.
+        if (blueprint && blueprint.globalGraph && !blueprint.routedPaths && _bpNodes <= 3500) {
+            blueprint.routedPaths = new PathRouter().route(
+                blueprint.globalGraph, blueprint.regionGraphs, blueprint.topology, grid,
+                blueprint.skeletons   // orderedPath enables shape-following routing
+            );
+            if (blueprint.routedPaths?.length) {
+                blueprint.interactions = new PathInteractionDetector().detect(
+                    blueprint.routedPaths, grid
+                );
+                blueprint.dependencyGraph = new DependencyGraphBuilder().build(
+                    blueprint.routedPaths, blueprint.interactions, blueprint.topology
+                );
+                if (blueprint.dependencyGraph) {
+                    const tmpGrid = this._freshGrid(grid.rows, grid.cols, grid.mask);
+                    blueprint.solveOrder = new SolveOrderPlanner().plan(
+                        blueprint.dependencyGraph, blueprint.routedPaths,
+                        blueprint.config, tmpGrid, this.builder.oracle
+                    );
+                }
+            }
+        }
+
+        // Resolve blueprint constraints — used to switch generation path below.
+        // Also extract the motif zone map independently: it is used even when
+        // solveOrder fails, so the RC fallback path still gets region-aware fill.
+        const bpConstraints = blueprint?.solveOrder ? blueprint.toRCConstraints() : null;
+        const motifZone     = (blueprint?.motifs && blueprint?.regions)
+            ? blueprint._buildZoneOverride()
+            : null;
+
+        // 1–3. Fill backbone — blueprint path or original RC path
         const totalNodes = (grid.rows + 1) * (grid.cols + 1);
-        const maxFails = Math.max(400, Math.floor(totalNodes * 0.55));
-        this.builder.fillA(grid, paths, ctr, maxFails, {
-            d: knobs.d, lenScale: knobs.lenScale, zoneMap,
-        });
+        const maxFails   = Math.max(400, Math.floor(totalNodes * 0.55));
 
-        // 3. Gap fill (two passes)
+        if (bpConstraints) {
+            // ── Blueprint generation path ──────────────────────────────────────
+            console.log(
+                `[Generator] Blueprint attempt — fixed: ${bpConstraints.fixedPaths?.length ?? 0} paths,` +
+                ` solvableDepth: ${bpConstraints.chainDepth}`
+            );
+            this.builder.fillWithBlueprint(grid, paths, ctr, bpConstraints);
+        } else {
+            // ── Original RC generation path ────────────────────────────────────
+            const chainRow = 1 + ((Math.random() * grid.rows) | 0);
+            if (knobs.chainDepth > 0)
+                this.builder.buildChain(grid, paths, ctr, knobs.chainDepth, chainRow);
+
+            // Use motif zone map when available so RC paths within each region
+            // visually express the region's motif style (corridor = straight, etc.)
+            this.builder.fillA(grid, paths, ctr, maxFails, {
+                d: knobs.d, lenScale: knobs.lenScale,
+                zoneMap: motifZone || zoneMap,
+            });
+        }
+
+        // 3. Gap fill
         this.builder.fillB(grid, paths, ctr);
         this.builder.fillC(grid, paths);
         this.builder.fillB(grid, paths, ctr);
@@ -85,8 +185,11 @@ class Generator {
         // 4. Score complexity BEFORE fillD — gap pieces must not dilute the score
         const cx = this.difficulty.evaluate(paths, grid);
 
-        // 5. Oracle gap fill — runs after scoring
-        this.builder.fillD(grid, paths, ctr);
+        // 5. Oracle gap fill.
+        // When blueprint is active, skip the reversal pass inside fillD — it
+        // changes headings of existing paths and breaks blueprint solvability.
+        // The convergence loop and force-fill still run, giving full coverage.
+        this.builder.fillD(grid, paths, ctr, !!bpConstraints);
 
         return { paths, cx };
     }
@@ -95,7 +198,7 @@ class Generator {
 
     // Runs up to `batch` attempts, returns the best-scoring result.
     // "Best" = tier match first, then closest score to tier centre.
-    constructForTier(grid, tier, batch, zoneMap) {
+    constructForTier(grid, tier, batch, zoneMap, blueprint = null) {
         const CENTER = { EASY: 3, NORMAL: 9.5, HARD: 17.5, EXPERT: 25.5, TITAN: 33 };
         let best = null, bestDelta = Infinity;
 
@@ -115,7 +218,7 @@ class Generator {
             const origChainDepth = this.difficulty.chainDepthForTier;
             this.difficulty._overrideChainDepth = cdi;
 
-            const { paths, cx } = this._constructAttempt(attemptGrid, tier, zm);
+            const { paths, cx } = this._constructAttempt(attemptGrid, tier, zm, blueprint);
 
             this.difficulty._overrideChainDepth = null;
 
@@ -179,6 +282,13 @@ class Generator {
         // Target tier
         const tier = this.difficulty.selectTier(level, []);
 
+        // Blueprint — rides through the pipeline as a data carrier.
+        // Stages 2–12 will populate its sections in later phases.
+        const pipelineConfig = PipelineConfig.fromLevel(level, null, context);
+        PipelineConfig.mergeRuntime(pipelineConfig, { boardRows: rows, boardCols: cols, mask, activeCount, difficultyTarget: tier });
+        const blueprint = new BoardBlueprint(pipelineConfig);
+        blueprint.grid  = { rows, cols, mask, activeCount };
+
         const zoneMap = new ZoneMap().generate(rows, cols);
         const grid = new Grid(rows, cols);
         grid.mask = mask;   // wire mask into grid so RCBuilder respects it
@@ -188,7 +298,7 @@ class Generator {
         for (let round = 0; round < MAX_ROUNDS; round++) {
             grid.reset();
             grid.mask = mask;   // re-apply after reset (reset clears nodeOwner, not mask)
-            const attempt = this.constructForTier(grid, tier, BATCH, zoneMap);
+            const attempt = this.constructForTier(grid, tier, BATCH, zoneMap, blueprint);
             if (!attempt) continue;
 
             const { paths, cx } = attempt;
@@ -221,23 +331,45 @@ class Generator {
             );
 
             if (!check.ok) {
+                // Attempt targeted repair before discarding this board entirely.
+                // Only repair when more rounds are available (don't waste time on the last round).
+                if (round < MAX_ROUNDS - 1) {
+                    const targetScore = DifficultyEngine.TIER_CENTER[tier] ?? 10;
+                    const repaired    = new BoardRepairer().repair(
+                        paths, grid, this.validator, this.builder.oracle,
+                        this.difficulty, this.builder,
+                        { tier, targetScore }
+                    );
+                    if (repaired.ok) {
+                        console.log(`[Generator] L${level} round ${round + 1} repaired — coverage: ${repaired.coverage}%`);
+                        result = { grid, paths, difficulty: cx.tier, coverage: repaired.coverage, mask, blueprint };
+                        if (cx.tier === tier) break;
+                        continue; // repaired but wrong tier — keep best, try another round
+                    }
+                }
                 console.warn('[Generator] Validation failed — retrying');
                 continue;
             }
 
-            result = { grid, paths, difficulty: cx.tier, coverage: check.coverage, mask };
+            result = { grid, paths, difficulty: cx.tier, coverage: check.coverage, mask, blueprint };
 
             // Accept immediately on exact tier match
             if (cx.tier === tier) break;
-
-            // Keep as best if no result yet or closer tier
-            result = result || { grid, paths, difficulty: cx.tier, coverage: check.coverage, mask };
         }
 
         if (!result) {
             console.error('[Generator] Failed to produce a valid board after all rounds');
             return null;
         }
+
+        // Re-sync nodeOwner with the result paths before returning.
+        // Later rounds call grid.reset() which wipes nodeOwner, so we must
+        // rebuild it here to ensure result.grid is consistent with result.paths.
+        const W = result.grid.cols + 1;
+        result.grid.nodeOwner.fill(-1);
+        for (const p of result.paths)
+            for (const { r, c } of p.nodes)
+                result.grid.nodeOwner[r * W + c] = p.id;
 
         return result;
     }

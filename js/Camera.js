@@ -29,7 +29,7 @@ class Camera {
         '36x22': 0.65,
         '40x24': 0.70,
         '42x26': 0.74,
-        '48x28': 0.83,
+        '48x28': 0.50,
         '50x30': 0.87,
         '52x32': 0.92,
         '56x34': 1.00,
@@ -202,16 +202,19 @@ class Camera {
 
     // ── Entrance animation ────────────────────────────────────────────────────
 
-    // Zooms from fitZoom → 1.65 over ~1100ms (cubic ease-in-out).
-    // onComplete (optional) — called when the animation finishes.
-    startEntranceAnimation(containerEl, onComplete) {
+    // Zooms from fitZoom → 1.3 over ~1400ms (cubic ease-in-out).
+    // fromCurrentPos: when true, skips the initial snap and animates from
+    // wherever the camera currently is — used when Phase 2 (zoom-out) has
+    // already positioned the camera correctly.
+    startEntranceAnimation(containerEl, onComplete, fromCurrentPos = false) {
         if (this._animReq) { cancelAnimationFrame(this._animReq); this._animReq = null; }
         if (!containerEl || !this.cellSize) { this.reset(); if (onComplete) onComplete(); return; }
 
         const bcr = containerEl.getBoundingClientRect();
-        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
+        // Run the snap-out + zoom-in entrance on large boards (any device).
+        // Small boards get a simple reset — no animation needed.
         const isLargeBoard = this.gridRows >= 36 || this.gridCols >= 22;
-        if (!isMobile || !isLargeBoard) { this.reset(); if (onComplete) onComplete(); return; }
+        if (!isLargeBoard) { this.reset(); if (onComplete) onComplete(); return; }
 
         const header = document.getElementById('game-header');
         const ctrls = document.getElementById('game-controls');
@@ -241,20 +244,25 @@ class Camera {
             f: screenCY - boardCY * z,
         });
 
-        // Start: zoomed out overview — dramatic zoom for large boards.
-        const startZ = Math.min(
-            (usableW * 0.85) / boardW,
-            (usableH * 0.85) / boardH,
-            0.45
-        );
-        const { e: startE, f: startF } = centredMat(startZ);
-
         // Target: zoomed in deep to centre
-        const targetZ = 1.3;
+        const targetZ = 4.0;
         const { e: targetE, f: targetF } = centredMat(targetZ);
 
-        // Snap to start position immediately
-        this.cssZoom = startZ; this.matE = startE; this.matF = startF;
+        // Start position: use current camera state (fromCurrentPos=true, Phase 3)
+        // or snap to overview (fromCurrentPos=false, standalone entrance).
+        let startZ, startE, startF;
+        if (fromCurrentPos) {
+            // Phase 3: camera already at the right overview position from zoom-out.
+            // Animate from exactly where zoom-out left off — no snap, no jerk.
+            startZ = this.cssZoom;
+            startE = this.matE;
+            startF = this.matF;
+        } else {
+            startZ = Math.min((usableW * 0.85) / boardW, (usableH * 0.85) / boardH, 0.45);
+            ({ e: startE, f: startF } = centredMat(startZ));
+            // Snap to start position immediately
+            this.cssZoom = startZ; this.matE = startE; this.matF = startF;
+        }
 
         const ANIM_MS = 1400;
         const t0 = performance.now();
@@ -271,6 +279,46 @@ class Camera {
                 self.cssZoom = targetZ;
                 self.matE = targetE;
                 self.matF = targetF;
+                self._animReq = null;
+                if (onComplete) onComplete();
+            }
+        };
+        this._animReq = requestAnimationFrame(step);
+    }
+
+    // Animates from the current zoom/pan to the given targetZoom over durationMs.
+    // Used for Phase 2 (zoom out while paths reveal) and Phase 3 (zoom back in).
+    // When snapToStart is true (Phase 3), first snaps camera to centred overview
+    // then animates inward — reuses existing startEntranceAnimation logic.
+    // When snapToStart is false (Phase 2), animates from current position outward.
+    // targetE / targetF: the matE/matF at the target zoom that centres the board
+    // on screen. Computed by the caller who has all the geometry context.
+    startZoomOutAnimation(containerEl, targetZoom, targetE, targetF, durationMs, onComplete) {
+        if (this._animReq) { cancelAnimationFrame(this._animReq); this._animReq = null; }
+
+        const startZ = this.cssZoom;
+        const startE = this.matE;
+        const startF = this.matF;
+        const endE = targetE;
+        const endF = targetF;
+        const t0 = performance.now();
+        const self = this;
+
+        const step = now => {
+            const p = Math.min(1.0, (now - t0) / durationMs);
+            // Ease-out-back: overshoots slightly past target then naturally
+            // pulls back — creates the slow-pull-back feel at the end of zoom-out.
+            const c1 = 1.70158, c3 = c1 + 1;
+            const t  = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
+            self.cssZoom = startZ + (targetZoom - startZ) * t;
+            self.matE = startE + (endE - startE) * t;
+            self.matF = startF + (endF - startF) * t;
+            if (p < 1.0) {
+                self._animReq = requestAnimationFrame(step);
+            } else {
+                self.cssZoom = targetZoom;
+                self.matE = endE;
+                self.matF = endF;
                 self._animReq = null;
                 if (onComplete) onComplete();
             }

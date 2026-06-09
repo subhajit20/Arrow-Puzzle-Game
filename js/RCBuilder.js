@@ -18,14 +18,27 @@ class RCBuilder {
 
     // ── Path length sampling ──────────────────────────────────────────────────
 
-    // Returns a random target path length (in nodes).
-    // Path length range: min 2 (Phase D last resort), max 15 (Phase A/B cap).
+    // Dynamic cap scales with board size so large boards get visually prominent
+    // paths instead of uniformly tiny ones.
+    static lenCap(totalNodes) {
+        if (totalNodes <= 200)  return 12;
+        if (totalNodes <= 600)  return 18;
+        if (totalNodes <= 1500) return 25;
+        return 32;
+    }
+
+    // Returns a random target path length scaled to the board's dynamic cap.
+    // SHORT bucket stays small on all board sizes — only MEDIUM and LONG scale up.
     // Phase A/B enforce minimum 3 via growWalk; Phase D Option 4 allows 2.
-    sampleLen() {
+    sampleLen(totalNodes = 0) {
+        const cap      = RCBuilder.lenCap(totalNodes);
+        const medRange = Math.max(5, (cap * 0.4) | 0);
+        const longBase = Math.max(10, (cap * 0.65) | 0);
+        const longRange = Math.max(2, cap - longBase);
         const r = Math.random();
-        if (r < 0.25) return Math.min(15, Math.round(3  + Math.random() * 2));  // SHORT  3–5
-        if (r < 0.75) return Math.min(15, Math.round(5  + Math.random() * 5));  // MEDIUM 5–10
-        return             Math.min(15, Math.round(10 + Math.random() * 5));     // LONG   10–15
+        if (r < 0.25) return Math.min(cap, 3 + Math.round(Math.random() * 2));                         // SHORT
+        if (r < 0.75) return Math.min(cap, 5 + Math.round(Math.random() * medRange));                  // MEDIUM
+        return             Math.min(cap, longBase + Math.round(Math.random() * longRange));             // LONG
     }
 
     // ── Head ray check ────────────────────────────────────────────────────────
@@ -99,11 +112,136 @@ class RCBuilder {
         return best;
     }
 
+    // ── Style-aware anchor pickers ────────────────────────────────────────────
+
+    // EDGE — prefers nodes near the board boundary (inverse of interior bias).
+    _pickAnchorEdge(grid) {
+        const R = grid.rows + 1, C = grid.cols + 1;
+        let best = null, bestScore = -Infinity;
+        for (let k = 0; k < 18; k++) {
+            const r = (Math.random() * R) | 0;
+            const c = (Math.random() * C) | 0;
+            if (!grid.isAvailable(r, c)) continue;
+            let empty = 0, tot = 0;
+            for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+                const rr = r + dr, cc = c + dc;
+                if (!grid.inBounds(rr, cc)) continue;
+                tot++; if (grid.isAvailable(rr, cc)) empty++;
+            }
+            const edgeDist  = Math.min(r, R - 1 - r, c, C - 1 - c);
+            const edgeScore = 1.0 - edgeDist / Math.max(1, Math.min(R, C) / 2);
+            const score = (empty / Math.max(1, tot)) * 0.4 + edgeScore * 0.6 + Math.random() * 0.1;
+            if (score > bestScore) { bestScore = score; best = { r, c }; }
+        }
+        return best;
+    }
+
+    // CLUSTER — picks within clusterRadius of a randomly chosen cluster center.
+    _pickAnchorClustered(grid, centers, radius) {
+        if (!centers || !centers.length) return this.pickAnchor(grid);
+        const R = grid.rows + 1, C = grid.cols + 1;
+        const center = centers[(Math.random() * centers.length) | 0];
+        let best = null, bestScore = -Infinity;
+        for (let k = 0; k < 22; k++) {
+            const dr = Math.round((Math.random() * 2 - 1) * radius);
+            const dc = Math.round((Math.random() * 2 - 1) * radius);
+            const r  = Math.max(0, Math.min(R - 1, center.r + dr));
+            const c  = Math.max(0, Math.min(C - 1, center.c + dc));
+            if (!grid.isAvailable(r, c)) continue;
+            let empty = 0, tot = 0;
+            for (let ddr = -1; ddr <= 1; ddr++) for (let ddc = -1; ddc <= 1; ddc++) {
+                const rr = r + ddr, cc = c + ddc;
+                if (!grid.inBounds(rr, cc)) continue;
+                tot++; if (grid.isAvailable(rr, cc)) empty++;
+            }
+            const dist  = Math.sqrt(dr * dr + dc * dc) / Math.max(1, radius);
+            const score = (empty / Math.max(1, tot)) - dist * 0.3 + Math.random() * 0.1;
+            if (score > bestScore) { bestScore = score; best = { r, c }; }
+        }
+        return best || this.pickAnchor(grid);
+    }
+
+    // INNER — 75% of candidates sampled from inside the landmark bounding box.
+    _pickAnchorInner(grid, bbox) {
+        if (!bbox) return this.pickAnchor(grid);
+        const R = grid.rows + 1, C = grid.cols + 1;
+        let best = null, bestScore = -Infinity;
+        for (let k = 0; k < 20; k++) {
+            let r, c;
+            if (Math.random() < 0.75) {
+                r = bbox.minR + Math.round(Math.random() * (bbox.maxR - bbox.minR));
+                c = bbox.minC + Math.round(Math.random() * (bbox.maxC - bbox.minC));
+            } else {
+                r = (Math.random() * R) | 0;
+                c = (Math.random() * C) | 0;
+            }
+            r = Math.max(0, Math.min(R - 1, r));
+            c = Math.max(0, Math.min(C - 1, c));
+            if (!grid.isAvailable(r, c)) continue;
+            let empty = 0, tot = 0;
+            for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+                const rr = r + dr, cc = c + dc;
+                if (!grid.inBounds(rr, cc)) continue;
+                tot++; if (grid.isAvailable(rr, cc)) empty++;
+            }
+            const score = (empty / Math.max(1, tot)) + Math.random() * 0.1;
+            if (score > bestScore) { bestScore = score; best = { r, c }; }
+        }
+        return best || this.pickAnchor(grid);
+    }
+
+    // Dispatches to the correct anchor picker based on anchorMode.
+    _pickAnchorForMode(grid, mode, clusterCenters, innerBbox, clusterRadius) {
+        if (mode === 'EDGE')    return this._pickAnchorEdge(grid);
+        if (mode === 'CLUSTER') return this._pickAnchorClustered(grid, clusterCenters, clusterRadius || 5);
+        if (mode === 'INNER')   return this._pickAnchorInner(grid, innerBbox);
+        return this.pickAnchor(grid); // UNIFORM (default)
+    }
+
+    // Bounding box of all nodes across a set of paths.
+    _landmarkBbox(paths) {
+        let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+        for (const p of paths) for (const { r, c } of p.nodes) {
+            if (r < minR) minR = r; if (r > maxR) maxR = r;
+            if (c < minC) minC = c; if (c > maxC) maxC = c;
+        }
+        return (minR === Infinity) ? null : { minR, maxR, minC, maxC };
+    }
+
+    // Farthest-point sampling: picks `count` well-spread cluster centers.
+    _generateClusterCenters(grid, count) {
+        const R = grid.rows + 1, C = grid.cols + 1;
+        const centers = [];
+        // Seed: random available node
+        for (let tries = 0; tries < 40 && !centers.length; tries++) {
+            const r = (Math.random() * R) | 0, c = (Math.random() * C) | 0;
+            if (grid.inBounds(r, c)) centers.push({ r, c });
+        }
+        if (!centers.length) return centers;
+
+        for (let i = 1; i < count; i++) {
+            let bestDist = -1, best = null;
+            // Sample ~30% of nodes for performance on large grids
+            for (let k = 0; k < Math.max(40, ((R * C * 0.3) | 0)); k++) {
+                const r = (Math.random() * R) | 0, c = (Math.random() * C) | 0;
+                if (!grid.inBounds(r, c)) continue;
+                const minDist = Math.min(...centers.map(ct =>
+                    (r - ct.r) ** 2 + (c - ct.c) ** 2
+                ));
+                if (minDist > bestDist) { bestDist = minDist; best = { r, c }; }
+            }
+            if (best) centers.push(best);
+        }
+        return centers;
+    }
+
     // ── Self-avoiding walk ────────────────────────────────────────────────────
 
     // Winding self-avoiding walk from anchor.
     // zoneMap (ZoneMap instance, optional): zone-aware scoring and length scaling.
-    growWalk(grid, anchor, targetLen, zoneMap) {
+    // colBound / rowBound (optional): hard inclusive upper limits on node coords —
+    // used by fillASymmetric to constrain the walk to one half of the board.
+    growWalk(grid, anchor, targetLen, zoneMap, colBound = Infinity, rowBound = Infinity) {
         const R = grid.rows + 1, C = grid.cols + 1;
         const nodes = [{ r: anchor.r, c: anchor.c }];
         const local = new Set([anchor.r + ',' + anchor.c]);
@@ -115,6 +253,7 @@ class RCBuilder {
                 .map(([dr, dc]) => ({ r: cur.r + dr, c: cur.c + dc, dr, dc }))
                 .filter(o =>
                     o.r >= 0 && o.r < R && o.c >= 0 && o.c < C &&
+                    o.c <= colBound && o.r <= rowBound &&
                     grid.isAvailable(o.r, o.c) &&
                     !local.has(o.r + ',' + o.c)
                 );
@@ -183,10 +322,20 @@ class RCBuilder {
     // knobs.d [0,1]: high → prefers long inward rays (harder).
     // knobs.zoneMap (ZoneMap): enables zone-aware length + scoring.
     fillA(grid, paths, ctr, maxFails, knobs) {
-        const d        = knobs?.d        != null ? knobs.d        : 0.5;
-        const lenScale = knobs?.lenScale != null ? knobs.lenScale : 1;
-        const zoneMap  = knobs?.zoneMap  || null;
+        const d             = knobs?.d        != null ? knobs.d        : 0.5;
+        const lenScale      = knobs?.lenScale != null ? knobs.lenScale : 1;
+        const zoneMap       = knobs?.zoneMap  || null;
+        const anchorMode    = knobs?.anchorMode    || 'UNIFORM';
+        const clusterRadius = knobs?.clusterRadius || 5;
         const { rows, cols } = grid;
+
+        // Pre-compute anchor strategy data once before the fill loop.
+        const clusterCenters = anchorMode === 'CLUSTER'
+            ? this._generateClusterCenters(grid, knobs?.clusterCount || 4)
+            : null;
+        const innerBbox = anchorMode === 'INNER' && paths.length > 0
+            ? this._landmarkBbox(paths)
+            : null;
 
         // Topology weight: how aggressively to create intentional blockers.
         // d=0 (EASY) → 0% blocked-ray attempts (all paths free)
@@ -199,13 +348,18 @@ class RCBuilder {
         let fails = 0;
 
         while (fails < maxFails) {
-            const anchor = this.pickAnchor(grid);
+            const anchor = this._pickAnchorForMode(grid, anchorMode, clusterCenters, innerBbox, clusterRadius);
             if (!anchor) { fails++; continue; }
 
-            const effLen = zoneMap
+            const effLen     = zoneMap
                 ? lenScale * zoneMap.lenScale(anchor.r, anchor.c)
                 : lenScale;
-            const targetLen = Math.max(3, Math.round(this.sampleLen() * effLen));
+            const totalNodes = (grid.rows + 1) * (grid.cols + 1);
+            const lenCap     = RCBuilder.lenCap(totalNodes);
+            const baseLenFn  = knobs?.sampleLenFn
+                ? () => knobs.sampleLenFn(lenCap)
+                : () => this.sampleLen(totalNodes);
+            const targetLen  = Math.max(3, Math.min(lenCap, Math.round(baseLenFn() * effLen)));
             const nodes     = this.growWalk(grid, anchor, targetLen, zoneMap);
 
             if (nodes.length < 3) { fails++; continue; }
@@ -393,7 +547,10 @@ class RCBuilder {
     // Fills remaining empty nodes using oracle as the sole validity gate.
     // Unlike A/B (head-ray-clear) and C (tail-append + LIFO), Phase D allows
     // placements that fail the ray check if they still produce a solvable board.
-    fillD(grid, paths, ctr) {
+    // skipReversal: when true, skips the reversal pass and the reversal sub-step
+    // inside force-fill. Used when blueprint fixed paths are present — reversing
+    // their headings breaks the solvability established by the blueprint pipeline.
+    fillD(grid, paths, ctr, skipReversal = false) {
         const R    = grid.rows + 1, C = grid.cols + 1;
         const byId = new Map(paths.map(p => [p.id, p]));
         const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -543,7 +700,8 @@ class RCBuilder {
         // ── Reversal pass ─────────────────────────────────────────────────────
         // For remaining empties: reverse adjacent path so its head becomes tail,
         // then prepend the empty node to the new tail.
-        let revProgress = true;
+        // Skipped when blueprint fixed paths are present (skipReversal=true).
+        let revProgress = !skipReversal;
         while (revProgress) {
             revProgress = false;
             for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
@@ -608,7 +766,8 @@ class RCBuilder {
                 }
 
                 // Last resort: reverse adjacent head, prepend, verify
-                if (!placed) {
+                // Skipped when blueprint fixed paths are present.
+                if (!placed && !skipReversal) {
                     for (const [dr, dc] of DIRS) {
                         if (placed) break;
                         const ar = r + dr, ac = c + dc;
@@ -639,5 +798,100 @@ class RCBuilder {
         }
 
         this.oracle.recomputePlaceOrder(paths, grid);
+    }
+
+    // ── Blueprint integration — Stage 13 entry point ──────────────────────────
+
+    // Places all fixed paths from the blueprint constraints, then runs the
+    // standard chain + fillA to fill remaining empty nodes. fillB/C/D are
+    // called by Generator._constructAttempt after this returns, unchanged.
+    fillWithBlueprint(grid, paths, ctr, constraints) {
+        const { fixedPaths, chainDepth, topoWeight, zoneOverride } = constraints;
+
+        // Place fixed paths in ascending placeOrder (placed-first = cleared-last)
+        const sorted = [...(fixedPaths || [])].sort((a, b) =>
+            (a.placeOrder ?? 0) - (b.placeOrder ?? 0)
+        );
+
+        let placed = 0;
+        for (const rp of sorted) {
+            if (this._placeFixedPath(grid, paths, ctr, rp)) placed++;
+        }
+
+        console.log(`[RCBuilder] fillWithBlueprint: ${placed}/${sorted.length} fixed paths placed`);
+
+        // Chain backbone on top of fixed paths (shorter depth to avoid overriding structure)
+        const effectiveDepth = Math.max(0, (chainDepth || 0) - 1);
+        if (effectiveDepth > 0) {
+            const chainRow = 1 + ((Math.random() * grid.rows) | 0);
+            this.buildChain(grid, paths, ctr, effectiveDepth, chainRow);
+        }
+
+        // Main fill — use topology weight and zone override from blueprint
+        const totalNodes = (grid.rows + 1) * (grid.cols + 1);
+        const maxFails   = Math.max(400, Math.floor(totalNodes * 0.55));
+        const zm         = zoneOverride || new ZoneMap().generate(grid.rows, grid.cols);
+
+        this.fillA(grid, paths, ctr, maxFails, {
+            d:          topoWeight ?? 0.5,
+            lenScale:   1.0,
+            zoneMap:    zm,
+            anchorMode: 'UNIFORM',
+            clusterCount: 0,
+        });
+    }
+
+    // Places one routed path onto the grid. Returns true on success.
+    // Gates: all nodes free + orthogonal + headRayClear + isBoardSolvable.
+    // Reverts cleanly if any gate fails.
+    _placeFixedPath(grid, paths, ctr, routedPath) {
+        const { nodes, heading } = routedPath;
+        if (!nodes?.length || nodes.length < 2 || !heading) return false;
+
+        // All nodes must be in-bounds and free
+        for (const n of nodes) {
+            if (!grid.inBounds(n.r, n.c) || !grid.isFree(n.r, n.c)) return false;
+        }
+
+        // Must be strictly orthogonal
+        for (let i = 0; i < nodes.length - 1; i++) {
+            if (Math.abs(nodes[i].r - nodes[i + 1].r) + Math.abs(nodes[i].c - nodes[i + 1].c) !== 1)
+                return false;
+        }
+
+        // Assign id and mark ownership
+        const id   = ctr.n++;
+        const path = new Path(id, nodes.map(n => ({ r: n.r, c: n.c })), heading);
+        path.originalNodes = nodes.map(n => ({ r: n.r, c: n.c }));
+        path.placeOrder    = routedPath.placeOrder ?? 0;
+
+        for (const n of nodes) grid.setOwner(n.r, n.c, id);
+        for (let i = 0; i < nodes.length - 1; i++)
+            grid.reserveEdge(nodes[i].r, nodes[i].c, nodes[i + 1].r, nodes[i + 1].c, id);
+
+        paths.push(path);
+
+        // Gate: headRayClear
+        const { dr, dc } = Path.headingToDelta(heading);
+        if (!this.headRayClear(grid, path.head(), dr, dc)) {
+            this._revertPath(grid, paths, ctr, path, nodes);
+            return false;
+        }
+
+        // Gate: isBoardSolvable
+        if (!this.oracle.isBoardSolvable(paths, grid)) {
+            this._revertPath(grid, paths, ctr, path, nodes);
+            return false;
+        }
+
+        return true;
+    }
+
+    _revertPath(grid, paths, ctr, path, nodes) {
+        for (const n of nodes) grid.setOwner(n.r, n.c, -1);
+        for (let i = 0; i < nodes.length - 1; i++)
+            grid.reserveEdge(nodes[i].r, nodes[i].c, nodes[i + 1].r, nodes[i + 1].c, -1);
+        paths.pop();
+        ctr.n--;
     }
 }

@@ -250,11 +250,11 @@ class Renderer {
         if (drawPoints.length < 2) return;
 
         ctx.save();
-        // Dynamic line width: thicker on small grids, thinner on large grids.
+        // Dynamic line width: thicker on small grids, thicker floor on large grids.
         const _nodes = (this.camera.gridRows + 1) * (this.camera.gridCols + 1);
         const _t = Math.max(0, Math.min(1, (_nodes - 63) / (2806 - 63)));
-        const _lwMult = 0.20 - _t * 0.7;  // 0.30 (small) → 0.08 (large)
-        const _lwMin = 2.0 - _t * 0.7;   // 3.0  (small) → 1.0  (large)
+        const _lwMult = 0.16 - _t * 0.06;  // 0.16 (small) → 0.10 (large)
+        const _lwMin  = 1.6  - _t * 0.2;   // 1.6  (small) → 1.4  (large)
         ctx.lineWidth = Math.max(_lwMin, cSize * _lwMult);
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
@@ -305,7 +305,11 @@ class Renderer {
         //   REVEAL active     → front of growing reveal path (tracks drawPoints)
         //   MOVING            → front of elastic rope (tracks drawPoints)
         //   CRASHING          → front of retracting path (tracks drawPoints)
-        const aSize = Math.max(3.0, cSize * 0.32);
+        // Arrowhead size: larger multiplier on bigger grids so heads stay visible.
+        const _nodes2 = (this.camera.gridRows + 1) * (this.camera.gridCols + 1);
+        const _t2     = Math.max(0, Math.min(1, (_nodes2 - 63) / (2806 - 63)));
+        const _aMult  = 0.34 + _t2 * 0.12;  // 0.34 (small) → 0.46 (large)
+        const aSize   = Math.max(3.0, cSize * _aMult);
         let hx, hy;
         if (path.state === 'IDLE' && !(revealState && revealState.active)) {
             const headNode = path.nodes[path.nodes.length - 1];

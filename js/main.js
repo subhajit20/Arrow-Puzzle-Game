@@ -140,14 +140,13 @@
     // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
     // Remove this block when test mode is no longer needed.
     const TEST_MODE = false;
-    const TEST_ROWS = 50;
-    const TEST_COLS = 40;
-    const TEST_LEVEL = 240;   // (70/10)%2 = 1 → heart mask
+    const TEST_ROWS = 48;
+    const TEST_COLS = 28;
+    const TEST_LEVEL = 92;   // (70/10)%2 = 1 → heart mask
     const TEST_TIER = 'HARD';
 
     // Exposed on window so existing HTML onclick attributes still work.
     window.startNormalGame = function () {
-        _hideSplash();
         showLoader();
 
         setTimeout(() => {
@@ -188,11 +187,8 @@
     };
 
     window.showSplashScreen = function () {
-        const saved = persistence.load(lvl => generator.sizesForLevel(lvl));
-        daily.initSplash(saved);
-        document.getElementById('daily-result-overlay')?.classList.add('hidden');
-        document.getElementById('win-overlay')?.classList.add('opacity-0', 'pointer-events-none', 'scale-105');
-        document.getElementById('fail-overlay')?.classList.add('opacity-0', 'pointer-events-none', 'scale-105');
+        // Splash is now a separate page — navigate back to it.
+        window.location.href = 'index.html';
     };
 
     // Wired to win overlay "Next Level" button
@@ -212,20 +208,20 @@
         gc.useHint();
     };
 
-    function _hideSplash() {
-        const splash = document.getElementById('daily-splash');
-        if (!splash) return;
-        splash.style.transition = 'opacity 0.25s';
-        splash.style.opacity = '0';
-        setTimeout(() => splash.classList.add('hidden'), 260);
-    }
-
-    // ── Startup ───────────────────────────────────────────────────────────────
+    // ── Startup — read URL params and launch the right mode ──────────────────
 
     window.onload = () => {
-        const saved = persistence.load(lvl => generator.sizesForLevel(lvl));
-        daily.initSplash(saved);
-        // No board loaded here — board loads only when the player taps a button.
+        const params = new URLSearchParams(window.location.search);
+        const mode = params.get('mode') || 'normal';
+
+        if (mode === 'daily') {
+            daily.start(containerEl);
+        } else {
+            // Normal game — resume saved progress or start fresh
+            const saved = persistence.load(lvl => generator.sizesForLevel(lvl));
+            const level = saved ? saved.level : 1;
+            startNormalLevel(level);
+        }
     };
 
 })();

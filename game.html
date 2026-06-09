@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en" style="height: -webkit-fill-available;">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="VECTO">
+    <meta name="theme-color" content="#0f172a">
+    <title>VECTO: Colossal Mosaic Edition</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+            touch-action: none;
+            height: 100svh !important;
+            min-height: -webkit-fill-available;
+            padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+            padding-left: max(0.75rem, env(safe-area-inset-left));
+            padding-right: max(0.75rem, env(safe-area-inset-right));
+        }
+
+        @media (max-width: 767px) {
+            body {
+                padding: 0 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+            }
+            #game-header {
+                flex-shrink: 0 !important;
+                width: 100% !important;
+                max-width: none !important;
+                border-radius: 0 !important;
+                border-left: none !important;
+                border-right: none !important;
+                border-top: none !important;
+                background: #ffffff !important;
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+                box-shadow: none !important;
+                padding-top: max(0.5rem, env(safe-area-inset-top)) !important;
+                padding-bottom: 0.5rem !important;
+                padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
+                padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
+            }
+            #board-container {
+                flex: 1 !important;
+                min-height: 0 !important;
+                position: relative !important;
+                width: 100% !important;
+                max-width: none !important;
+                margin: 0 !important;
+                border-radius: 0 !important;
+                border-width: 0 !important;
+                box-shadow: none !important;
+                aspect-ratio: auto !important;
+            }
+            #game-controls {
+                flex-shrink: 0 !important;
+                width: 100% !important;
+                max-width: none !important;
+                border-radius: 0 !important;
+                border-left: none !important;
+                border-right: none !important;
+                border-bottom: none !important;
+                background: #ffffff !important;
+                backdrop-filter: none !important;
+                -webkit-backdrop-filter: none !important;
+                box-shadow: none !important;
+                padding-top: 0.5rem !important;
+                padding-bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
+                padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
+                padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
+            }
+            #level-display { font-size: 1rem !important; line-height: 1.25 !important; }
+            #score-display  { font-size: 1rem !important; line-height: 1.25 !important; }
+            #tier-badge     { font-size: 0.6rem !important; margin-top: 0 !important; }
+            #game-header .flex.items-center.gap-1 { padding: 0.2rem 0.5rem !important; }
+            #hint-btn { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+            #game-controls>button:first-child { padding: 0.5rem !important; }
+        }
+
+        @media (min-width: 768px) {
+            #board-container {
+                width: min(calc(100vw - 48px), calc(100svh - 185px), 28rem) !important;
+            }
+        }
+
+        @media (max-width: 767px) and (orientation: landscape) {
+            #game-header { padding-top: max(0.4rem, env(safe-area-inset-top)) !important; padding-bottom: 0.4rem !important; }
+            #game-controls { padding-top: 0.4rem !important; padding-bottom: max(0.4rem, env(safe-area-inset-bottom)) !important; }
+            #level-display { font-size: 1rem !important; line-height: 1.2 !important; }
+            #score-display { font-size: 1rem !important; }
+            #tier-badge    { display: none !important; }
+            .hint-label    { display: none; }
+        }
+
+        #generation-loader {
+            position: fixed; inset: 0; z-index: 100;
+            background: #ffffff;
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column; gap: 16px;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+        #generation-loader.visible { opacity: 1; pointer-events: all; }
+        #generation-loader .loader-label {
+            color: #64748b; font-size: 13px; font-weight: 600;
+            letter-spacing: 0.08em; text-transform: uppercase; margin-top: 12px;
+        }
+        .loader-arrow { position: absolute; clip-path: polygon(0% 25%, 55% 25%, 55% 0%, 100% 50%, 55% 100%, 55% 75%, 0% 75%); }
+        .la1  { width:70px; height:36px; background:#112540; top:22%; animation: slideRight 2.2s linear infinite; }
+        .la2  { width:50px; height:26px; background:#112540; top:55%; animation: slideLeft  1.8s linear infinite 0.4s; }
+        .la3  { width:90px; height:46px; background:#112540; top:38%; animation: slideRight 3.0s linear infinite 1.1s; }
+        .la4  { width:44px; height:22px; background:#112540; top:70%; animation: slideRight 1.6s linear infinite 0.7s; }
+        .la5  { width:60px; height:30px; background:#112540; top:12%; animation: slideLeft  2.5s linear infinite 0.2s; }
+        .la6  { width:80px; height:40px; background:#112540; top:82%; animation: slideRight 2.8s linear infinite 1.5s; }
+        .la-up { clip-path: polygon(25% 100%, 25% 45%, 0% 45%, 50% 0%, 100% 45%, 75% 45%, 75% 100%); }
+        .la7  { width:30px; height:60px; background:#112540; left:20%; animation: slideUp   2.0s linear infinite 0.3s; }
+        .la8  { width:24px; height:48px; background:#112540; left:50%; animation: slideDown 2.6s linear infinite 0.9s; }
+        .la9  { width:36px; height:72px; background:#112540; left:75%; animation: slideUp   3.2s linear infinite 0.6s; }
+        .la10 { width:22px; height:44px; background:#112540; left:88%; animation: slideDown 1.9s linear infinite 1.2s; }
+        @keyframes slideRight { from{transform:translateX(-120px);opacity:0} 10%{opacity:0.7} 90%{opacity:0.7} to{transform:translateX(calc(100vw + 120px));opacity:0} }
+        @keyframes slideLeft  { from{transform:translateX(calc(100vw + 120px));opacity:0} 10%{opacity:0.6} 90%{opacity:0.6} to{transform:translateX(-120px);opacity:0} }
+        @keyframes slideUp    { from{transform:translateY(calc(100vh + 100px));opacity:0} 10%{opacity:0.65} 90%{opacity:0.65} to{transform:translateY(-100px);opacity:0} }
+        @keyframes slideDown  { from{transform:translateY(-100px);opacity:0} 10%{opacity:0.55} 90%{opacity:0.55} to{transform:translateY(calc(100vh + 100px));opacity:0} }
+
+        #gameCanvas { will-change: transform; transform-origin: 0 0; }
+        .premium-shadow { box-shadow: 0 12px 30px -10px rgba(15,23,42,0.08), 0 4px 12px -5px rgba(15,23,42,0.03); }
+        .board-shadow   { box-shadow: inset 0 2px 8px rgba(0,0,0,0.01), 0 20px 45px -15px rgba(15,23,42,0.12); }
+        .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%,90% { transform: translate3d(-2px,0,0); }
+            20%,80% { transform: translate3d(4px,0,0); }
+            30%,50%,70% { transform: translate3d(-5px,0,0); }
+            40%,60% { transform: translate3d(5px,0,0); }
+        }
+        .glow-btn:active { transform: scale(0.96); }
+    </style>
+</head>
+
+<body class="w-screen flex flex-col justify-between items-center p-3 bg-slate-50">
+
+    <!-- Generation Loader -->
+    <div id="generation-loader">
+        <div class="loader-arrow la1"></div>
+        <div class="loader-arrow la2"></div>
+        <div class="loader-arrow la3"></div>
+        <div class="loader-arrow la4"></div>
+        <div class="loader-arrow la5"></div>
+        <div class="loader-arrow la6"></div>
+        <div class="loader-arrow la-up la7"></div>
+        <div class="loader-arrow la-up la8" style="transform:rotate(180deg)"></div>
+        <div class="loader-arrow la-up la9"></div>
+        <div class="loader-arrow la-up la10" style="transform:rotate(180deg)"></div>
+        <div class="loader-label">Getting arrows to stop fighting…</div>
+    </div>
+
+    <!-- Daily Puzzle Result Overlay -->
+    <div id="daily-result-overlay"
+        class="hidden fixed inset-0 z-50 bg-white/95 backdrop-blur-md flex flex-col justify-center items-center gap-4 p-5"
+        style="padding-bottom: max(20px, env(safe-area-inset-bottom));">
+        <div class="w-16 h-16 bg-indigo-50 rounded-full flex justify-center items-center border border-indigo-100 shadow-sm">
+            <svg class="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+        </div>
+        <h3 class="text-2xl font-extrabold text-slate-800 tracking-tight">Puzzle Solved!</h3>
+        <div id="daily-result-date" class="text-xs text-slate-400 font-medium uppercase tracking-widest"></div>
+        <div class="w-full max-w-xs bg-slate-50 rounded-2xl p-5 border border-slate-100 text-center">
+            <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Points Earned</div>
+            <div id="daily-result-earned" class="text-4xl font-extrabold text-emerald-500 tracking-tight">+0</div>
+            <div id="daily-result-best" class="text-xs text-slate-400 font-medium mt-2"></div>
+        </div>
+        <div class="flex flex-col items-center gap-2 w-full max-w-xs">
+            <button onclick="exitDailyPuzzle()"
+                class="w-full px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl tracking-wide shadow-md transition-all duration-200 glow-btn">
+                Continue Normal Game
+            </button>
+            <button onclick="window.location.href='index.html'"
+                class="text-xs text-slate-400 hover:text-slate-600 font-semibold transition-colors duration-200">
+                Back to Mode Select
+            </button>
+        </div>
+    </div>
+
+    <!-- Top Navigation HUD -->
+    <div id="game-header"
+        class="w-full max-w-md bg-white rounded-2xl p-3 md:p-4 flex justify-between items-center premium-shadow transition-all duration-300">
+        <div class="flex flex-col">
+            <span id="level-display" class="text-xl md:text-2xl font-extrabold text-[#112540] tracking-tight">Level 1</span>
+            <span id="tier-badge" class="text-[10px] font-extrabold text-indigo-600 uppercase tracking-widest mt-0.5">NORMAL</span>
+        </div>
+        <div class="flex flex-col items-center">
+            <span class="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Points</span>
+            <span id="score-display" class="text-xl md:text-2xl font-extrabold text-slate-800 tracking-tight">0</span>
+        </div>
+        <div class="flex items-center gap-1 bg-slate-50 px-2 py-1.5 rounded-xl border border-slate-100">
+            <div id="heart-1" class="text-rose-500 transition-all duration-300 transform scale-100">❤️</div>
+            <div id="heart-2" class="text-rose-500 transition-all duration-300 transform scale-100">❤️</div>
+            <div id="heart-3" class="text-rose-500 transition-all duration-300 transform scale-100">❤️</div>
+        </div>
+    </div>
+
+    <!-- Main Board -->
+    <div id="board-container"
+        class="relative w-full max-w-md aspect-square bg-white md:rounded-3xl md:border md:border-slate-200/80 flex justify-center items-center overflow-hidden md:board-shadow md:my-3 transition-all duration-300">
+        <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+        <!-- Win Overlay -->
+        <div id="win-overlay"
+            class="absolute inset-0 bg-white/95 backdrop-blur-md flex flex-col justify-center items-center gap-4 opacity-0 pointer-events-none transition-all duration-500 z-20 scale-105">
+            <div class="w-16 h-16 bg-emerald-50 rounded-full flex justify-center items-center border border-emerald-100 shadow-sm animate-bounce">
+                <svg class="w-8 h-8 text-emerald-500" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+                </svg>
+            </div>
+            <h3 class="text-2xl font-extrabold text-slate-800 tracking-tight">Level Unraveled!</h3>
+            <p id="win-quote" class="text-xs text-slate-500 px-10 text-center font-medium italic">"The long vectors slide free seamlessly."</p>
+            <p id="win-points" class="text-sm font-bold text-emerald-600">+100 Level Bonus awarded!</p>
+            <button onclick="triggerNextLevel()"
+                class="mt-2 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl tracking-wide shadow-md transition-all duration-200 glow-btn">
+                Next Puzzle
+            </button>
+        </div>
+
+        <!-- Fail Overlay -->
+        <div id="fail-overlay"
+            class="absolute inset-0 bg-slate-50/95 backdrop-blur-md flex flex-col justify-center items-center gap-4 opacity-0 pointer-events-none transition-all duration-500 z-20 scale-105">
+            <div class="w-16 h-16 bg-rose-50 rounded-full flex justify-center items-center border border-rose-100">
+                <svg class="w-8 h-8 text-rose-500" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </div>
+            <h3 class="text-2xl font-extrabold text-rose-600 tracking-tight">Board Jammed!</h3>
+            <p class="text-xs text-slate-500 px-8 text-center font-medium">You triggered a collision loop. Let's trace carefully.</p>
+            <button onclick="retryCurrentLevel()"
+                class="mt-2 px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm rounded-xl tracking-wide shadow-md transition-all duration-200 glow-btn">
+                Retry Level
+            </button>
+        </div>
+    </div>
+
+    <!-- Bottom Controls -->
+    <div id="game-controls"
+        class="w-full max-w-md bg-white rounded-2xl p-3 md:p-4 flex justify-between items-center border border-slate-200/80 premium-shadow gap-2 md:gap-3 font-semibold text-xs text-slate-600">
+        <!-- Home button → back to splash -->
+        <button onclick="window.location.href='index.html'" title="Home"
+            class="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600 transition-all duration-200 glow-btn">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6">
+                </path>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Foundation -->
+    <script src="js/Grid.js"></script>
+    <script src="js/Path.js"></script>
+    <script src="js/SolvabilityOracle.js"></script>
+    <!-- Generation core -->
+    <script src="js/ZoneMap.js"></script>
+    <script src="js/RCBuilder.js"></script>
+    <script src="js/DifficultyEngine.js"></script>
+    <script src="js/Validator.js"></script>
+    <script src="js/GridShape.js"></script>
+    <!-- Pipeline blueprint -->
+    <script src="js/BoardBlueprint.js"></script>
+    <script src="js/PipelineConfig.js"></script>
+    <!-- Pipeline stages 2-3 -->
+    <script src="js/RegionLayout.js"></script>
+    <script src="js/RegionConnectivity.js"></script>
+    <!-- Pipeline stages 4-5 -->
+    <script src="js/TopologyGenerator.js"></script>
+    <script src="js/MotifAssigner.js"></script>
+    <!-- Pipeline stages 6-8 -->
+    <script src="js/MotifSkeletonGenerator.js"></script>
+    <script src="js/RegionNodeGraphBuilder.js"></script>
+    <script src="js/GlobalNodeGraphBuilder.js"></script>
+    <!-- Pipeline stages 9-12 -->
+    <script src="js/PathRouter.js"></script>
+    <script src="js/PathInteractionDetector.js"></script>
+    <script src="js/DependencyGraphBuilder.js"></script>
+    <script src="js/SolveOrderPlanner.js"></script>
+    <!-- Pipeline stage 18 -->
+    <script src="js/BoardRepairer.js"></script>
+    <script src="js/Generator.js"></script>
+    <!-- Presentation -->
+    <script src="js/Camera.js"></script>
+    <script src="js/Renderer.js"></script>
+    <script src="js/AnimationEngine.js"></script>
+    <!-- Interaction -->
+    <script src="js/InputHandler.js"></script>
+    <script src="js/AudioEngine.js"></script>
+    <script src="js/GameController.js"></script>
+    <!-- Integration -->
+    <script src="js/Persistence.js"></script>
+    <script src="js/BoardLoader.js"></script>
+    <script src="js/DailyPuzzle.js"></script>
+    <script src="js/boards-data.js"></script>
+    <script src="js/main.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('[SW] Registered:', reg.scope))
+                    .catch(err => console.warn('[SW] Registration failed:', err));
+            });
+        }
+    </script>
+</body>
+</html>
