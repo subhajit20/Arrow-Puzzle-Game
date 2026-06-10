@@ -123,9 +123,27 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('[SW] Registered:', reg.scope))
+                // Guard to prevent reload on initial install
+                let isFirstInstall = !navigator.serviceWorker.controller;
+
+                navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+                    .then(reg => {
+                        console.log('[SW] Registered:', reg.scope);
+                        // Proactively check for updates on load
+                        reg.update();
+                    })
                     .catch(err => console.warn('[SW] Registration failed:', err));
+
+                let refreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (refreshing) return;
+                    if (isFirstInstall) {
+                        isFirstInstall = false;
+                        return;
+                    }
+                    refreshing = true;
+                    window.location.reload();
+                });
             });
         }
     </script>
