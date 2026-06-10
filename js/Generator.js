@@ -76,6 +76,8 @@ class Generator {
             const _seed        = blueprint.config.seed  ?? 0;
             const _count       = RegionLayout._determineRegionCount(_activeCount, _level);
             console.log(`[Generator] Blueprint regions: ${_count} (level=${_level}, activeNodes=${_activeCount})`);
+            const activePal    = Object.keys(blueprint.config.motifWeights || {}).filter(k => blueprint.config.motifWeights[k] > 0);
+            console.log(`[Generator] Motif Palette: [${activePal.join(', ')}] (seed=${_seed})`);
             const _layout      = new RegionLayout().generate(grid, _count, _seed);
             blueprint.regions  = _layout;
             if (_layout) {

@@ -258,12 +258,12 @@ class BoardBlueprint {
         const MOTIF_KNOBS = {
             CORRIDOR:    { straightScore: 1.9,  turnScore: 0.08, maxStraight: 22 },
             SNAKE:       { straightScore: 1.4,  turnScore: 0.28, maxStraight: 12 }, // nested box = straight edges + 90° corners
-            NESTED_RECT: { straightScore: 1.4,  turnScore: 0.28, maxStraight: 12 },
-            RING:        { straightScore: 0.9,  turnScore: 0.65, maxStraight: 5  },
-            LOOP:        { straightScore: 0.55, turnScore: 1.4,  maxStraight: 3  },
-            CHAMBER:     { straightScore: 0.60, turnScore: 1.0,  maxStraight: 4  },
-            SPIRAL:      { straightScore: 0.12, turnScore: 2.8,  maxStraight: 3  },
-            ZIGZAG:      { straightScore: 0.08, turnScore: 2.6,  maxStraight: 2  },
+            NESTED_RECT: { straightScore: 1.6,  turnScore: 0.20, maxStraight: 16 },
+            RING:        { straightScore: 1.2,  turnScore: 0.45, maxStraight: 8  },
+            LOOP:        { straightScore: 1.1,  turnScore: 0.60, maxStraight: 6  },
+            CHAMBER:     { straightScore: 1.1,  turnScore: 0.55, maxStraight: 6  },
+            SPIRAL:      { straightScore: 0.45, turnScore: 1.6,  maxStraight: 4  },
+            ZIGZAG:      { straightScore: 0.15, turnScore: 2.2,  maxStraight: 3  },
         };
 
         // Per-motif length multiplier (multiplied by knobs.lenScale in fillA).

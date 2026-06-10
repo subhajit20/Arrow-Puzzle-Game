@@ -21,24 +21,22 @@ class RCBuilder {
     // Dynamic cap scales with board size so large boards get visually prominent
     // paths instead of uniformly tiny ones.
     static lenCap(totalNodes) {
-        if (totalNodes <= 200)  return 12;
-        if (totalNodes <= 600)  return 18;
+        if (totalNodes <= 200) return 12;
+        if (totalNodes <= 600) return 18;
         if (totalNodes <= 1500) return 25;
         return 32;
     }
 
-    // Returns a random target path length scaled to the board's dynamic cap.
-    // SHORT bucket stays small on all board sizes — only MEDIUM and LONG scale up.
-    // Phase A/B enforce minimum 3 via growWalk; Phase D Option 4 allows 2.
     sampleLen(totalNodes = 0) {
-        const cap      = RCBuilder.lenCap(totalNodes);
-        const medRange = Math.max(5, (cap * 0.4) | 0);
-        const longBase = Math.max(10, (cap * 0.65) | 0);
+        const cap = RCBuilder.lenCap(totalNodes);
+        const medRange = Math.max(6, (cap * 0.45) | 0);
+        const longBase = Math.max(12, (cap * 0.7) | 0);
         const longRange = Math.max(2, cap - longBase);
         const r = Math.random();
-        if (r < 0.25) return Math.min(cap, 3 + Math.round(Math.random() * 2));                         // SHORT
-        if (r < 0.75) return Math.min(cap, 5 + Math.round(Math.random() * medRange));                  // MEDIUM
-        return             Math.min(cap, longBase + Math.round(Math.random() * longRange));             // LONG
+        // Fewer short paths, longer medium and long paths for a logically packed feel
+        if (r < 0.10) return Math.min(cap, 3 + Math.round(Math.random() * 2));                         // SHORT
+        if (r < 0.65) return Math.min(cap, 6 + Math.round(Math.random() * medRange));                  // MEDIUM
+        return Math.min(cap, longBase + Math.round(Math.random() * longRange));             // LONG
     }
 
     // ── Head ray check ────────────────────────────────────────────────────────
@@ -105,7 +103,7 @@ class RCBuilder {
                 }
             }
             const interior = Math.min(r, R - 1 - r, c, C - 1 - c) /
-                             Math.max(1, Math.min(R, C) / 2);
+                Math.max(1, Math.min(R, C) / 2);
             const score = (empty / tot) + interior * 0.5 + Math.random() * 0.1;
             if (score > bestScore) { bestScore = score; best = { r, c }; }
         }
@@ -128,7 +126,7 @@ class RCBuilder {
                 if (!grid.inBounds(rr, cc)) continue;
                 tot++; if (grid.isAvailable(rr, cc)) empty++;
             }
-            const edgeDist  = Math.min(r, R - 1 - r, c, C - 1 - c);
+            const edgeDist = Math.min(r, R - 1 - r, c, C - 1 - c);
             const edgeScore = 1.0 - edgeDist / Math.max(1, Math.min(R, C) / 2);
             const score = (empty / Math.max(1, tot)) * 0.4 + edgeScore * 0.6 + Math.random() * 0.1;
             if (score > bestScore) { bestScore = score; best = { r, c }; }
@@ -145,8 +143,8 @@ class RCBuilder {
         for (let k = 0; k < 22; k++) {
             const dr = Math.round((Math.random() * 2 - 1) * radius);
             const dc = Math.round((Math.random() * 2 - 1) * radius);
-            const r  = Math.max(0, Math.min(R - 1, center.r + dr));
-            const c  = Math.max(0, Math.min(C - 1, center.c + dc));
+            const r = Math.max(0, Math.min(R - 1, center.r + dr));
+            const c = Math.max(0, Math.min(C - 1, center.c + dc));
             if (!grid.isAvailable(r, c)) continue;
             let empty = 0, tot = 0;
             for (let ddr = -1; ddr <= 1; ddr++) for (let ddc = -1; ddc <= 1; ddc++) {
@@ -154,7 +152,7 @@ class RCBuilder {
                 if (!grid.inBounds(rr, cc)) continue;
                 tot++; if (grid.isAvailable(rr, cc)) empty++;
             }
-            const dist  = Math.sqrt(dr * dr + dc * dc) / Math.max(1, radius);
+            const dist = Math.sqrt(dr * dr + dc * dc) / Math.max(1, radius);
             const score = (empty / Math.max(1, tot)) - dist * 0.3 + Math.random() * 0.1;
             if (score > bestScore) { bestScore = score; best = { r, c }; }
         }
@@ -192,9 +190,9 @@ class RCBuilder {
 
     // Dispatches to the correct anchor picker based on anchorMode.
     _pickAnchorForMode(grid, mode, clusterCenters, innerBbox, clusterRadius) {
-        if (mode === 'EDGE')    return this._pickAnchorEdge(grid);
+        if (mode === 'EDGE') return this._pickAnchorEdge(grid);
         if (mode === 'CLUSTER') return this._pickAnchorClustered(grid, clusterCenters, clusterRadius || 5);
-        if (mode === 'INNER')   return this._pickAnchorInner(grid, innerBbox);
+        if (mode === 'INNER') return this._pickAnchorInner(grid, innerBbox);
         return this.pickAnchor(grid); // UNIFORM (default)
     }
 
@@ -245,7 +243,7 @@ class RCBuilder {
         const R = grid.rows + 1, C = grid.cols + 1;
         const nodes = [{ r: anchor.r, c: anchor.c }];
         const local = new Set([anchor.r + ',' + anchor.c]);
-        let cur = anchor, pdr = 0, pdc = 0, streak = 0;
+        let cur = anchor, pdr = 0, pdc = 0, ppdr = 0, ppdc = 0, streak = 0;
         const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 
         for (let i = 1; i < targetLen; i++) {
@@ -270,10 +268,17 @@ class RCBuilder {
 
             for (const o of opts) {
                 const straight = (o.dr === pdr && o.dc === pdc);
-                o.score = (straight
+                let score = straight
                     ? (forceTurn ? -10 : knobs.straightScore)
-                    : knobs.turnScore)
-                    + Math.random();
+                    : knobs.turnScore;
+
+                // U-turn penalty: discourage going opposite to the direction 2 steps ago (random squiggles)
+                const isUTurn = (ppdr !== 0 || ppdc !== 0) && (o.dr === -ppdr && o.dc === -ppdc);
+                if (isUTurn) {
+                    score -= 2.5; // Apply significant penalty to favor going straight or making Z-turns
+                }
+
+                o.score = score + Math.random();
             }
             opts.sort((a, b) => b.score - a.score);
             const pick = opts[0];
@@ -282,6 +287,7 @@ class RCBuilder {
             local.add(pick.r + ',' + pick.c);
             const isStraight = (pick.dr === pdr && pick.dc === pdc);
             streak = isStraight ? streak + 1 : 0;
+            ppdr = pdr; ppdc = pdc;
             pdr = pick.dr; pdc = pick.dc; cur = pick;
         }
 
@@ -298,14 +304,14 @@ class RCBuilder {
         let placed = 0;
 
         for (let j = 0; j < count; j++) {
-            const c0    = 3 * j;
+            const c0 = 3 * j;
             const nodes = [
                 { r: row, c: c0 },
                 { r: row, c: c0 + 1 },
                 { r: row, c: c0 + 2 },
             ];
             if (!nodes.every(n => grid.isAvailable(n.r, n.c))) break;
-            if (!this.headRayClear(grid, nodes[2], 0, 1))  break;
+            if (!this.headRayClear(grid, nodes[2], 0, 1)) break;
 
             for (const n of nodes) grid.setOwner(n.r, n.c, ctr.n);
             const p = new Path(ctr.n, nodes, 'RIGHT');
@@ -322,10 +328,10 @@ class RCBuilder {
     // knobs.d [0,1]: high → prefers long inward rays (harder).
     // knobs.zoneMap (ZoneMap): enables zone-aware length + scoring.
     fillA(grid, paths, ctr, maxFails, knobs) {
-        const d             = knobs?.d        != null ? knobs.d        : 0.5;
-        const lenScale      = knobs?.lenScale != null ? knobs.lenScale : 1;
-        const zoneMap       = knobs?.zoneMap  || null;
-        const anchorMode    = knobs?.anchorMode    || 'UNIFORM';
+        const d = knobs?.d != null ? knobs.d : 0.5;
+        const lenScale = knobs?.lenScale != null ? knobs.lenScale : 1;
+        const zoneMap = knobs?.zoneMap || null;
+        const anchorMode = knobs?.anchorMode || 'UNIFORM';
         const clusterRadius = knobs?.clusterRadius || 5;
         const { rows, cols } = grid;
 
@@ -351,16 +357,16 @@ class RCBuilder {
             const anchor = this._pickAnchorForMode(grid, anchorMode, clusterCenters, innerBbox, clusterRadius);
             if (!anchor) { fails++; continue; }
 
-            const effLen     = zoneMap
+            const effLen = zoneMap
                 ? lenScale * zoneMap.lenScale(anchor.r, anchor.c)
                 : lenScale;
             const totalNodes = (grid.rows + 1) * (grid.cols + 1);
-            const lenCap     = RCBuilder.lenCap(totalNodes);
-            const baseLenFn  = knobs?.sampleLenFn
+            const lenCap = RCBuilder.lenCap(totalNodes);
+            const baseLenFn = knobs?.sampleLenFn
                 ? () => knobs.sampleLenFn(lenCap)
                 : () => this.sampleLen(totalNodes);
-            const targetLen  = Math.max(3, Math.min(lenCap, Math.round(baseLenFn() * effLen)));
-            const nodes     = this.growWalk(grid, anchor, targetLen, zoneMap);
+            const targetLen = Math.max(3, Math.min(lenCap, Math.round(baseLenFn() * effLen)));
+            const nodes = this.growWalk(grid, anchor, targetLen, zoneMap);
 
             if (nodes.length < 3) { fails++; continue; }
 
@@ -377,17 +383,26 @@ class RCBuilder {
             };
 
             // Separate candidates into clear-ray and blocked-ray lists.
-            const clearCands   = [];
+            const clearCands = [];
             const blockedCands = [];
 
             for (const [rev] of [[false], [true]]) {
                 const seq = rev ? nodes.slice().reverse() : nodes;
-                const h   = seq[seq.length - 1], pv = seq[seq.length - 2];
-                const dr  = h.r - pv.r, dc = h.c - pv.c;
+                const h = seq[seq.length - 1], pv = seq[seq.length - 2];
+                const dr = h.r - pv.r, dc = h.c - pv.c;
                 if (facesSelf(h, dr, dc)) continue; // own body in ray → skip
                 if (this.headRayClear(grid, h, dr, dc)) {
                     const rl = this._rayLenToEdge(h, dr, dc, rows, cols) / Math.max(rows, cols);
-                    clearCands.push({ seq, h, dr, dc, score: (2 * d - 1) * rl + Math.random() * 0.25 });
+                    let score = (2 * d - 1) * rl + Math.random() * 0.25;
+
+                    // Discourage board boundary paths from pointing outward on higher difficulties
+                    const isOutwardEdgeHead = (h.r === 0 && dr === -1) || (h.r === rows && dr === 1) ||
+                                              (h.c === 0 && dc === -1) || (h.c === cols && dc === 1);
+                    if (isOutwardEdgeHead) {
+                        score -= 3.0 * d; // Higher difficulty = stronger penalty for outward boundary heads
+                    }
+
+                    clearCands.push({ seq, h, dr, dc, score });
                 } else {
                     blockedCands.push({ seq, h, dr, dc });
                 }
@@ -457,7 +472,7 @@ class RCBuilder {
                         // PX-1: prefer endpoint that doesn't immediately face own walk body.
                         const ends = [
                             [nodes[nodes.length - 1], nodes[nodes.length - 2], false],
-                            [nodes[0],                 nodes[1],                 true],
+                            [nodes[0], nodes[1], true],
                         ];
                         ends.sort(([h1, pv1], [h2, pv2]) => {
                             const faces = (h, pv) => {
@@ -471,7 +486,7 @@ class RCBuilder {
                             const dr = h.r - pv.r, dc = h.c - pv.c;
                             if (!this.headRayClear(grid, h, dr, dc)) continue;
                             const seq = rev ? nodes.slice().reverse() : nodes;
-                            const id  = ctr.n;
+                            const id = ctr.n;
                             for (const n of seq) grid.setOwner(n.r, n.c, id);
                             const p = new Path(id, seq, Path.deltaToHeading(dr, dc));
                             p.placeOrder = id;
@@ -498,9 +513,9 @@ class RCBuilder {
     // Validates with full oracle after each append; reverts LIFO if broken.
     fillC(grid, paths) {
         const R = grid.rows + 1, C = grid.cols + 1;
-        const byId   = new Map(paths.map(p => [p.id, p]));
+        const byId = new Map(paths.map(p => [p.id, p]));
         const appends = [];
-        let progress  = true;
+        let progress = true;
 
         while (progress) {
             progress = false;
@@ -512,7 +527,7 @@ class RCBuilder {
                     for (const [ar, ac] of nb) {
                         if (!grid.inBounds(ar, ac)) continue;
                         const oid = grid.owner(ar, ac); if (oid < 0) continue;
-                        const p   = byId.get(oid);      if (!p) continue;
+                        const p = byId.get(oid); if (!p) continue;
                         const tail = p.tail();
                         if (tail.r !== ar || tail.c !== ac) continue;
 
@@ -551,7 +566,7 @@ class RCBuilder {
     // inside force-fill. Used when blueprint fixed paths are present — reversing
     // their headings breaks the solvability established by the blueprint pipeline.
     fillD(grid, paths, ctr, skipReversal = false) {
-        const R    = grid.rows + 1, C = grid.cols + 1;
+        const R = grid.rows + 1, C = grid.cols + 1;
         const byId = new Map(paths.map(p => [p.id, p]));
         const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 
@@ -590,14 +605,14 @@ class RCBuilder {
                     for (let d2 = 0; d2 < DIRS.length && !placed; d2++) {
                         const [dr2, dc2] = DIRS[d2];
                         if (dr2 === -dr1 && dc2 === -dc1) continue; // no backtrack
-                        if (dr2 ===  dr1 && dc2 ===  dc1) continue; // no straight — must be L
+                        if (dr2 === dr1 && dc2 === dc1) continue; // no straight — must be L
                         const r3 = r2 + dr2, c3 = c2 + dc2;
                         if (!grid.inBounds(r3, c3) || !grid.isAvailable(r3, c3)) continue;
                         if (r3 === r && c3 === c) continue; // no self-loop
 
-                        const seq  = [{ r, c }, { r: r2, c: c2 }, { r: r3, c: c3 }];
+                        const seq = [{ r, c }, { r: r2, c: c2 }, { r: r3, c: c3 }];
                         const tries = [
-                            { ns: seq,                   hdr:  dr2, hdc:  dc2 },
+                            { ns: seq, hdr: dr2, hdc: dc2 },
                             { ns: seq.slice().reverse(), hdr: -dr1, hdc: -dc1 },
                         ];
                         for (const { ns, hdr, hdc } of tries) {
@@ -624,7 +639,7 @@ class RCBuilder {
                     const ar = r + dr, ac = c + dc;
                     if (!grid.inBounds(ar, ac)) continue;
                     const oid = grid.owner(ar, ac); if (oid < 0) continue;
-                    const p   = byId.get(oid);      if (!p) continue;
+                    const p = byId.get(oid); if (!p) continue;
                     if (p.tail().r !== ar || p.tail().c !== ac) continue;
 
                     p.nodes.unshift({ r, c });
@@ -648,7 +663,7 @@ class RCBuilder {
                     const ar = r + dr, ac = c + dc;
                     if (!grid.inBounds(ar, ac)) continue;
                     const oid = grid.owner(ar, ac); if (oid < 0) continue;
-                    const p   = byId.get(oid);      if (!p) continue;
+                    const p = byId.get(oid); if (!p) continue;
                     if (p.head().r !== ar || p.head().c !== ac) continue;
 
                     const savedHeading = p.heading;
@@ -675,9 +690,9 @@ class RCBuilder {
                     const r2 = r + dr, c2 = c + dc;
                     if (!grid.inBounds(r2, c2) || !grid.isAvailable(r2, c2)) continue;
 
-                    const seq  = [{ r, c }, { r: r2, c: c2 }];
+                    const seq = [{ r, c }, { r: r2, c: c2 }];
                     const tries = [
-                        { ns: seq,                   hdr:  dr, hdc:  dc },
+                        { ns: seq, hdr: dr, hdc: dc },
                         { ns: seq.slice().reverse(), hdr: -dr, hdc: -dc },
                     ];
                     for (const { ns, hdr, hdc } of tries) {
@@ -713,10 +728,10 @@ class RCBuilder {
                     const ar = r + dr, ac = c + dc;
                     if (!grid.inBounds(ar, ac)) continue;
                     const oid = grid.owner(ar, ac); if (oid < 0) continue;
-                    const p   = byId.get(oid); if (!p || p.nodes.length < 2) continue;
+                    const p = byId.get(oid); if (!p || p.nodes.length < 2) continue;
                     if (p.head().r !== ar || p.head().c !== ac) continue;
 
-                    const savedNodes   = p.nodes.slice();
+                    const savedNodes = p.nodes.slice();
                     const savedHeading = p.heading;
                     p.nodes.reverse();
                     const nh = p.nodes[p.nodes.length - 1], np = p.nodes[p.nodes.length - 2];
@@ -731,8 +746,8 @@ class RCBuilder {
                     } else {
                         p.nodes.shift();
                         grid.setOwner(r, c, -1);
-                        p.nodes    = savedNodes;
-                        p.heading  = savedHeading;
+                        p.nodes = savedNodes;
+                        p.heading = savedHeading;
                     }
                 }
             }
@@ -753,7 +768,7 @@ class RCBuilder {
                     const ar = r + dr, ac = c + dc;
                     if (!grid.inBounds(ar, ac)) continue;
                     const oid = grid.owner(ar, ac); if (oid < 0) continue;
-                    const p   = byId.get(oid);      if (!p) continue;
+                    const p = byId.get(oid); if (!p) continue;
                     if (p.tail().r !== ar || p.tail().c !== ac) continue;
                     p.nodes.unshift({ r, c });
                     grid.setOwner(r, c, oid);
@@ -773,10 +788,10 @@ class RCBuilder {
                         const ar = r + dr, ac = c + dc;
                         if (!grid.inBounds(ar, ac)) continue;
                         const oid = grid.owner(ar, ac); if (oid < 0) continue;
-                        const p   = byId.get(oid); if (!p || p.nodes.length < 2) continue;
+                        const p = byId.get(oid); if (!p || p.nodes.length < 2) continue;
                         if (p.head().r !== ar || p.head().c !== ac) continue;
 
-                        const savedNodes   = p.nodes.slice();
+                        const savedNodes = p.nodes.slice();
                         const savedHeading = p.heading;
                         p.nodes.reverse();
                         const nh = p.nodes[p.nodes.length - 1], np = p.nodes[p.nodes.length - 2];
@@ -789,7 +804,7 @@ class RCBuilder {
                         } else {
                             p.nodes.shift();
                             grid.setOwner(r, c, -1);
-                            p.nodes   = savedNodes;
+                            p.nodes = savedNodes;
                             p.heading = savedHeading;
                         }
                     }
@@ -829,13 +844,13 @@ class RCBuilder {
 
         // Main fill — use topology weight and zone override from blueprint
         const totalNodes = (grid.rows + 1) * (grid.cols + 1);
-        const maxFails   = Math.max(400, Math.floor(totalNodes * 0.55));
-        const zm         = zoneOverride || new ZoneMap().generate(grid.rows, grid.cols);
+        const maxFails = Math.max(400, Math.floor(totalNodes * 0.55));
+        const zm = zoneOverride || new ZoneMap().generate(grid.rows, grid.cols);
 
         this.fillA(grid, paths, ctr, maxFails, {
-            d:          topoWeight ?? 0.5,
-            lenScale:   1.0,
-            zoneMap:    zm,
+            d: topoWeight ?? 0.5,
+            lenScale: 1.0,
+            zoneMap: zm,
             anchorMode: 'UNIFORM',
             clusterCount: 0,
         });
@@ -860,10 +875,10 @@ class RCBuilder {
         }
 
         // Assign id and mark ownership
-        const id   = ctr.n++;
+        const id = ctr.n++;
         const path = new Path(id, nodes.map(n => ({ r: n.r, c: n.c })), heading);
         path.originalNodes = nodes.map(n => ({ r: n.r, c: n.c }));
-        path.placeOrder    = routedPath.placeOrder ?? 0;
+        path.placeOrder = routedPath.placeOrder ?? 0;
 
         for (const n of nodes) grid.setOwner(n.r, n.c, id);
         for (let i = 0; i < nodes.length - 1; i++)

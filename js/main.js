@@ -140,10 +140,10 @@
     // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
     // Remove this block when test mode is no longer needed.
     const TEST_MODE = false;
-    const TEST_ROWS = 48;
-    const TEST_COLS = 28;
-    const TEST_LEVEL = 92;   // (70/10)%2 = 1 → heart mask
-    const TEST_TIER = 'HARD';
+    const TEST_ROWS = 40;
+    const TEST_COLS = 40;
+    const TEST_LEVEL = 43;   // (70/10)%2 = 1 → heart mask
+    const TEST_TIER = 'TITAN';
 
     // Exposed on window so existing HTML onclick attributes still work.
     window.startNormalGame = function () {
@@ -217,10 +217,14 @@
         if (mode === 'daily') {
             daily.start(containerEl);
         } else {
-            // Normal game — resume saved progress or start fresh
-            const saved = persistence.load(lvl => generator.sizesForLevel(lvl));
-            const level = saved ? saved.level : 1;
-            startNormalLevel(level);
+            if (TEST_MODE) {
+                window.startNormalGame();
+            } else {
+                // Normal game — resume saved progress or start fresh
+                const saved = persistence.load(lvl => generator.sizesForLevel(lvl));
+                const level = saved ? saved.level : 1;
+                startNormalLevel(level);
+            }
         }
     };
 

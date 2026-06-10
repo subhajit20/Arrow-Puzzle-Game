@@ -173,8 +173,6 @@ class DifficultyEngine {
         return { EASY: 2, NORMAL: 4, HARD: 8, EXPERT: 13, TITAN: 18 }[tier] || 0;
     }
 
-    // Returns the full knobs object passed to RCBuilder.fillA.
-    // d [0,1]: higher = harder (prefers longer inward head rays).
     knobsForTier(tier, zoneMap = null) {
         const d = tier === 'EASY' ? 0 : 0.5;
         return {

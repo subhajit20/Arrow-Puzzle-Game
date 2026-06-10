@@ -100,9 +100,9 @@ class PathRouter {
             const skel = skelByReg.get(pair.regionId);
 
             // Use the skeleton's ordered traversal when available and long enough.
-            // Minimum 8 nodes so tiny clips from irregular regions don't produce
+            // Minimum 3 nodes so tiny clips from irregular regions don't produce
             // visually insignificant paths.
-            if (skel?.orderedPath?.length >= 8) {
+            if (skel?.orderedPath?.length >= 3) {
                 return { ...pair, nodes: skel.orderedPath, motifType: skel.motifType };
             }
 
@@ -195,31 +195,52 @@ class PathRouter {
             const { nodes, heading } = route;
             const ownSet = new Set(nodes.map(n => `${n.r},${n.c}`));
 
-            if (!this._headBlocked(nodes[nodes.length - 1], DR[heading], DC[heading], ownSet, allNodes, grid)) {
+            const head = nodes[nodes.length - 1];
+            const isOutward = this._isOutward(head, heading, grid);
+            const isBlocked = this._headBlocked(head, DR[heading], DC[heading], ownSet, allNodes, grid);
+
+            if (isBlocked || isOutward) {
+                // Try reversing the path
+                const rev   = [...nodes].reverse();
+                const last2 = rev[rev.length - 1], prev2 = rev[rev.length - 2];
+                const rdr = last2.r - prev2.r, rdc = last2.c - prev2.c;
+                const rh  = rdr === -1 ? 'UP' : rdr === 1 ? 'DOWN' : rdc === -1 ? 'LEFT' : 'RIGHT';
+
+                const revOutward = this._isOutward(last2, rh, grid);
+                const revBlocked = this._headBlocked(last2, DR[rh], DC[rh], ownSet, allNodes, grid);
+
+                // We prefer the reversed path if it is NOT blocked, and either:
+                // (a) the original was blocked (so anything is better), OR
+                // (b) the original pointed outward and the reversed does not point outward.
+                if (!revBlocked && (!revOutward || (isBlocked && revOutward))) {
+                    result.push({ ...route, nodes: rev, heading: rh });
+                    continue;
+                }
+            }
+
+            if (!isBlocked) {
                 result.push(route);
-                continue;
             }
-
-            // Try reversing the path
-            const rev   = [...nodes].reverse();
-            const last2 = rev[rev.length - 1], prev2 = rev[rev.length - 2];
-            const rdr = last2.r - prev2.r, rdc = last2.c - prev2.c;
-            const rh  = rdr === -1 ? 'UP' : rdr === 1 ? 'DOWN' : rdc === -1 ? 'LEFT' : 'RIGHT';
-
-            if (!this._headBlocked(last2, DR[rh], DC[rh], ownSet, allNodes, grid)) {
-                result.push({ ...route, nodes: rev, heading: rh });
-            }
-            // else: both directions blocked — drop route
         }
 
         return result;
     }
 
+    _isOutward(head, heading, grid) {
+        const { r, c } = head;
+        if (r === 0 && heading === 'UP') return true;
+        if (r === grid.rows && heading === 'DOWN') return true;
+        if (c === 0 && heading === 'LEFT') return true;
+        if (c === grid.cols && heading === 'RIGHT') return true;
+        return false;
+    }
+
     _headBlocked(head, dr, dc, ownSet, allNodes, grid) {
         let r = head.r + dr, c = head.c + dc;
         while (grid.inBounds(r, c)) {
-            const k = `${r},${c}`;
-            if (allNodes.has(k) && !ownSet.has(k)) return true;
+            // Only consider blocked if it hits an inactive mask cell (permanent obstacle).
+            // Blocking by other paths (allNodes) is a valid dependency and should not force path reversal.
+            if (!grid.isActive(r, c)) return true;
             r += dr; c += dc;
         }
         return false;

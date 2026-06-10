@@ -225,21 +225,25 @@ class AnimationEngine {
             // Phase 2: zoom-out + path reveal run simultaneously.
             // Phase 3: zoom-in starts THE MOMENT zoom-out finishes — no waiting
             //          for reveal. Reveal continues independently during zoom-in.
+            // Scale duration up for a slower, more premium zoom-out feel
+            const slowerDuration = Math.min(2200, Math.max(800, N * 140));
+            // Make the path reveal animation significantly faster than the zoom-out camera motion
+            const revealDuration = Math.min(950, Math.max(350, N * 60));
             this.reveal = {
                 active:    true,
                 progress:  0,
-                duration,
+                duration:  revealDuration,
                 startTime: performance.now(),
                 onComplete: onComplete || null, // called when reveal finishes
             };
 
-            // Zoom-out duration matches reveal duration for synchronised finish.
+            // Zoom-out duration is slower for smooth camera movement.
             // The instant zoom-out completes, zoom-in begins.
             // Zoom-out uses ease-out-back easing — it overshoots fitZoom slightly
             // then pulls back, giving a natural slow-pull-back feel at the end.
             // The moment zoom-out settles, zoom-in begins immediately.
             camera.startZoomOutAnimation(
-                containerEl, fitZoom, overviewE, overviewF, duration,
+                containerEl, fitZoom, overviewE, overviewF, slowerDuration,
                 () => camera.startEntranceAnimation(containerEl, null, true)
             );
 
