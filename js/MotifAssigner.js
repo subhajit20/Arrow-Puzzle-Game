@@ -83,12 +83,12 @@ class MotifAssigner {
         };
 
         add('CORRIDOR',    aspectRatio > 2.0 && area > 15);
-        add('SPIRAL',      aspectRatio <= 1.5 && area > 40 && compactness > 0.3);
-        add('NESTED_RECT', aspectRatio <= 1.5 && area > 60);
+        add('SPIRAL',      aspectRatio <= 2.2 && area > 40 && compactness > 0.3);
+        add('NESTED_RECT', aspectRatio <= 2.2 && area > 60);
         add('LOOP',        area > 20);
         add('SNAKE',       aspectRatio > 1.5 && area > 12);
         add('ZIGZAG',      shapeClass !== 'SQUARE');
-        add('RING',        aspectRatio <= 1.5 && area >= 15 && area <= 80);
+        add('RING',        aspectRatio <= 2.2 && area >= 15 && area <= 80);
         add('CHAMBER',     area > 25); // works for any region shape
 
         // Topology-role bias: ROOT regions lean toward shorter paths (LOOP/CORRIDOR)
@@ -122,7 +122,7 @@ class MotifAssigner {
             case 'CORRIDOR':
                 return {
                     axis,
-                    width: Math.min(3, Math.max(1, (area / 20) | 0)),
+                    width: Math.min(3, Math.max(1, (area / 15) | 0)),
                 };
 
             case 'SPIRAL':

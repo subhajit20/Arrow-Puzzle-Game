@@ -21,9 +21,9 @@ class ZoneMap {
     // straightScore / turnScore weight move preference.
     // maxStraight caps consecutive straight steps before a forced turn.
     static WALK_KNOBS = [
-        { straightScore: 0.05, turnScore: 3.0, maxStraight: 1   }, // DENSE
-        { straightScore: 1.5,  turnScore: 0.5, maxStraight: 4   }, // OPEN
-        { straightScore: 0.4,  turnScore: 1.0, maxStraight: 999 }, // NEUTRAL
+        { straightScore: 0.8,  turnScore: 1.8, maxStraight: 2   }, // DENSE: allow some straight steps, less squiggly
+        { straightScore: 2.2,  turnScore: 0.3, maxStraight: 6   }, // OPEN: even longer straight runs
+        { straightScore: 1.6,  turnScore: 0.8, maxStraight: 999 }, // NEUTRAL: prefer straight over turning for blockiness
     ];
 
     // Per-zone length multiplier applied on top of the base lenScale in fillA.

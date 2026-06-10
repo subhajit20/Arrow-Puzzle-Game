@@ -19,16 +19,17 @@ class PipelineConfig {
     // Returns a partial config object. Runtime fields (boardRows, boardCols,
     // mask, activeCount, difficultyTarget) are null — the Generator fills them.
     static fromLevel(level, seed = null, context = 'normal') {
+        const resolvedSeed = seed !== null ? seed : PipelineConfig._defaultSeed(level);
         return {
             level,                    // stored so downstream stages can gate by level
-            seed: seed !== null ? seed : PipelineConfig._defaultSeed(level),
+            seed: resolvedSeed,
             context,
             difficultyTarget: null,   // set by Generator after tier selection
             boardRows: null,   // set by Generator after size selection
             boardCols: null,   // set by Generator after size selection
             mask: null,   // set by Generator after mask selection
             activeCount: null,   // set by Generator after mask selection
-            motifWeights: PipelineConfig.motifWeightsForLevel(level),
+            motifWeights: PipelineConfig.motifWeightsForLevel(level, resolvedSeed),
             topologyWeights: PipelineConfig.topologyWeightsForLevel(level),
         };
     }
@@ -47,9 +48,21 @@ class PipelineConfig {
     //   RING          — perimeter path; compact square regions
     //   NESTED_RECT   — concentric rectangles; square regions, area ≥ 60 nodes
     //   CHAMBER       — rooms + connectors; irregular regions
-    static motifWeightsForLevel(level) {
-        // TEST: NESTED_RECT + CORRIDOR + CHAMBER — revert after testing
-        return { CORRIDOR: 50, SPIRAL: 0, NESTED_RECT: 50, LOOP: 0, SNAKE: 0, ZIGZAG: 0, RING: 0, CHAMBER: 0 };
+    static motifWeightsForLevel(level, seed = null) {
+        // Predefined 7 theme palettes using CORRIDOR, NESTED_RECT, RING, LOOP, SNAKE
+        const palettes = [
+            { CORRIDOR: 40, SPIRAL: 0, NESTED_RECT: 40, LOOP: 0,  SNAKE: 0,  ZIGZAG: 0, RING: 40, CHAMBER: 0 }, // CORRIDOR, NESTED_RECT, RING
+            { CORRIDOR: 0,  SPIRAL: 0, NESTED_RECT: 45, LOOP: 30, SNAKE: 0,  ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // NESTED_RECT, LOOP, RING
+            { CORRIDOR: 50, SPIRAL: 0, NESTED_RECT: 0,  LOOP: 35, SNAKE: 20, ZIGZAG: 0, RING: 0,  CHAMBER: 0 }, // LOOP, SNAKE, CORRIDOR
+            { CORRIDOR: 45, SPIRAL: 0, NESTED_RECT: 0,  LOOP: 35, SNAKE: 0,  ZIGZAG: 0, RING: 40, CHAMBER: 0 }, // CORRIDOR, LOOP, RING
+            { CORRIDOR: 0,  SPIRAL: 0, NESTED_RECT: 45, LOOP: 0,  SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // NESTED_RECT, SNAKE, RING
+            { CORRIDOR: 0,  SPIRAL: 0, NESTED_RECT: 0,  LOOP: 35, SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // LOOP, SNAKE, RING
+            { CORRIDOR: 45, SPIRAL: 0, NESTED_RECT: 0,  LOOP: 0,  SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 }  // CORRIDOR, SNAKE, RING
+        ];
+
+        const val = seed !== null ? seed : level;
+        const idx = Math.abs(val | 0) % palettes.length;
+        return { ...palettes[idx] };
 
         // Early (1–10): only simple linear motifs
         if (level <= 10) {
