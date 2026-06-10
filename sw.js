@@ -7,7 +7,7 @@
 // immediately so users always get the latest files on next reload.
 // =============================================================================
 
-const CACHE_NAME = 'vecto-v8';
+const CACHE_NAME = 'vecto-v9';
 
 const PRECACHE_URLS = [
     './',
@@ -67,7 +67,10 @@ const PRECACHE_URLS = [
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(cache => cache.addAll(PRECACHE_URLS))
+            .then(cache => {
+                const requests = PRECACHE_URLS.map(url => new Request(url, { cache: 'reload' }));
+                return cache.addAll(requests);
+            })
             .then(() => self.skipWaiting())   // activate immediately, don't wait
     );
 });
