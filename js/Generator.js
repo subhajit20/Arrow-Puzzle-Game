@@ -27,13 +27,10 @@ class Generator {
     // ── Grid sizes per level ──────────────────────────────────────────────────
 
     sizesForLevel(level) {
-        // Every 10th level → square grid for circle/heart mask.
+        // Every 10th level → per-shape large grids (3 candidates, matched to
+        // the milestone shape's aspect ratio and detail — see GridShape.SHAPE_SIZES).
         if (level % 10 === 0) {
-            if (level > 100) return [{ rows: 50, cols: 50 }];
-            // Level 10→100: scale 24×24 → 45×45 (3 nodes per decade, capped at 45)
-            const tier = Math.floor(level / 10);           // 1..10
-            const size = Math.min(45, 24 + (tier - 1) * 3); // 24, 27, 30...45
-            return [{ rows: size, cols: size }];
+            return GridShape.milestoneSizes(level);
         }
 
         // All other levels → rectangular + square grids.
