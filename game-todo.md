@@ -323,3 +323,18 @@ RCBuilder      → Validator → SolvabilityOracle → DifficultyEngine → Boar
 | `js/Generator.js` | Wire blueprint pipeline, A/B switch |
 | `js/RCBuilder.js` | Add fillWithBlueprint() + _placeFixedPath() |
 | `js/Validator.js` | Add checkBlueprintCoverage() |
+
+---
+
+# UQ — Unique-Solution & Board Uniqueness (branching-factor engine)
+
+Goal: every puzzle has a (near-)unique solve order, tier-scaled, with decoys and
+no two consecutive boards feeling alike. Game character unchanged.
+
+| ID | Task | Status |
+|---|---|---|
+| UQ-1 | `SolvabilityOracle.measureBranching` — avg/max free pieces per solve step | [x] |
+| UQ-2 | `DifficultyEngine` — branch targets per tier, `lockWeight` knob, branch penalty in score, decoy count | [x] |
+| UQ-3 | `RCBuilder` — lock-aware fillA/fillB/fillD (candidates that lock free pieces score higher), decoy bias in blocked candidates | [x] |
+| UQ-4 | `Generator` — final-branch measurement post-fillD, branch-gated acceptance, board signature anti-repeat | [x] |
+| UQ-5 | Regression: `node test-regression.js` green, perf within budget, tier distribution sane | [ ] |

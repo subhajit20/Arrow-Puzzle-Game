@@ -88,7 +88,7 @@ class GameController {
         }
 
         // Save and update display
-        this.persistence.save(this._snapshot());
+        this.persistence.save(this._snapshot(), this.dailyMode);
         this._updateUI();
 
         // Start reveal animation → entrance animation
@@ -130,7 +130,7 @@ class GameController {
             }
         }
 
-        if (!this.dailyMode) this.persistence.save(this._snapshot());
+        this.persistence.save(this._snapshot(), this.dailyMode);
         this._updateUI();
     }
 
@@ -140,7 +140,20 @@ class GameController {
         if (this.isWinState || this.isFailState) return;
         const idle = this.board.paths.filter(p => p.state === 'IDLE');
         if (idle.length === 0) return;
-        this.hintPathId = idle[Math.floor(Math.random() * idle.length)].id;
+
+        // Hint must point at a piece that can actually escape right now.
+        // Boards are built with few free pieces per step (near-unique solve
+        // order), so a random idle pick is almost always blocked — a hint
+        // that costs a life is worse than none.
+        this._oracle = this._oracle || new SolvabilityOracle();
+        const cleared = new Set(
+            this.board.paths.filter(p => p.state === 'CLEARED').map(p => p.id)
+        );
+        const movable = idle.filter(p =>
+            this._oracle.canEscape(p, cleared, this.board.grid)
+        );
+        const pool = movable.length ? movable : idle;
+        this.hintPathId = pool[Math.floor(Math.random() * pool.length)].id;
         this.audio.playHint();
     }
 
@@ -164,12 +177,12 @@ class GameController {
     addScore(amount) {
         if (this.dailyMode) this.dailyScore += amount;
         else                this.score      += amount;
-        if (!this.dailyMode) this.persistence.save(this._snapshot());
+        this.persistence.save(this._snapshot(), this.dailyMode);
     }
 
     deductLife() {
         this.lives--;
-        if (!this.dailyMode) this.persistence.save(this._snapshot());
+        this.persistence.save(this._snapshot(), this.dailyMode);
         this._updateUI();
         this.checkFail();
     }
@@ -192,10 +205,15 @@ class GameController {
         this._updateUI();
 
         if (this.dailyMode) {
-            // Daily puzzle result
-            setTimeout(() => this._showOverlay('daily-result-overlay'), 700);
+            this.persistence.clear(true);
+            if (this.daily) {
+                this.daily.end(this.dailyScore);
+            } else {
+                // Daily puzzle result fallback
+                setTimeout(() => this._showOverlay('daily-result-overlay'), 700);
+            }
         } else {
-            this.persistence.clear();
+            this.persistence.clear(false);
             setTimeout(() => this._showWinOverlay(), 600);
         }
     }
@@ -262,6 +280,9 @@ class GameController {
             paths:              this.board?.paths?.map(p => p.toLegacy?.() || p) || [],
             hEdge:              this.board?.grid?.hEdge,
             vEdge:              this.board?.grid?.vEdge,
+            dailyMode:          this.dailyMode,
+            dailyScore:         this.dailyScore,
+            date:               this.dailyMode ? (new Date().getFullYear() * 10000 + (new Date().getMonth() + 1) * 100 + new Date().getDate()) : null,
         };
     }
 }

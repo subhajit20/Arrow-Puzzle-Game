@@ -52,6 +52,42 @@ class RCBuilder {
         return true;
     }
 
+    // ── Lock bonus ────────────────────────────────────────────────────────────
+
+    // Counts currently-free placed pieces whose head ray passes through any
+    // node of the candidate sequence. Placing the candidate "locks" those
+    // pieces — they can no longer fire until the candidate clears, which pulls
+    // them into the forced solve order and drives the branching factor down.
+    _lockBonus(grid, paths, seq) {
+        let bonus = 0;
+        const nodeSet = new Set(seq.map(n => n.r + ',' + n.c));
+        for (const p of paths) {
+            const { dr, dc } = Path.headingToDelta(p.heading);
+            const head = p.head();
+            let r = head.r + dr, c = head.c + dc;
+            let crosses = false, blocked = false;
+            while (grid.inBounds(r, c)) {
+                const o = grid.owner(r, c);
+                if (o >= 0 && o !== p.id) { blocked = true; break; }
+                if (nodeSet.has(r + ',' + c)) crosses = true;
+                r += dr; c += dc;
+            }
+            if (!blocked && crosses) bonus++;
+        }
+        return bonus;
+    }
+
+    // Distance (in cells) from head to the first foreign blocker on the ray.
+    // Returns 0 when the ray is clear to the board edge.
+    _blockerDist(grid, head, dr, dc) {
+        let r = head.r + dr, c = head.c + dc, dist = 1;
+        while (grid.inBounds(r, c)) {
+            if (!grid.isFree(r, c)) return dist;
+            r += dr; c += dc; dist++;
+        }
+        return 0;
+    }
+
     // ── Ray length to edge ────────────────────────────────────────────────────
 
     _rayLenToEdge(h, dr, dc, rows, cols) {
@@ -329,6 +365,7 @@ class RCBuilder {
     // knobs.zoneMap (ZoneMap): enables zone-aware length + scoring.
     fillA(grid, paths, ctr, maxFails, knobs) {
         const d = knobs?.d != null ? knobs.d : 0.5;
+        const lockWeight = knobs?.lockWeight ?? 0;
         const lenScale = knobs?.lenScale != null ? knobs.lenScale : 1;
         const zoneMap = knobs?.zoneMap || null;
         const anchorMode = knobs?.anchorMode || 'UNIFORM';
@@ -415,6 +452,14 @@ class RCBuilder {
             let placed = false;
 
             if (blockedCands.length > 0 && Math.random() < topoWeight) {
+                // Decoy bias: prefer the candidate whose blocker sits farther
+                // down the ray — pieces that LOOK free but aren't force the
+                // player to trace rays instead of eyeballing.
+                if (d > 0 && blockedCands.length > 1) {
+                    for (const cn of blockedCands)
+                        cn.blockDist = this._blockerDist(grid, cn.h, cn.dr, cn.dc);
+                    blockedCands.sort((a, b) => b.blockDist - a.blockDist);
+                }
                 for (const cn of blockedCands) {
                     for (const n of cn.seq) grid.setOwner(n.r, n.c, ctr.n);
                     const p = new Path(ctr.n, cn.seq, Path.deltaToHeading(cn.dr, cn.dc));
@@ -433,6 +478,18 @@ class RCBuilder {
 
             // Fall back to best clear-ray candidate if topology placement skipped or failed.
             if (!placed && clearCands.length > 0) {
+                // Lock-aware gate: a clear-ray piece that locks no currently-
+                // free piece stays free for the whole solve and inflates the
+                // branching factor. At high lockWeight most such placements
+                // are rejected once the board has enough pieces to lock.
+                if (lockWeight > 0) {
+                    const rejectP = Math.min(0.92, lockWeight * 0.42) *
+                        Math.min(1, paths.length / 12);
+                    if (rejectP > 0 && Math.random() < rejectP &&
+                        this._lockBonus(grid, paths, nodes) === 0) {
+                        fails++; continue;
+                    }
+                }
                 clearCands.sort((a, b) => b.score - a.score);
                 const best = clearCands[0];
                 for (const n of best.seq) grid.setOwner(n.r, n.c, ctr.n);
@@ -455,7 +512,7 @@ class RCBuilder {
 
     // Places pieces (4–9 nodes) in remaining empty pockets.
     // Longer walks reduce the number of 3-node L-shapes created by Phase D.
-    fillB(grid, paths, ctr) {
+    fillB(grid, paths, ctr, lockWeight = 0) {
         const R = grid.rows + 1, C = grid.cols + 1;
         let progress = true;
 
@@ -470,21 +527,28 @@ class RCBuilder {
                         if (nodes.length < 3) continue;
 
                         // PX-1: prefer endpoint that doesn't immediately face own walk body.
+                        // Lock-aware (lockWeight ≥ 1): prefer blocked-ray ends so the gap
+                        // piece joins the dependency order instead of being a free snack.
                         const ends = [
                             [nodes[nodes.length - 1], nodes[nodes.length - 2], false],
                             [nodes[0], nodes[1], true],
-                        ];
-                        ends.sort(([h1, pv1], [h2, pv2]) => {
-                            const faces = (h, pv) => {
-                                const dr = h.r - pv.r, dc = h.c - pv.c;
-                                return nodes.some(n => n.r === h.r + dr && n.c === h.c + dc) ? 1 : 0;
-                            };
-                            return faces(h1, pv1) - faces(h2, pv2);
-                        });
-
-                        for (const [h, pv, rev] of ends) {
+                        ].map(([h, pv, rev]) => {
                             const dr = h.r - pv.r, dc = h.c - pv.c;
-                            if (!this.headRayClear(grid, h, dr, dc)) continue;
+                            return {
+                                h, pv, rev, dr, dc,
+                                faces: nodes.some(n => n.r === h.r + dr && n.c === h.c + dc) ? 1 : 0,
+                                rayClear: this.headRayClear(grid, h, dr, dc) ? 1 : 0,
+                            };
+                        });
+                        ends.sort((a, b) =>
+                            (a.faces - b.faces) ||
+                            (lockWeight >= 1 ? a.rayClear - b.rayClear : b.rayClear - a.rayClear)
+                        );
+
+                        for (const { h, pv, rev, dr, dc, rayClear } of ends) {
+                            // Blocked ends only attempted in lock-aware mode —
+                            // they need the full oracle gate below.
+                            if (!rayClear && lockWeight < 1) continue;
                             const seq = rev ? nodes.slice().reverse() : nodes;
                             const id = ctr.n;
                             for (const n of seq) grid.setOwner(n.r, n.c, id);
@@ -495,6 +559,19 @@ class RCBuilder {
                             if (!this.oracle.headSelfClear(p, grid)) {
                                 for (const n of seq) grid.setOwner(n.r, n.c, -1);
                                 continue;
+                            }
+
+                            // A blocked piece starts locked (good for branching)
+                            // but must not deadlock the board.
+                            if (!rayClear) {
+                                paths.push(p);
+                                if (!this.oracle.isBoardSolvable(paths, grid)) {
+                                    paths.pop();
+                                    for (const n of seq) grid.setOwner(n.r, n.c, -1);
+                                    continue;
+                                }
+                                ctr.n++;
+                                progress = true; break;
                             }
 
                             ctr.n++;
@@ -565,10 +642,23 @@ class RCBuilder {
     // skipReversal: when true, skips the reversal pass and the reversal sub-step
     // inside force-fill. Used when blueprint fixed paths are present — reversing
     // their headings breaks the solvability established by the blueprint pipeline.
-    fillD(grid, paths, ctr, skipReversal = false) {
+    fillD(grid, paths, ctr, skipReversal = false, lockWeight = 0) {
         const R = grid.rows + 1, C = grid.cols + 1;
         const byId = new Map(paths.map(p => [p.id, p]));
         const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+        // Lock-aware mode: try blocked-head orientations first so even the
+        // last gap pieces join the dependency order (oracle still gates all
+        // fillD placements, so solvability is unaffected).
+        const orderTries = (tries) => {
+            if (lockWeight < 1) return tries;
+            for (const t of tries) {
+                const hd = t.ns[t.ns.length - 1];
+                t._clear = this.headRayClear(grid, hd, t.hdr, t.hdc) ? 1 : 0;
+            }
+            tries.sort((a, b) => a._clear - b._clear);
+            return tries;
+        };
 
         const emptyNbCount = (r, c) => {
             let n = 0;
@@ -611,10 +701,10 @@ class RCBuilder {
                         if (r3 === r && c3 === c) continue; // no self-loop
 
                         const seq = [{ r, c }, { r: r2, c: c2 }, { r: r3, c: c3 }];
-                        const tries = [
+                        const tries = orderTries([
                             { ns: seq, hdr: dr2, hdc: dc2 },
                             { ns: seq.slice().reverse(), hdr: -dr1, hdc: -dc1 },
-                        ];
+                        ]);
                         for (const { ns, hdr, hdc } of tries) {
                             const id = ctr.n;
                             for (const n of ns) grid.setOwner(n.r, n.c, id);
@@ -691,10 +781,10 @@ class RCBuilder {
                     if (!grid.inBounds(r2, c2) || !grid.isAvailable(r2, c2)) continue;
 
                     const seq = [{ r, c }, { r: r2, c: c2 }];
-                    const tries = [
+                    const tries = orderTries([
                         { ns: seq, hdr: dr, hdc: dc },
                         { ns: seq.slice().reverse(), hdr: -dr, hdc: -dc },
-                    ];
+                    ]);
                     for (const { ns, hdr, hdc } of tries) {
                         const id = ctr.n;
                         for (const n of ns) grid.setOwner(n.r, n.c, id);
@@ -754,14 +844,16 @@ class RCBuilder {
         }
 
         // ── Force-fill: isolated nodes ────────────────────────────────────────
-        // Nodes with all 4 neighbours occupied cannot affect any head ray.
-        // Safe to attach to an adjacent tail without the oracle check.
+        // An isolated empty node is TRANSPARENT to head rays; attaching it to
+        // a path makes it opaque and can block a ray that crossed it — so the
+        // full oracle gate is required here too. (Skipping it caused RC
+        // invariant violations on dense blocked-ray boards.)
         for (let r = 0; r < R; r++) {
             for (let c = 0; c < C; c++) {
                 if (!grid.isAvailable(r, c)) continue;
                 if (emptyNbCount(r, c) > 0) continue; // only truly isolated
 
-                // Try adjacent tails — only safe if head is already self-clear.
+                // Try adjacent tails — gated by self-clear + solvability.
                 let placed = false;
                 for (const [dr, dc] of DIRS) {
                     if (placed) break;
@@ -772,7 +864,8 @@ class RCBuilder {
                     if (p.tail().r !== ar || p.tail().c !== ac) continue;
                     p.nodes.unshift({ r, c });
                     grid.setOwner(r, c, oid);
-                    if (this.oracle.headSelfClear(p, grid)) {
+                    if (this.oracle.headSelfClear(p, grid) &&
+                        this.oracle.isBoardSolvable(paths, grid)) {
                         placed = true;
                     } else {
                         p.nodes.shift();
@@ -815,6 +908,75 @@ class RCBuilder {
         this.oracle.recomputePlaceOrder(paths, grid);
     }
 
+    // ── Branch reduction pass ─────────────────────────────────────────────────
+
+    // Walks the solve simulation; whenever more than `budget` pieces are free
+    // at a step, tries to reverse the excess ones (head becomes tail) so their
+    // new ray is blocked at that point. Every reversal is gated by
+    // headSelfClear + isBoardSolvable, so solvability is preserved while the
+    // branching factor is squeezed toward the tier target. Shapes are
+    // unchanged — only the arrow end flips.
+    reduceBranching(grid, paths, targetAvg, maxPasses = 5) {
+        const budget = Math.max(1, Math.round(targetAvg));
+
+        for (let pass = 0; pass < maxPasses; pass++) {
+            const m = this.oracle.measureBranching(paths, grid);
+            if (m.avg <= targetAvg) break;
+
+            const removed = new Set();
+            let changed = 0;
+
+            while (removed.size < paths.length) {
+                const free = paths.filter(p =>
+                    !removed.has(p.id) && this.oracle.canEscape(p, removed, grid));
+                if (!free.length) break;
+
+                // Lock the free pieces beyond `budget` at this step. If some
+                // resist (self-pointing reversal / would deadlock), also try
+                // the "kept" ones — the isBoardSolvable gate inside guarantees
+                // at least one escapable piece always survives.
+                let excess = free.length - budget;
+                for (let i = free.length - 1; i >= 0 && excess > 0; i--) {
+                    if (this._tryReverseToBlocked(grid, paths, free[i], removed)) {
+                        changed++; excess--;
+                    }
+                }
+
+                // Clear one piece that still escapes and move to the next step.
+                const next = free.find(p => this.oracle.canEscape(p, removed, grid));
+                if (!next) break;
+                removed.add(next.id);
+            }
+
+            if (!changed) break; // converged — nothing more can be reversed
+        }
+
+        this.oracle.recomputePlaceOrder(paths, grid);
+    }
+
+    // Reverses a path in place so its head ray is blocked under the current
+    // removed-set. Reverts and returns false if the reversal would self-point,
+    // stay free, or deadlock the board.
+    _tryReverseToBlocked(grid, paths, p, removed) {
+        if (p.nodes.length < 2) return false;
+        const savedNodes = p.nodes.slice();
+        const savedHeading = p.heading;
+
+        p.nodes.reverse();
+        const nh = p.nodes[p.nodes.length - 1], np = p.nodes[p.nodes.length - 2];
+        p.heading = Path.deltaToHeading(nh.r - np.r, nh.c - np.c);
+
+        if (this.oracle.headSelfClear(p, grid) &&
+            !this.oracle.canEscape(p, removed, grid) &&
+            this.oracle.isBoardSolvable(paths, grid)) {
+            return true;
+        }
+
+        p.nodes = savedNodes;
+        p.heading = savedHeading;
+        return false;
+    }
+
     // ── Blueprint integration — Stage 13 entry point ──────────────────────────
 
     // Places all fixed paths from the blueprint constraints, then runs the
@@ -849,6 +1011,7 @@ class RCBuilder {
 
         this.fillA(grid, paths, ctr, maxFails, {
             d: topoWeight ?? 0.5,
+            lockWeight: constraints.lockWeight ?? 1.0,
             lenScale: 1.0,
             zoneMap: zm,
             anchorMode: 'UNIFORM',

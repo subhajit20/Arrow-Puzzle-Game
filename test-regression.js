@@ -67,7 +67,7 @@ for (const f of FILES) {
 vm.runInContext(`
   var oracle  = new SolvabilityOracle();
   var builder = new RCBuilder(oracle);
-  var diff    = new DifficultyEngine();
+  var diff    = new DifficultyEngine(oracle);
   var val     = new Validator(oracle);
   var gen     = new Generator(builder, diff, val);
 `, sandbox);

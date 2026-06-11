@@ -115,9 +115,36 @@ class DailyPuzzle {
 
     // Builds a seeded board using Generator and starts it via GameController.
     // containerEl: the board container DOM element (for camera/resize).
-    start(containerEl) {
-        this._hideSplash();
+    getBoard() {
+        // 1. Try loading saved daily board first
+        const saved = this.gc.persistence.load(lvl => this.generator.sizesForLevel(lvl), true);
+        const todaySeed = this.getSeed();
 
+        if (saved && saved.date === todaySeed) {
+            const grid = new Grid(saved.gridRows, saved.gridCols);
+            grid.nodeOwner.set(saved.nodeOwner);
+            for (let r = 0; r <= saved.gridRows; r++) grid.hEdge[r].set(saved.hEdge[r]);
+            for (let r = 0; r < saved.gridRows; r++) grid.vEdge[r].set(saved.vEdge[r]);
+
+            const { mask } = this.generator.selectBoardMask(
+                saved.level, saved.gridRows, saved.gridCols, 'daily'
+            );
+            grid.mask = mask;
+
+            const paths = saved.paths.map(p => Path.fromLegacy(p));
+
+            return {
+                grid, paths, mask,
+                difficulty: saved.difficulty,
+                fromSave: true,
+                score: saved.score,
+                lives: saved.lives,
+                dailyScore: saved.dailyScore || 0,
+                level: saved.level || 7,
+            };
+        }
+
+        // 2. Generate a fresh daily board if no saved progress or stale date
         // Replace Math.random with the deterministic seeded PRNG
         const seed      = this.getSeed();
         const seededRng = DailyPuzzle._mulberry32(seed);
@@ -132,12 +159,20 @@ class DailyPuzzle {
 
         if (!board) {
             console.error('[DailyPuzzle] Failed to generate daily board');
-            return;
+            return null;
         }
 
-        this.gc.dailyMode  = true;
-        this.gc.dailyScore = 0;
-        this.gc.startLevel(7, board, containerEl);
+        return {
+            grid: board.grid,
+            paths: board.paths,
+            mask: board.mask,
+            difficulty: board.difficulty,
+            fromSave: false,
+            score: 0,
+            lives: 3,
+            dailyScore: 0,
+            level: 7,
+        };
     }
 
     // ── Daily puzzle end ──────────────────────────────────────────────────────
