@@ -264,7 +264,7 @@ select:focus, input:focus { outline: none; border-color: #3b82f6; }
 // ── Instances ──────────────────────────────────────────────────────────────
 const oracle  = new SolvabilityOracle();
 const builder = new RCBuilder(oracle);
-const diff    = new DifficultyEngine();
+const diff    = new DifficultyEngine(oracle);
 const val     = new Validator(oracle);
 const gen     = new Generator(builder, diff, val);
 

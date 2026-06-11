@@ -35,7 +35,9 @@ class Renderer {
     // Updates level, score, lives and tier badge DOM elements.
     updateDomUI(gameState) {
         const lvl = document.getElementById('level-display');
-        if (lvl) lvl.innerText = `Level ${gameState.level}`;
+        if (lvl) {
+            lvl.innerText = gameState.dailyMode ? 'Daily Puzzle' : `Level ${gameState.level}`;
+        }
 
         const score = document.getElementById('score-display');
         if (score) score.innerText = gameState.dailyMode ? gameState.dailyScore : gameState.score;
@@ -43,7 +45,8 @@ class Renderer {
         const badge = document.getElementById('tier-badge');
         if (badge) {
             if (gameState.dailyMode) {
-                badge.innerText = 'DAILY';
+                const options = { month: 'short', day: 'numeric', year: 'numeric' };
+                badge.innerText = new Date().toLocaleDateString('en-US', options).toUpperCase();
                 badge.style.color = '#d97706';
             } else {
                 const d = Renderer.getDifficultyLabel(gameState.difficulty);
@@ -121,7 +124,7 @@ class Renderer {
         let fillTop, fillBot, stroke;
         if (pathState === 'CRASHING') {
             fillTop = '#f87171'; fillBot = '#b91c1c'; stroke = '#7f1d1d';
-        } else if (isSelected) {
+        } else if (isSelected || pathState === 'MOVING') {
             fillTop = '#60a5fa'; fillBot = '#1d4ed8'; stroke = '#1e3a8a';
         } else {
             fillTop = '#112540'; fillBot = '#112540'; stroke = '#112540';
@@ -181,9 +184,12 @@ class Renderer {
 
         const isSelected = selectedId === path.id || hintId === path.id;
 
+        // Blue from tap through the whole flight; red only on collision.
+        // Color follows state (not selectedPathId) so it survives the
+        // selection being cleared when the path fires.
         let strokeColor = '#112540';
         if (path.state === 'CRASHING') strokeColor = '#ef4444';
-        else if (isSelected) strokeColor = '#3b82f6';
+        else if (isSelected || path.state === 'MOVING') strokeColor = '#3b82f6';
 
         // Crash flash cell overlay
         if (path.state === 'CRASHING' && (path.crashFlashFrames || 0) > 0) {
@@ -259,7 +265,7 @@ class Renderer {
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
 
-        if (isSelected && path.state !== 'CRASHING') {
+        if ((isSelected || path.state === 'MOVING') && path.state !== 'CRASHING') {
             ctx.shadowBlur = 8;
             ctx.shadowColor = 'rgba(59,130,246,0.4)';
         }

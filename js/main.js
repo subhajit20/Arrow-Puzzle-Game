@@ -26,7 +26,7 @@
 
     // Generation core
     const builder = new RCBuilder(oracle);
-    const difficulty = new DifficultyEngine();
+    const difficulty = new DifficultyEngine(oracle);
     const validator = new Validator(oracle);
     const generator = new Generator(builder, difficulty, validator);
 
@@ -48,6 +48,7 @@
 
     // Daily puzzle
     const daily = new DailyPuzzle(generator, gc);
+    gc.daily = daily;
 
     // Input (attach after gc is ready)
     const input = new InputHandler(canvas, camera, gc);
@@ -140,9 +141,9 @@
     // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
     // Remove this block when test mode is no longer needed.
     const TEST_MODE = false;
-    const TEST_ROWS = 40;
-    const TEST_COLS = 40;
-    const TEST_LEVEL = 43;   // (70/10)%2 = 1 → heart mask
+    const TEST_ROWS = 45;
+    const TEST_COLS = 45;
+    const TEST_LEVEL = 20;   // (70/10)%2 = 1 → heart mask
     const TEST_TIER = 'TITAN';
 
     // Exposed on window so existing HTML onclick attributes still work.
@@ -172,18 +173,47 @@
         }, 50);
     };
 
+    function startDailyGame() {
+        showLoader();
+
+        setTimeout(() => {
+            const board = daily.getBoard();
+            hideLoader();
+
+            if (!board) { console.error('[main] Failed to load daily board'); return; }
+
+            if (camera._animReq) { cancelAnimationFrame(camera._animReq); camera._animReq = null; }
+            input.detach();
+            animation.stop();
+            renderer.resize(containerEl, board.grid.rows, board.grid.cols);
+            camera.reset();
+            animation.start(board, gc);
+            input.attach(containerEl);
+
+            gc.dailyMode = true;
+            gc.dailyScore = board.dailyScore || 0;
+            gc.startLevel(board.level || 7, board, containerEl);
+        }, 50);
+    }
+
     window.startDailyPuzzle = function () {
-        daily.start(containerEl);
+        daily._hideSplash();
+        startDailyGame();
     };
 
     window.exitDailyPuzzle = function () {
-        gc.dailyMode = false;
-        gc.dailyScore = 0;
-        gc.isWinState = false;
-        gc.isFailState = false;
-        const overlay = document.getElementById('daily-result-overlay');
-        if (overlay) overlay.classList.add('hidden');
-        startNormalLevel(gc.level);
+        const isDailyPage = window.location.pathname.includes('daily.html');
+        if (isDailyPage) {
+            window.location.href = 'game.html';
+        } else {
+            gc.dailyMode = false;
+            gc.dailyScore = 0;
+            gc.isWinState = false;
+            gc.isFailState = false;
+            const overlay = document.getElementById('daily-result-overlay');
+            if (overlay) overlay.classList.add('hidden');
+            startNormalLevel(gc.level);
+        }
     };
 
     window.showSplashScreen = function () {
@@ -213,9 +243,11 @@
     window.onload = () => {
         const params = new URLSearchParams(window.location.search);
         const mode = params.get('mode') || 'normal';
+        const isDailyPage = window.location.pathname.includes('daily.html');
 
-        if (mode === 'daily') {
-            daily.start(containerEl);
+        if (mode === 'daily' || isDailyPage) {
+            daily._hideSplash();
+            startDailyGame();
         } else {
             if (TEST_MODE) {
                 window.startNormalGame();

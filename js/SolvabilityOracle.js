@@ -76,6 +76,61 @@ class SolvabilityOracle {
         return removed.size === paths.length;
     }
 
+    // ── Branching factor ──────────────────────────────────────────────────────
+
+    // Simulates the solve and measures how many pieces are free at each step.
+    //   avg — mean free-piece count per step. 1.0 = unique solve order
+    //         (every move forced); higher = more interchangeable moves.
+    //   max — peak simultaneous free pieces.
+    // Clears one free piece per step so the count reflects what a player
+    // actually faces at each decision point.
+    measureBranching(paths, grid) {
+        const removed = new Set();
+        let sumFree = 0, steps = 0, maxFree = 0;
+
+        while (removed.size < paths.length) {
+            let first = null, freeCount = 0;
+            for (const p of paths) {
+                if (removed.has(p.id)) continue;
+                if (this.canEscape(p, removed, grid)) {
+                    freeCount++;
+                    if (!first) first = p;
+                }
+            }
+            if (!first) break; // unsolvable remainder — caller validates separately
+
+            sumFree += freeCount;
+            steps++;
+            if (freeCount > maxFree) maxFree = freeCount;
+            removed.add(first.id);
+        }
+
+        return { avg: steps ? sumFree / steps : 0, max: maxFree, steps };
+    }
+
+    // ── Decoy count ───────────────────────────────────────────────────────────
+
+    // Counts pieces that LOOK free but aren't: blocked pieces whose first
+    // blocker sits ≥ minDist cells down the head ray. These force the player
+    // to trace rays instead of eyeballing.
+    countDecoys(paths, grid, minDist = 4) {
+        let decoys = 0;
+        for (const p of paths) {
+            const { dr, dc } = Path.headingToDelta(p.heading);
+            const head = p.head();
+            let r = head.r + dr, c = head.c + dc, dist = 1;
+            while (grid.inBounds(r, c)) {
+                const o = grid.owner(r, c);
+                if (o >= 0 && o !== p.id) {
+                    if (dist >= minDist) decoys++;
+                    break;
+                }
+                r += dr; c += dc; dist++;
+            }
+        }
+        return decoys;
+    }
+
     // ── Place order assignment ────────────────────────────────────────────────
 
     // Derives placeOrder for every path from the greedy clear order.

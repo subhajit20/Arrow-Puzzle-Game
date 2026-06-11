@@ -10,17 +10,19 @@
 
 class Persistence {
     constructor() {
-        this.KEY = 'vecto_colossal_mosaic_save_v5';
+        this.KEY_NORMAL = 'vecto_colossal_mosaic_save_v5';
+        this.KEY_DAILY  = 'vecto_daily_puzzle_board_save_v1';
     }
 
     // ── Save ──────────────────────────────────────────────────────────────────
 
     // gameState: the plain snapshot object from GameController._snapshot()
-    save(gameState) {
+    save(gameState, dailyMode = false) {
         if (!gameState) return;
         try {
             const data = this.serialize(gameState);
-            localStorage.setItem(this.KEY, JSON.stringify(data));
+            const key = dailyMode ? this.KEY_DAILY : this.KEY_NORMAL;
+            localStorage.setItem(key, JSON.stringify(data));
         } catch (e) {
             console.error('[Persistence] save failed:', e);
         }
@@ -30,8 +32,9 @@ class Persistence {
 
     // sizesForLevel: function(level) → [{rows, cols}] — used for dimension guard.
     // Returns a plain data object on success, or null on failure / stale save.
-    load(sizesForLevel) {
-        const raw = localStorage.getItem(this.KEY);
+    load(sizesForLevel, dailyMode = false) {
+        const key = dailyMode ? this.KEY_DAILY : this.KEY_NORMAL;
+        const raw = localStorage.getItem(key);
         if (!raw) return null;
         try {
             return this.deserialize(raw, sizesForLevel);
@@ -43,8 +46,9 @@ class Persistence {
 
     // ── Clear ─────────────────────────────────────────────────────────────────
 
-    clear() {
-        localStorage.removeItem(this.KEY);
+    clear(dailyMode = false) {
+        const key = dailyMode ? this.KEY_DAILY : this.KEY_NORMAL;
+        localStorage.removeItem(key);
     }
 
     // ── Serialise ─────────────────────────────────────────────────────────────
@@ -69,6 +73,9 @@ class Persistence {
                 animProgress:  p.animProgress  || 0,
                 originalNodes: p.originalNodes || p.nodes,
             })),
+            dailyMode:          gameState.dailyMode,
+            dailyScore:         gameState.dailyScore,
+            date:               gameState.date,
         };
     }
 
@@ -129,6 +136,9 @@ class Persistence {
             vEdge,
             nodeOwner,
             paths,
+            dailyMode:          s.dailyMode          || false,
+            dailyScore:         s.dailyScore         || 0,
+            date:               s.date,
         };
     }
 }

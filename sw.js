@@ -7,12 +7,13 @@
 // immediately so users always get the latest files on next reload.
 // =============================================================================
 
-const CACHE_NAME = 'vecto-v9';
+const CACHE_NAME = 'vecto-v10';
 
 const PRECACHE_URLS = [
     './',
     './index.html',
     './game.html',
+    './daily.html',
     './manifest.json',
     './icons/icon-192.png',
     './icons/icon-512.png',

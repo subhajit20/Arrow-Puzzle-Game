@@ -24,16 +24,52 @@ class GridShape {
         return mask;
     }
 
+    // Heart = two circle lobes + power-curve taper body.
+    // The circles touch near the centre, so the gap above their meeting point
+    // forms a deep, clean V-notch; the body tapers with an outward bulge
+    // (exponent < 1) for plump sides, ending in a sharp bottom point.
     static heart(R, C) {
         const W = C + 1;
         const mask = new Uint8Array((R + 1) * W);
+
+        const LOBE_X = 0.50;   // lobe centre offset from middle
+        const LOBE_Y = -0.42;  // lobe centre height (-1 = top)
+        const LOBE_R = 0.52;   // lobe radius
+        const TIP_Y = 1.0;     // bottom point
+        const BODY_W = 1.02;   // body half-width — matches the lobes' outer edge
+        const SHARP_T = 0.62;  // below this, straight V-edges → sharp point
+        const SCALE_X = 0.96, SCALE_Y = 0.92; // margins inside the grid
+
         for (let r = 0; r <= R; r++) for (let c = 0; c <= C; c++) {
-            // Adjusted scaling: wider x range + taller y range → rounder lobes,
-            // deeper V-notch at top, sharper bottom point.
-            const x = (c - C * 0.5) / (C * 0.42);
-            const y = -(r - R * 0.5) / (R * 0.38);
-            const a = x * x + y * y - 1;
-            mask[r * W + c] = (a * a * a - x * x * y * y * y <= 0.015) ? 1 : 0;
+            const x = ((c / C) * 2 - 1) / SCALE_X;
+            const y = ((r / R) * 2 - 1) / SCALE_Y;
+
+            let inside = false;
+
+            // Lobes
+            const dy = y - LOBE_Y;
+            const dl = x + LOBE_X, dr = x - LOBE_X;
+            if (dl * dl + dy * dy <= LOBE_R * LOBE_R ||
+                dr * dr + dy * dy <= LOBE_R * LOBE_R) {
+                inside = true;
+            }
+            // Body: elliptical side profile — vertical tangent where it meets
+            // the lobes' widest point, so the left/right sides continue the
+            // circles as one smooth oval curve (no corner). Below SHARP_T the
+            // sides switch to straight V-edges converging on a sharp point.
+            else if (y >= LOBE_Y && y <= TIP_Y) {
+                const tt = (y - LOBE_Y) / (TIP_Y - LOBE_Y);
+                let w;
+                if (tt <= SHARP_T) {
+                    w = BODY_W * Math.sqrt(Math.max(0, 1 - tt * tt));
+                } else {
+                    const w0 = BODY_W * Math.sqrt(1 - SHARP_T * SHARP_T);
+                    w = w0 * (1 - (tt - SHARP_T) / (1 - SHARP_T));
+                }
+                inside = Math.abs(x) <= w;
+            }
+
+            mask[r * W + c] = inside ? 1 : 0;
         }
         return mask;
     }
