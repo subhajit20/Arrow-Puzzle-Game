@@ -259,8 +259,8 @@ class Renderer {
         // Dynamic line width: thicker on small grids, thicker floor on large grids.
         const _nodes = (this.camera.gridRows + 1) * (this.camera.gridCols + 1);
         const _t = Math.max(0, Math.min(1, (_nodes - 63) / (2806 - 63)));
-        const _lwMult = 0.16 - _t * 0.06;  // 0.16 (small) → 0.10 (large)
-        const _lwMin = 1.6 - _t * 0.2;   // 1.6  (small) → 1.4  (large)
+        const _lwMult = 0.16 - _t * 0.04;  // 0.16 (small) → 0.12 (large)
+        const _lwMin = 1.6 + _t * 0.4;   // 1.6  (small) → 2.0  (large)
         ctx.lineWidth = Math.max(_lwMin, cSize * _lwMult);
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';

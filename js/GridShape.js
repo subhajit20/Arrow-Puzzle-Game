@@ -74,6 +74,195 @@ class GridShape {
         return mask;
     }
 
+    // Coffee cup pictogram: body + handle ring (enclosed hole) + saucer below
+    // as a separate island. Converted from artwork via scratch/png_to_grid.py.
+    static CUP_TEMPLATE = [
+        '00000000000000000000000000000000',
+        '00000000000000000000000000000000',
+        '00000000000000000000000000000000',
+        '00000000000000000000000000000000',
+        '00000000000000000000000000000000',
+        '00000000000000000000000000000000',
+        '01111111111111111111111100000000',
+        '01111111111111111111111111100000',
+        '01111111111111111111111111110000',
+        '01111111111111111111111111111000',
+        '01111111111111111111111100111100',
+        '01111111111111111111111100001100',
+        '01111111111111111111111100001100',
+        '01111111111111111111111100001100',
+        '01111111111111111111111100001100',
+        '01111111111111111111111100111100',
+        '01111111111111111111111111111000',
+        '01111111111111111111111111110000',
+        '01111111111111111111111111000000',
+        '00111111111111111111111100000000',
+        '00011111111111111111110000000000',
+        '00001111111111111111100000000000',
+        '00000011111111111110000000000000',
+        '00000000000000000000000000000000',
+        '00001111111111111111100000000000',
+        '01111111111111111111111100000000',
+        '00011111111111111111110000000000',
+        '00000000000000000000000000000000',
+        '00000000000000000000000000000000',
+        '00000000000000000000000000000000',
+        '00000000000000000000000000000000',
+        '00000000000000000000000000000000',
+    ];
+
+    static cup(R, C) {
+        return GridShape._fromTemplate(R, C, GridShape.CUP_TEMPLATE);
+    }
+
+    // Apple pictogram: round body with top dimple + bottom notch, 2-wide
+    // curved stem, tilted leaf attached to the stem. Single connected shape.
+    // Traced from artwork via scratch/png_to_grid.py, stem hand-thickened.
+    static APPLE_TEMPLATE = [
+        '00000011110000000001111000000000',
+        '00000111111100000011111000000000',
+        '00000111111110000111110000000000',
+        '00000111111110001111100000000000',
+        '00000011111111011110000000000000',
+        '00000001111111111100000000000000',
+        '00000000011111111000000000000000',
+        '00000000000011111000000000000000',
+        '00000000000001111000000000000000',
+        '00000000000001111000000000000000',
+        '00000011111101111001111110000000',
+        '00000111111111111111111111100000',
+        '00011111111111111111111111110000',
+        '00111111111111111111111111111000',
+        '01111111111111111111111111111100',
+        '01111111111111111111111111111100',
+        '01111111111111111111111111111110',
+        '01111111111111111111111111111110',
+        '01111111111111111111111111111110',
+        '01111111111111111111111111111110',
+        '01111111111111111111111111111110',
+        '01111111111111111111111111111110',
+        '01111111111111111111111111111110',
+        '01111111111111111111111111111110',
+        '00111111111111111111111111111100',
+        '00111111111111111111111111111100',
+        '00011111111111111111111111111000',
+        '00001111111111111111111111110000',
+        '00000111111111111111111111100000',
+        '00000011111111111111111111000000',
+        '00000001111111111111111110000000',
+        '00000000111111100111111100000000',
+    ];
+
+    static apple(R, C) {
+        return GridShape._fromTemplate(R, C, GridShape.APPLE_TEMPLATE);
+    }
+
+    // Isometric cube pictogram — three faces (top rhombus + two mirrored side
+    // parallelograms) as three separate islands. Each face is tested in
+    // normalized coords and shrunk toward its own centroid, which carves the
+    // white edge-gaps between faces at a width proportional to the board.
+    static cube(R, C) {
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const SHRINK = 0.90; // per-face shrink → gap width between faces
+
+        const inTop = (x, y) => Math.abs(x) / 0.95 + Math.abs(y + 0.52) / 0.45 <= 1;
+        const inLeft = (x, y) => {
+            if (x < -0.95 || x > 0) return false;
+            const u = (x + 0.95) / 0.95;
+            return y >= -0.52 + 0.45 * u && y <= 0.55 + 0.45 * u;
+        };
+        const faces = [
+            { test: inTop, cx: 0, cy: -0.52 },
+            { test: inLeft, cx: -0.475, cy: 0.24 },
+            { test: (x, y) => inLeft(-x, y), cx: 0.475, cy: 0.24 },
+        ];
+
+        for (let r = 0; r <= R; r++) for (let c = 0; c <= C; c++) {
+            const x = ((c / C) * 2 - 1) / 0.97;
+            const y = ((r / R) * 2 - 1) / 0.99;
+            let inside = false;
+            for (const f of faces) {
+                // Expanding the point away from the centroid = shrinking the
+                // face around it — same trick at every board size.
+                const px = f.cx + (x - f.cx) / SHRINK;
+                const py = f.cy + (y - f.cy) / SHRINK;
+                if (f.test(px, py)) { inside = true; break; }
+            }
+            mask[r * W + c] = inside ? 1 : 0;
+        }
+        return mask;
+    }
+
+    // Stacked cubes pictogram — three isometric cubes (one resting in the
+    // notch between two below), nine faces as nine islands. Reuses the
+    // single-cube face geometry per cube; the front (top) cube occludes the
+    // bottom two with a white outline (MARGIN). Milestone rotation only —
+    // too detailed for the small daily board.
+    static cubesStack(R, C) {
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const SHRINK = 0.87; // per-face shrink → gaps between faces
+        const MARGIN = 0.08; // white outline around the front cube
+
+        const inTop = (x, y) => Math.abs(x) / 0.95 + Math.abs(y + 0.52) / 0.45 <= 1;
+        const inLeft = (x, y) => {
+            if (x < -0.95 || x > 0) return false;
+            const u = (x + 0.95) / 0.95;
+            return y >= -0.52 + 0.45 * u && y <= 0.55 + 0.45 * u;
+        };
+        const inRight = (x, y) => inLeft(-x, y);
+        const silhouette = (x, y) => inTop(x, y) || inLeft(x, y) || inRight(x, y);
+
+        const FACES = [
+            { test: inTop, cx: 0, cy: -0.52 },
+            { test: inLeft, cx: -0.475, cy: 0.24 },
+            { test: inRight, cx: 0.475, cy: 0.24 },
+        ];
+        // Depth order: front cube first — first silhouette hit owns the point.
+        const CUBES = [
+            { ox: 0, oy: -0.45, s: 0.52 },
+            { ox: -0.50, oy: 0.42, s: 0.52 },
+            { ox: 0.50, oy: 0.42, s: 0.52 },
+        ];
+
+        for (let r = 0; r <= R; r++) for (let c = 0; c <= C; c++) {
+            const x = ((c / C) * 2 - 1) / 0.99;
+            const y = ((r / R) * 2 - 1) / 0.99;
+
+            let inside = false;
+            for (const cube of CUBES) {
+                const lx = (x - cube.ox) / cube.s;
+                const ly = (y - cube.oy) / cube.s;
+                if (!silhouette(lx / (1 + MARGIN), (ly - 0.015) / (1 + MARGIN) + 0.015)) continue;
+                for (const f of FACES) {
+                    const px = f.cx + (lx - f.cx) / SHRINK;
+                    const py = f.cy + (ly - f.cy) / SHRINK;
+                    if (f.test(px, py)) { inside = true; break; }
+                }
+                break;
+            }
+            mask[r * W + c] = inside ? 1 : 0;
+        }
+        return mask;
+    }
+
+    // Builds a node mask by sampling a bitmap template (array of '0'/'1'
+    // strings) with nearest-neighbour scaling onto the (R+1)×(C+1) lattice.
+    static _fromTemplate(R, C, tpl) {
+        const W = C + 1;
+        const TH = tpl.length, TW = tpl[0].length;
+        const mask = new Uint8Array((R + 1) * W);
+        for (let r = 0; r <= R; r++) {
+            const tr = Math.min(TH - 1, Math.round(r / R * (TH - 1)));
+            for (let c = 0; c <= C; c++) {
+                const tc = Math.min(TW - 1, Math.round(c / C * (TW - 1)));
+                mask[r * W + c] = tpl[tr][tc] === '1' ? 1 : 0;
+            }
+        }
+        return mask;
+    }
+
     static star(R, C) {
         const W = C + 1;
         const mask = new Uint8Array((R + 1) * W);
@@ -968,8 +1157,56 @@ class GridShape {
             GridShape.whale,
             GridShape.brain,
             GridShape.burger,
+            GridShape.cup,
+            GridShape.cube,
+            GridShape.cubesStack,
+            GridShape.apple,
         ];
         return shapes[(Math.floor(level / 10) - 1) % shapes.length];
+    }
+
+    // ── Per-shape milestone grid sizes ────────────────────────────────────────
+    // Every shape plays on one of 3 large grids tailored to its aspect ratio
+    // (wide shapes get wide boards, tall shapes tall boards) and detail level
+    // (thin features / island gaps need more resolution). All sizes keep the
+    // lattice (rows+1)×(cols+1) ≤ 3500 so the blueprint pipeline (regions,
+    // motifs, solve-order planning) stays active.
+    static SHAPE_SIZES = {
+        circle:      [{ rows: 40, cols: 40 }, { rows: 42, cols: 42 }, { rows: 44, cols: 44 }],
+        heart:       [{ rows: 44, cols: 42 }, { rows: 46, cols: 44 }, { rows: 48, cols: 46 }],
+        star:        [{ rows: 46, cols: 46 }, { rows: 48, cols: 48 }, { rows: 50, cols: 50 }],
+        donut:       [{ rows: 42, cols: 42 }, { rows: 44, cols: 44 }, { rows: 46, cols: 46 }],
+        octagon:     [{ rows: 40, cols: 40 }, { rows: 42, cols: 42 }, { rows: 44, cols: 44 }],
+        skull:       [{ rows: 46, cols: 42 }, { rows: 48, cols: 44 }, { rows: 50, cols: 46 }],
+        shield:      [{ rows: 46, cols: 40 }, { rows: 48, cols: 42 }, { rows: 50, cols: 44 }],
+        leaf:        [{ rows: 46, cols: 40 }, { rows: 48, cols: 42 }, { rows: 50, cols: 44 }],
+        trophy:      [{ rows: 48, cols: 42 }, { rows: 50, cols: 44 }, { rows: 52, cols: 46 }],
+        crown:       [{ rows: 38, cols: 48 }, { rows: 40, cols: 50 }, { rows: 42, cols: 52 }],
+        badge:       [{ rows: 42, cols: 42 }, { rows: 44, cols: 44 }, { rows: 46, cols: 46 }],
+        dinosaur:    [{ rows: 44, cols: 52 }, { rows: 46, cols: 54 }, { rows: 48, cols: 56 }],
+        chromeDino:  [{ rows: 44, cols: 46 }, { rows: 46, cols: 48 }, { rows: 48, cols: 50 }],
+        metamaskFox: [{ rows: 46, cols: 46 }, { rows: 48, cols: 48 }, { rows: 50, cols: 50 }],
+        camel:       [{ rows: 42, cols: 50 }, { rows: 44, cols: 52 }, { rows: 46, cols: 54 }],
+        scorpion:    [{ rows: 50, cols: 52 }, { rows: 52, cols: 54 }, { rows: 54, cols: 56 }],
+        seahorse:    [{ rows: 52, cols: 38 }, { rows: 54, cols: 40 }, { rows: 56, cols: 42 }],
+        unicornHead: [{ rows: 48, cols: 42 }, { rows: 50, cols: 44 }, { rows: 52, cols: 46 }],
+        petals:      [{ rows: 44, cols: 44 }, { rows: 46, cols: 46 }, { rows: 48, cols: 48 }],
+        elephant:    [{ rows: 44, cols: 50 }, { rows: 46, cols: 52 }, { rows: 48, cols: 54 }],
+        pawPrint:    [{ rows: 42, cols: 44 }, { rows: 44, cols: 46 }, { rows: 46, cols: 48 }],
+        whale:       [{ rows: 40, cols: 52 }, { rows: 42, cols: 54 }, { rows: 44, cols: 56 }],
+        brain:       [{ rows: 42, cols: 48 }, { rows: 44, cols: 50 }, { rows: 46, cols: 52 }],
+        burger:      [{ rows: 40, cols: 48 }, { rows: 42, cols: 50 }, { rows: 44, cols: 52 }],
+        cup:         [{ rows: 44, cols: 50 }, { rows: 46, cols: 52 }, { rows: 48, cols: 54 }],
+        cube:        [{ rows: 46, cols: 46 }, { rows: 48, cols: 48 }, { rows: 50, cols: 50 }],
+        cubesStack:  [{ rows: 52, cols: 52 }, { rows: 54, cols: 54 }, { rows: 55, cols: 55 }],
+        apple:       [{ rows: 46, cols: 44 }, { rows: 48, cols: 46 }, { rows: 50, cols: 48 }],
+    };
+
+    // Returns the 3 candidate grid sizes for the milestone shape at this level.
+    static milestoneSizes(level) {
+        const fn = GridShape.forLevel(level);
+        return GridShape.SHAPE_SIZES[fn?.name] ||
+            [{ rows: 44, cols: 44 }, { rows: 46, cols: 46 }, { rows: 48, cols: 48 }];
     }
 
     // Returns the shape function for today's daily puzzle.
@@ -1002,6 +1239,9 @@ class GridShape {
             GridShape.whale,
             GridShape.brain,
             GridShape.burger,
+            GridShape.cup,
+            GridShape.cube,
+            GridShape.apple,
         ];
         return shapes[dayOfYr % shapes.length];
     }
