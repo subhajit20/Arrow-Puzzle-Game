@@ -77,6 +77,42 @@ class RCBuilder {
         return bonus;
     }
 
+    // Cells of a piece's head ray (head exclusive → board edge), as a Set of
+    // "r,c" keys. Used by the plan-guided fill to track which cells would
+    // lock a currently-free piece if occupied.
+    _rayCells(grid, p) {
+        const { dr, dc } = Path.headingToDelta(p.heading);
+        const head = p.head();
+        const cells = new Set();
+        let r = head.r + dr, c = head.c + dc;
+        while (grid.inBounds(r, c)) {
+            cells.add(r + ',' + c);
+            r += dr; c += dc;
+        }
+        return cells;
+    }
+
+    // Picks an available anchor cell ON the given free piece's ray — a walk
+    // grown from there is guaranteed to cross (and therefore lock) that piece.
+    _anchorOnRay(grid, entry) {
+        if (!entry || !entry.rayCells.size) return null;
+        // rayCells insertion order = nearest → farthest from the head.
+        // Prefer the FAR half of the ray: the locking piece lands far from the
+        // head it locks, so clearing it doesn't visually point at the piece it
+        // frees — the player must re-scan the board instead of following a
+        // local breadcrumb trail (which made chained boards feel easy).
+        const cells = [...entry.rayCells];
+        const far = cells.length > 4 ? cells.slice(cells.length >> 1) : cells;
+        for (let k = 0; k < 8; k++) {
+            const pool = k < 5 ? far : cells;
+            const key = pool[(Math.random() * pool.length) | 0];
+            const ci = key.indexOf(',');
+            const r = +key.slice(0, ci), c = +key.slice(ci + 1);
+            if (grid.isAvailable(r, c)) return { r, c };
+        }
+        return null;
+    }
+
     // Distance (in cells) from head to the first foreign blocker on the ray.
     // Returns 0 when the ray is clear to the board edge.
     _blockerDist(grid, head, dr, dc) {
@@ -366,6 +402,7 @@ class RCBuilder {
     fillA(grid, paths, ctr, maxFails, knobs) {
         const d = knobs?.d != null ? knobs.d : 0.5;
         const lockWeight = knobs?.lockWeight ?? 0;
+        const branchBudget = knobs?.branchBudget ?? 0; // 0 = plan-guided fill off
         const lenScale = knobs?.lenScale != null ? knobs.lenScale : 1;
         const zoneMap = knobs?.zoneMap || null;
         const anchorMode = knobs?.anchorMode || 'UNIFORM';
@@ -388,10 +425,33 @@ class RCBuilder {
         // player must discover the correct solve order.
         const topoWeight = d * 0.85;
 
+        // ── Plan-guided fill: frontier of currently-free pieces ──────────────
+        // freeList holds every placed piece whose head ray is still clear,
+        // with its ray cells. The fill keeps freeList.length ≤ branchBudget:
+        // when over budget, new pieces are AIMED onto a free piece's ray
+        // (locking it), weaving one continuous dependency chain instead of
+        // scattering loose pieces and tightening afterwards.
+        const freeList = [];
+        if (branchBudget > 0) {
+            for (const p of paths) {
+                const { dr, dc } = Path.headingToDelta(p.heading);
+                if (this.headRayClear(grid, p.head(), dr, dc))
+                    freeList.push({ p, rayCells: this._rayCells(grid, p) });
+            }
+        }
+
         let fails = 0;
 
         while (fails < maxFails) {
-            const anchor = this._pickAnchorForMode(grid, anchorMode, clusterCenters, innerBbox, clusterRadius);
+            // Over budget → aim the next piece at a free piece's ray. A RANDOM
+            // entry (not the newest) so successive locks scatter across the
+            // board rather than knitting one locally-traceable thread.
+            let anchor = null;
+            if (branchBudget > 0 && freeList.length > branchBudget) {
+                anchor = this._anchorOnRay(grid,
+                    freeList[(Math.random() * freeList.length) | 0]);
+            }
+            if (!anchor) anchor = this._pickAnchorForMode(grid, anchorMode, clusterCenters, innerBbox, clusterRadius);
             if (!anchor) { fails++; continue; }
 
             const effLen = zoneMap
@@ -478,11 +538,17 @@ class RCBuilder {
 
             // Fall back to best clear-ray candidate if topology placement skipped or failed.
             if (!placed && clearCands.length > 0) {
-                // Lock-aware gate: a clear-ray piece that locks no currently-
-                // free piece stays free for the whole solve and inflates the
-                // branching factor. At high lockWeight most such placements
-                // are rejected once the board has enough pieces to lock.
-                if (lockWeight > 0) {
+                if (branchBudget > 0 && freeList.length > branchBudget) {
+                    // Hard budget rule: over the allowance, a new free piece is
+                    // only accepted if it locks at least one currently-free
+                    // piece (net free count stays flat or drops). Aimed walks
+                    // satisfy this by construction; stray ones are rejected.
+                    const locks = freeList.some(f =>
+                        nodes.some(n => f.rayCells.has(n.r + ',' + n.c)));
+                    if (!locks) { fails++; continue; }
+                } else if (branchBudget === 0 && lockWeight > 0) {
+                    // Legacy probabilistic gate — only when plan-guided fill
+                    // is disabled (no budget supplied).
                     const rejectP = Math.min(0.92, lockWeight * 0.42) *
                         Math.min(1, paths.length / 12);
                     if (rejectP > 0 && Math.random() < rejectP &&
@@ -504,7 +570,24 @@ class RCBuilder {
                 ctr.n++; fails = 0; placed = true;
             }
 
-            if (!placed) { fails++; }
+            if (!placed) { fails++; continue; }
+
+            // Frontier bookkeeping: the new piece locks every free piece whose
+            // ray it crosses; if its own ray is clear, it joins the frontier.
+            if (branchBudget > 0) {
+                const justPlaced = paths[paths.length - 1];
+                const nodeSet = new Set(justPlaced.nodes.map(n => n.r + ',' + n.c));
+                for (let i = freeList.length - 1; i >= 0; i--) {
+                    let crossed = false;
+                    for (const key of nodeSet) {
+                        if (freeList[i].rayCells.has(key)) { crossed = true; break; }
+                    }
+                    if (crossed) freeList.splice(i, 1);
+                }
+                const { dr, dc } = Path.headingToDelta(justPlaced.heading);
+                if (this.headRayClear(grid, justPlaced.head(), dr, dc))
+                    freeList.push({ p: justPlaced, rayCells: this._rayCells(grid, justPlaced) });
+            }
         }
     }
 
@@ -1012,6 +1095,7 @@ class RCBuilder {
         this.fillA(grid, paths, ctr, maxFails, {
             d: topoWeight ?? 0.5,
             lockWeight: constraints.lockWeight ?? 1.0,
+            branchBudget: constraints.branchBudget ?? 0,
             lenScale: 1.0,
             zoneMap: zm,
             anchorMode: 'UNIFORM',

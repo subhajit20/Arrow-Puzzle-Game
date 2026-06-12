@@ -161,6 +161,7 @@ class Generator {
                 ` solvableDepth: ${bpConstraints.chainDepth}`
             );
             bpConstraints.lockWeight = knobs.lockWeight;
+            bpConstraints.branchBudget = knobs.branchBudget;
             this.builder.fillWithBlueprint(grid, paths, ctr, bpConstraints);
         } else {
             // ── Original RC generation path ────────────────────────────────────
@@ -172,6 +173,8 @@ class Generator {
             // visually express the region's motif style (corridor = straight, etc.)
             this.builder.fillA(grid, paths, ctr, maxFails, {
                 d: knobs.d, lenScale: knobs.lenScale,
+                lockWeight: knobs.lockWeight,
+                branchBudget: knobs.branchBudget,
                 zoneMap: motifZone || zoneMap,
             });
         }

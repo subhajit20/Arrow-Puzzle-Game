@@ -141,10 +141,10 @@
     // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
     // Remove this block when test mode is no longer needed.
     const TEST_MODE = false;
-    const TEST_ROWS = 45;
-    const TEST_COLS = 45;
+    const TEST_ROWS = 48;
+    const TEST_COLS = 48;
     const TEST_LEVEL = 20;   // (70/10)%2 = 1 → heart mask
-    const TEST_TIER = 'TITAN';
+    const TEST_TIER = 'EXPERT';
 
     // Exposed on window so existing HTML onclick attributes still work.
     window.startNormalGame = function () {
@@ -152,6 +152,9 @@
 
         setTimeout(() => {
             if (TEST_MODE) {
+                // Generate at the TRUE test tier — not just the display label.
+                // Forces chain depth, lock weight, branch budget etc. to match.
+                DifficultyEngine.FORCE_TIER = TEST_TIER;
                 const board = generator.build(TEST_ROWS, TEST_COLS, TEST_LEVEL, 4, 'normal');
                 hideLoader();
                 if (!board) { console.error('[main] Test board generation failed'); return; }
