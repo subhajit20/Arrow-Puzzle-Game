@@ -338,3 +338,18 @@ no two consecutive boards feeling alike. Game character unchanged.
 | UQ-3 | `RCBuilder` — lock-aware fillA/fillB/fillD (candidates that lock free pieces score higher), decoy bias in blocked candidates | [x] |
 | UQ-4 | `Generator` — final-branch measurement post-fillD, branch-gated acceptance, board signature anti-repeat | [x] |
 | UQ-5 | Regression: `node test-regression.js` green, perf within budget, tier distribution sane | [ ] |
+
+---
+
+# PG — Plan-Guided Fill (topology-first phase 1)
+
+Goal: enforce the branch budget DURING construction instead of relying on
+post-hoc reduction — fill pieces are aimed onto free pieces' rays (far half,
+random target) so the dependency chain is tight but spatially scattered.
+
+| ID | Task | Status |
+|---|---|---|
+| PG-1 | `DifficultyEngine.branchBudgetForTier` + knob plumbing (both fillA paths + blueprint constraints) | [x] |
+| PG-2 | `RCBuilder.fillA` — frontier freeList, aimed anchors (`_anchorOnRay`), hard budget acceptance, bookkeeping | [x] |
+| PG-3 | Anti-breadcrumb: far-half ray anchoring + random free-piece targeting (fixes "too easy to follow" feel) | [x] |
+| PG-4 | Phase 2 (future): per-step budgets + planned decoys in SolveOrderPlanner; backbone carve-with-backtrack | [ ] |

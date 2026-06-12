@@ -42,6 +42,14 @@ class DifficultyEngine {
         return DifficultyEngine.BRANCH_TOL[tier] ?? 1.0;
     }
 
+    // Hard allowance used DURING construction (plan-guided fill): the maximum
+    // number of simultaneously-free pieces the fill may leave on the board.
+    // Derived from the small-board branch target — the fill enforces it
+    // live instead of relying on post-hoc reduction alone.
+    branchBudgetForTier(tier) {
+        return Math.max(1, Math.round(DifficultyEngine.BRANCH_TARGET[tier] ?? 2));
+    }
+
     static scoreTier(score) {
         if (score < 6) return 'EASY';
         if (score < 13) return 'NORMAL';
@@ -63,9 +71,14 @@ class DifficultyEngine {
 
     // ── Tier selection ────────────────────────────────────────────────────────
 
+    // Test-only override: force every generated board to this tier (e.g.
+    // 'TITAN'). null = normal weighted selection. Set from main.js TEST_MODE.
+    static FORCE_TIER = null;
+
     // Resolves a weighted probability per level, applying history pacing rules
     // to prevent streaks and inject difficulty relief when needed.
     selectTier(level, recentDifficulties = []) {
+        if (DifficultyEngine.FORCE_TIER) return DifficultyEngine.FORCE_TIER;
         if (level === 100) return 'TITAN';
 
         let probs;
@@ -224,6 +237,7 @@ class DifficultyEngine {
             chainDepth: this.chainDepthForTier(tier),
             d,
             lockWeight,
+            branchBudget: this.branchBudgetForTier(tier),
             lenScale: 1,
             zoneMap,
         };

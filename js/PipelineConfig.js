@@ -53,12 +53,12 @@ class PipelineConfig {
         const palettes = [
             { CORRIDOR: 40, SPIRAL: 0, NESTED_RECT: 40, LOOP: 0, SNAKE: 0, ZIGZAG: 0, RING: 40, CHAMBER: 0 }, // CORRIDOR, NESTED_RECT, RING
             { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 45, LOOP: 30, SNAKE: 0, ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // NESTED_RECT, LOOP, RING
-            { CORRIDOR: 50, SPIRAL: 0, NESTED_RECT: 0, LOOP: 35, SNAKE: 20, ZIGZAG: 0, RING: 0, CHAMBER: 0 }, // LOOP, SNAKE, CORRIDOR
-            { CORRIDOR: 45, SPIRAL: 0, NESTED_RECT: 0, LOOP: 35, SNAKE: 0, ZIGZAG: 0, RING: 40, CHAMBER: 0 }, // CORRIDOR, LOOP, RING
-            { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 45, LOOP: 0, SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // NESTED_RECT, SNAKE, RING
-            { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 0, LOOP: 35, SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // LOOP, SNAKE, RING
-            { CORRIDOR: 45, SPIRAL: 0, NESTED_RECT: 0, LOOP: 0, SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 },  // CORRIDOR, SNAKE, RING
-            { CORRIDOR: 50, SPIRAL: 0, NESTED_RECT: 50, LOOP: 0, SNAKE: 0, ZIGZAG: 0, RING: 0, CHAMBER: 0 }  // CORRIDOR, SNAKE, RING
+            // { CORRIDOR: 50, SPIRAL: 0, NESTED_RECT: 0, LOOP: 35, SNAKE: 20, ZIGZAG: 0, RING: 0, CHAMBER: 0 }, // LOOP, SNAKE, CORRIDOR
+            // { CORRIDOR: 45, SPIRAL: 0, NESTED_RECT: 0, LOOP: 35, SNAKE: 0, ZIGZAG: 0, RING: 40, CHAMBER: 0 }, // CORRIDOR, LOOP, RING
+            // { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 45, LOOP: 0, SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // NESTED_RECT, SNAKE, RING
+            // { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 0, LOOP: 35, SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // LOOP, SNAKE, RING
+            // { CORRIDOR: 45, SPIRAL: 0, NESTED_RECT: 0, LOOP: 0, SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 },  // CORRIDOR, SNAKE, RING
+            // { CORRIDOR: 50, SPIRAL: 0, NESTED_RECT: 50, LOOP: 0, SNAKE: 0, ZIGZAG: 0, RING: 0, CHAMBER: 0 }  // CORRIDOR, NESTED_RECT
         ];
 
         const val = seed !== null ? seed : level;
@@ -240,6 +240,16 @@ class PipelineConfig {
     //  for normal levels where variety is desired.)
     static _defaultSeed(level) {
         const now = typeof Date !== 'undefined' ? Date.now() : Math.floor(Math.random() * 0xFFFFFFFF);
-        return ((level * 1000003) ^ (now * 1664525 + 1013904223)) >>> 0;
+        // 32-bit-exact mixing (Math.imul) — the old `now * 1664525` exceeded
+        // 2^53, so float rounding zeroed the low bits and `seed % palettes`
+        // always picked the same motif palette per level.
+        let s = (Math.imul(now >>> 0, 1664525) + 1013904223) >>> 0;
+        s ^= Math.imul(level, 1000003);
+        // Avalanche pass: spread high bits into low bits so small moduli
+        // (palette % 8) see the full entropy.
+        s ^= s >>> 16;
+        s = Math.imul(s, 0x45d9f3b) >>> 0;
+        s ^= s >>> 16;
+        return s >>> 0;
     }
 }
