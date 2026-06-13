@@ -142,8 +142,8 @@
     // Remove this block when test mode is no longer needed.
     const TEST_MODE = false;
     const TEST_ROWS = 48;
-    const TEST_COLS = 48;
-    const TEST_LEVEL = 20;   // (70/10)%2 = 1 → heart mask
+    const TEST_COLS = 44;
+    const TEST_LEVEL = 300;   // (70/10)%2 = 1 → heart mask
     const TEST_TIER = 'EXPERT';
 
     // Exposed on window so existing HTML onclick attributes still work.
