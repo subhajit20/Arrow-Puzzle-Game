@@ -130,6 +130,7 @@ class GameController {
             p.state        = 'IDLE';
             p.animProgress = 0;
             p.crashFlashFrames = 0;
+            p._logicFired  = false;   // clear the exit flag so cleared-count / win reset to 0
             // Restore original nodes
             if (p.originalNodes && p.originalNodes.length) {
                 p.nodes = p.originalNodes.map(n => ({ r: n.r, c: n.c }));
