@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en" style="height:-webkit-fill-available;">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -15,6 +16,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
             background-color: #f8fafc;
@@ -24,8 +26,16 @@
             height: 100svh !important;
             min-height: -webkit-fill-available;
         }
-        .glow-btn:active { transform: scale(0.96); }
-        .glow-btn:disabled { opacity: 0.5; pointer-events: none; }
+
+        .glow-btn:active {
+            transform: scale(0.96);
+        }
+
+        .glow-btn:disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
         #join-section {
             display: grid;
             grid-template-rows: 0fr;
@@ -33,34 +43,93 @@
             transition: grid-template-rows 0.25s ease, opacity 0.25s ease, margin 0.25s ease;
             margin-top: 0;
         }
-        #join-section.open { grid-template-rows: 1fr; opacity: 1; margin-top: 0.75rem; }
-        #join-section > div { overflow: hidden; }
-        #code-input { text-transform: uppercase; letter-spacing: 0.35em; }
-        #code-input::placeholder { letter-spacing: 0.2em; }
-        #countdown-num { font-variant-numeric: tabular-nums; }
-        .shake { animation: shake 0.4s; }
-        @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
-        .prog-fill { transition: width 0.25s ease; }
+
+        #join-section.open {
+            grid-template-rows: 1fr;
+            opacity: 1;
+            margin-top: 0.75rem;
+        }
+
+        #join-section>div {
+            overflow: hidden;
+        }
+
+        #code-input {
+            text-transform: uppercase;
+            letter-spacing: 0.35em;
+        }
+
+        #code-input::placeholder {
+            letter-spacing: 0.2em;
+        }
+
+        #countdown-num {
+            font-variant-numeric: tabular-nums;
+        }
+
+        .shake {
+            animation: shake 0.4s;
+        }
+
+        @keyframes shake {
+
+            0%,
+            100% {
+                transform: translateX(0)
+            }
+
+            25% {
+                transform: translateX(-6px)
+            }
+
+            75% {
+                transform: translateX(6px)
+            }
+        }
+
+        .prog-fill {
+            transition: width 0.25s ease;
+        }
+
+        .spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(6, 78, 59, 0.15);
+            border-top-color: #10b981;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0.4rem auto;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
     </style>
 </head>
+
 <body class="w-screen flex flex-col justify-center items-center p-4 gap-3 md:gap-4 bg-slate-100"
-      style="padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));">
+    style="padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));">
 
     <!-- Logo -->
     <div id="brand" class="text-center">
         <div class="text-2xl md:text-3xl font-extrabold text-[#112540] tracking-tight">VECTO</div>
-        <div class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Play with Friends</div>
+        <div class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Play with
+            Friends</div>
     </div>
 
     <!-- ════════════════ VIEW: ENTRY ════════════════ -->
     <div id="view-entry" class="w-full max-w-sm flex flex-col items-center gap-3">
         <div class="w-full rounded-2xl p-4 md:p-5 shadow-xl"
-             style="background: linear-gradient(135deg, #6ee7b7 0%, #10b981 45%, #0d9488 100%);">
+            style="background: linear-gradient(135deg, #6ee7b7 0%, #10b981 45%, #0d9488 100%);">
             <div class="flex items-center justify-between mb-3">
-                <span class="text-[9px] font-extrabold text-emerald-950/60 uppercase tracking-widest">Play with Friends</span>
+                <span class="text-[9px] font-extrabold text-emerald-950/60 uppercase tracking-widest">Play with
+                    Friends</span>
                 <span class="text-sm">👥</span>
             </div>
-            <label for="name-input" class="block text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide mb-1">Your name</label>
+            <label for="name-input"
+                class="block text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide mb-1">Your name</label>
             <input id="name-input" type="text" maxlength="16" autocomplete="off" spellcheck="false"
                 placeholder="Enter your name"
                 class="w-full py-2.5 px-3 font-bold text-sm rounded-xl outline-none border-2 border-transparent focus:border-emerald-900/40 transition-colors"
@@ -78,7 +147,9 @@
             </button>
             <div id="join-section">
                 <div>
-                    <label for="code-input" class="block text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide mb-1">Room code</label>
+                    <label for="code-input"
+                        class="block text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide mb-1">Room
+                        code</label>
                     <input id="code-input" type="text" maxlength="6" autocomplete="off" spellcheck="false"
                         inputmode="text" placeholder="ABCDEF"
                         class="w-full py-2.5 px-3 font-extrabold text-center text-base rounded-xl outline-none border-2 border-transparent focus:border-emerald-900/40 transition-colors"
@@ -94,22 +165,26 @@
         </div>
         <div id="conn-status" class="text-[11px] font-semibold text-slate-400 h-4"></div>
         <button onclick="window.location.href='index.html'"
-            class="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors tracking-wide">← Back</button>
+            class="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors tracking-wide">←
+            Back</button>
     </div>
 
     <!-- ════════════════ VIEW: LOBBY ════════════════ -->
     <div id="view-lobby" class="hidden w-full max-w-sm flex flex-col items-center gap-3">
         <div class="w-full rounded-2xl p-4 md:p-5 shadow-xl"
-             style="background: linear-gradient(135deg, #6ee7b7 0%, #10b981 45%, #0d9488 100%);">
+            style="background: linear-gradient(135deg, #6ee7b7 0%, #10b981 45%, #0d9488 100%);">
             <div class="flex items-center justify-between mb-2">
                 <span class="text-[9px] font-extrabold text-emerald-950/60 uppercase tracking-widest">Room</span>
-                <span id="lobby-status-pill" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide"
+                <span id="lobby-status-pill"
+                    class="text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide"
                     style="background: rgba(6,78,59,0.25); color: #064e3b;">Lobby</span>
             </div>
-            <div class="rounded-xl p-3 mb-3 flex items-center justify-between" style="background: rgba(255,255,255,0.85);">
+            <div class="rounded-xl p-3 mb-3 flex items-center justify-between"
+                style="background: rgba(255,255,255,0.85);">
                 <div>
                     <div class="text-[10px] font-bold text-emerald-900/60 uppercase tracking-wide">Room code</div>
-                    <div id="lobby-code" class="text-2xl font-extrabold text-emerald-950" style="letter-spacing: 0.18em;">——————</div>
+                    <div id="lobby-code" class="text-2xl font-extrabold text-emerald-950"
+                        style="letter-spacing: 0.18em;">——————</div>
                 </div>
                 <button id="copy-btn" onclick="copyCode()"
                     class="px-3 py-2 text-xs font-bold rounded-lg glow-btn transition-all"
@@ -120,18 +195,26 @@
                 <span id="lobby-count" class="text-[11px] font-bold text-emerald-950/70">0 / 4</span>
             </div>
             <div id="lobby-players" class="space-y-1.5 mb-3"></div>
+            <!-- Rounds selector (host only) -->
+            <div id="rounds-select" class="hidden mb-3">
+                <div class="text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide mb-1.5">Rounds</div>
+                <div id="rounds-options" class="flex gap-2"></div>
+            </div>
             <div id="lobby-countdown" class="hidden text-center py-2 mb-2">
-                <div class="text-[11px] font-bold text-emerald-900/70 uppercase tracking-widest">Get ready</div>
+                <div id="countdown-label" class="text-[11px] font-bold text-emerald-900/70 uppercase tracking-widest">
+                    Get ready</div>
                 <div id="countdown-num" class="text-4xl font-extrabold text-emerald-950">3</div>
             </div>
             <button id="start-btn" onclick="onStart()"
                 class="w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn"
-                style="background: rgba(6,78,59,0.85); color: #d1fae5;">Start Race</button>
+                style="background: rgba(6,78,59,0.85); color: #d1fae5;">Start Game</button>
             <div id="waiting-msg" class="hidden text-center text-xs font-semibold text-emerald-900/70 py-2.5">
                 Waiting for the host to start…
             </div>
         </div>
-        <button onclick="leaveRoom()" class="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors tracking-wide">← Leave room</button>
+        <button onclick="leaveRoom()"
+            class="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors tracking-wide">← Leave
+            room</button>
     </div>
 
     <!-- ════════════════ VIEW: RACE (full-screen board) ════════════════ -->
@@ -143,37 +226,39 @@
 
         <!-- Top HUD overlay: timer + lives. -->
         <div class="absolute top-0 left-0 right-0 px-3 pt-3 pointer-events-none"
-             style="padding-top: max(12px, env(safe-area-inset-top));">
+            style="padding-top: max(12px, env(safe-area-inset-top));">
             <div class="flex items-center justify-between">
-                <div id="race-timer" class="bg-white/85 backdrop-blur px-3 py-1 rounded-full shadow-sm text-sm font-extrabold text-slate-700"
-                     style="font-variant-numeric: tabular-nums;">2:00</div>
+                <div id="race-timer"
+                    class="bg-white/85 backdrop-blur px-3 py-1 rounded-full shadow-sm text-sm font-extrabold text-slate-700"
+                    style="font-variant-numeric: tabular-nums;">2:00</div>
+                <div id="race-round"
+                    class="bg-white/85 backdrop-blur px-3 py-1 rounded-full shadow-sm text-xs font-extrabold text-slate-600">
+                    Round 1/1</div>
                 <div class="flex items-center gap-1 bg-white/85 backdrop-blur px-2 py-1 rounded-full shadow-sm">
-                    <div id="heart-1" class="text-rose-500 text-sm transition-all duration-300 transform scale-100">❤️</div>
-                    <div id="heart-2" class="text-rose-500 text-sm transition-all duration-300 transform scale-100">❤️</div>
-                    <div id="heart-3" class="text-rose-500 text-sm transition-all duration-300 transform scale-100">❤️</div>
+                    <div id="heart-1" class="text-rose-500 text-sm transition-all duration-300 transform scale-100">❤️
+                    </div>
+                    <div id="heart-2" class="text-rose-500 text-sm transition-all duration-300 transform scale-100">❤️
+                    </div>
+                    <div id="heart-3" class="text-rose-500 text-sm transition-all duration-300 transform scale-100">❤️
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Bottom overlay: live player / opponent progress bars. -->
         <div class="absolute bottom-0 left-0 right-0 px-3 pb-3 flex flex-col gap-1 pointer-events-none"
-             style="padding-bottom: max(12px, env(safe-area-inset-bottom));">
+            style="padding-bottom: max(12px, env(safe-area-inset-bottom));">
             <div id="race-opponents" class="space-y-1"></div>
         </div>
 
         <!-- "You finished" banner -->
-        <div id="race-finish-banner" class="hidden absolute top-28 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-extrabold shadow-lg z-10"
-             style="background:#064e3b;color:#d1fae5;"></div>
+        <div id="race-finish-banner"
+            class="hidden absolute top-28 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-extrabold shadow-lg z-10"
+            style="background:#064e3b;color:#d1fae5;"></div>
 
-        <!-- Final standings overlay -->
-        <div id="race-standings" class="hidden absolute inset-0 bg-white/95 backdrop-blur-md flex flex-col justify-center items-center gap-3 z-20 p-6">
-            <div class="text-3xl">🏆</div>
-            <h3 class="text-xl font-extrabold text-slate-800 tracking-tight">Final Standings</h3>
-            <div id="race-standings-list" class="w-full max-w-xs space-y-1.5"></div>
-            <button onclick="leaveRoom()"
-                class="mt-2 px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl tracking-wide shadow-md transition-all duration-200 glow-btn">
-                Back to start
-            </button>
+        <!-- Round-result / game-over overlay (filled by JS) -->
+        <div id="race-standings"
+            class="hidden absolute inset-0 bg-white/95 backdrop-blur-md flex flex-col justify-center items-center gap-3 z-20 p-6 overflow-y-auto">
         </div>
     </div>
 
@@ -193,29 +278,47 @@
 
     <script>
         // ── Config ──────────────────────────────────────────────────────────
-        const params     = new URLSearchParams(location.search);
-        // Deployed backend (Render). Override with ?server=http://localhost:3001 for local dev.
-        const SERVER_URL  = params.get('server') || localStorage.getItem('vecto_server_url') || 'https://arrow-puzzle-backend.onrender.com';
+        const params = new URLSearchParams(location.search);
+        // Deployed backend (Render). Override with ?server=http://localhost:3001 for local dev. https://arrow-puzzle-backend.onrender.com
+        const SERVER_URL = params.get('server') || localStorage.getItem('vecto_server_url') || 'https://arrow-puzzle-backend.onrender.com';
         // WebSocket endpoint — http→ws, https→wss.
-        const WS_URL      = SERVER_URL.replace(/^http/i, 'ws');
-        const NAME_KEY    = 'vecto_player_name';
+        const WS_URL = SERVER_URL.replace(/^http/i, 'ws');
+        const NAME_KEY = 'vecto_player_name';
 
         // ── DOM ─────────────────────────────────────────────────────────────
         const $ = (id) => document.getElementById(id);
         const views = { entry: $('view-entry'), lobby: $('view-lobby'), race: $('view-race') };
-        const nameInput   = $('name-input');
-        const nameError   = $('name-error');
-        const codeInput   = $('code-input');
-        const codeError   = $('code-error');
+        const nameInput = $('name-input');
+        const nameError = $('name-error');
+        const codeInput = $('code-input');
+        const codeError = $('code-error');
         const joinSection = $('join-section');
-        const joinToggle  = $('join-toggle-btn');
-        const connStatus  = $('conn-status');
+        const joinToggle = $('join-toggle-btn');
+        const connStatus = $('conn-status');
 
         // ── State ───────────────────────────────────────────────────────────
-        let net    = null;                 // NetClient (lazy)
-        let race   = null;                 // RaceClient (lazy)
+        let net = null;                 // NetClient (lazy)
+        let race = null;                 // RaceClient (lazy)
         const progress = {};               // playerId → { cleared, total }
-        const state = { code: null, playerId: null, room: null, board: null, isHost: false, finished: false };
+        const ROUND_OPTIONS = [1, 3, 5, 7];
+        const state = { code: null, playerId: null, room: null, board: null, isHost: false, finished: false, rounds: 3 };
+
+        // Renders the rounds picker into a container and highlights the selection.
+        function renderRoundsSelector(containerId) {
+            const el = $(containerId);
+            if (!el) return;
+            el.innerHTML = ROUND_OPTIONS.map((n) => {
+                const active = n === state.rounds;
+                return `<button onclick="setRounds(${n})" data-n="${n}"
+                    class="rounds-btn flex-1 py-2 rounded-lg text-sm font-extrabold transition-all glow-btn"
+                    style="background:${active ? 'rgba(6,78,59,0.9)' : 'rgba(255,255,255,0.6)'};color:${active ? '#d1fae5' : '#064e3b'};">${n}</button>`;
+            }).join('');
+        }
+        function setRounds(n) {
+            state.rounds = n;
+            renderRoundsSelector('rounds-options');     // lobby
+            renderRoundsSelector('gameover-rounds');     // game-over overlay (if present)
+        }
 
         function showView(name) {
             for (const k in views) views[k].classList.toggle('hidden', k !== name);
@@ -238,7 +341,7 @@
             net = new NetClient(WS_URL);
 
             net.onStatus = (s) => {
-                if (s === 'open')  connStatus.innerText = '';
+                if (s === 'open') connStatus.innerText = '';
                 if (s === 'error') connStatus.innerText = `Can't reach server at ${SERVER_URL}`;
                 if (s === 'close') connStatus.innerText = 'Disconnected from server';
             };
@@ -247,9 +350,11 @@
                 state.room = m.room; syncHostFlag(); renderLobby();
                 if (m.room.status === 'active' || m.room.status === 'finished') renderOpponents();
             });
-            net.on('race:countdown', (m) => startCountdown(m.startAt));
+            net.on('race:generating', (m) => { state.round = m.round; state.totalRounds = m.totalRounds; showGenerating(); });
+            net.on('race:countdown', (m) => { state.round = m.round; state.totalRounds = m.totalRounds; startCountdown(m.startAt); });
             net.on('race:start', (m) => {
-                state.board = m.board; if (m.room) state.room = m.room; state.endsAt = m.endsAt;
+                state.board = m.board; if (m.room) state.room = m.room;
+                state.endsAt = m.endsAt; state.round = m.round; state.totalRounds = m.totalRounds;
                 onRaceStart();
             });
 
@@ -258,7 +363,8 @@
                 progress[m.playerId] = { cleared: m.cleared, total: m.total }; renderOpponents();
             });
             net.on('race:placement', () => { /* room:update carries authoritative placement */ });
-            net.on('race:finished', (m) => showStandings(m.results));
+            net.on('round:result', (m) => showRoundResult(m)); // intermission between rounds
+            net.on('game:over', (m) => showGameOver(m));     // final round → champion
 
             net.connect();
             return net;
@@ -296,18 +402,18 @@
                 syncHostFlag(); renderLobby(); showView('lobby');
             });
         }
-        codeInput.addEventListener('input',   () => { codeError.innerText = ''; });
+        codeInput.addEventListener('input', () => { codeError.innerText = ''; });
         codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onJoinConfirm(); });
 
         // ── Lobby ─────────────────────────────────────────────────────────────
         function renderLobby() {
             const room = state.room; if (!room) return;
-            $('lobby-code').innerText  = room.code;
+            $('lobby-code').innerText = room.code;
             $('lobby-count').innerText = `${room.players.length} / ${room.maxPlayers}`;
             const filled = room.players.map((p) => {
-                const you  = p.id === state.playerId;
+                const you = p.id === state.playerId;
                 const host = p.isHost ? '<span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full" style="background:rgba(6,78,59,0.85);color:#d1fae5;">HOST</span>' : '';
-                const dot  = '<span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-600 mr-2 align-middle"></span>';
+                const dot = '<span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-600 mr-2 align-middle"></span>';
                 return `<div class="flex items-center justify-between rounded-lg px-3 py-2" style="background:rgba(255,255,255,0.8);">
                     <span class="text-sm font-bold text-emerald-950">${dot}${escapeHtml(p.name)}${you ? ' (you)' : ''}</span>${host}</div>`;
             });
@@ -318,16 +424,36 @@
                     <span class="text-xs font-semibold text-emerald-900/40 italic">Waiting for a player…</span></div>`);
             }
             $('lobby-players').innerHTML = filled.concat(empties).join('');
-            const labels = { lobby: 'Lobby', countdown: 'Starting', active: 'Racing', finished: 'Finished' };
+            const labels = { lobby: 'Lobby', countdown: 'Starting', active: 'Racing', intermission: 'Intermission', gameover: 'Game Over' };
             $('lobby-status-pill').innerText = labels[room.status] || room.status;
             const inLobby = room.status === 'lobby';
             $('start-btn').classList.toggle('hidden', !(inLobby && state.isHost));
+            $('rounds-select').classList.toggle('hidden', !(inLobby && state.isHost));
             $('waiting-msg').classList.toggle('hidden', !(inLobby && !state.isHost));
             $('start-btn').disabled = room.players.length < 1;
+            if (inLobby && state.isHost) renderRoundsSelector('rounds-options');
         }
         function onStart() {
             $('start-btn').disabled = true;
-            net.request('room:start').then((res) => { if (res && res.error) { $('start-btn').disabled = false; alert(res.error); } });
+            showGenerating();   // instant feedback for the host while the board generates
+            net.request('room:start', { rounds: state.rounds }).then((res) => {
+                if (res && res.error) { $('start-btn').disabled = false; alert(res.error); }
+            });
+        }
+
+        // Loader shown from "Start" until the board is ready (countdown begins).
+        function showGenerating() {
+            const spinner = '<div class="spinner"></div>';
+            // Lobby (round 1 / fresh game)
+            $('start-btn').classList.add('hidden');
+            $('rounds-select').classList.add('hidden');
+            $('waiting-msg').classList.add('hidden');
+            $('lobby-countdown').classList.remove('hidden');
+            const lbl = $('countdown-label'); if (lbl) lbl.innerText = 'Generating puzzle…';
+            $('countdown-num').innerHTML = spinner;
+            // Race-view overlay (rounds 2+ / play again)
+            const rc = $('results-countdown');
+            if (rc) rc.innerHTML = `${spinner}<div class="text-xs font-bold text-slate-500">Generating next puzzle…</div>`;
         }
 
         // ── Countdown ───────────────────────────────────────────────────────
@@ -337,9 +463,13 @@
             $('start-btn').classList.add('hidden');
             $('waiting-msg').classList.add('hidden');
             clearInterval(countdownTimer);
+            const lbl = $('countdown-label'); if (lbl) lbl.innerText = 'Get ready';  // clear the "Generating…" label
             const tick = () => {
                 const remaining = Math.max(0, Math.ceil((startAt - Date.now()) / 1000));
-                $('countdown-num').innerText = remaining > 0 ? String(remaining) : 'GO';
+                const ln = $('countdown-num'); if (ln) ln.innerText = remaining > 0 ? String(remaining) : 'GO';
+                // Rounds 2+ : the countdown shows inside the results overlay.
+                const rc = $('results-countdown');
+                if (rc) rc.innerText = remaining > 0 ? `Starting in ${remaining}…` : 'Go!';
                 if (remaining <= 0) clearInterval(countdownTimer);
             };
             tick();
@@ -356,6 +486,7 @@
             // Seed everyone at 0 so bars render immediately.
             if (state.room) for (const p of state.room.players) progress[p.id] = { cleared: 0, total };
             showView('race');
+            $('race-round').innerText = `Round ${state.round || 1}/${state.totalRounds || 1}`;
             startRaceTimer(state.endsAt);
 
             // Wait a frame so the board container has its layout box before resize measures it.
@@ -386,27 +517,38 @@
             }, 60);
         }
 
+        // Compact shared "race track": one line, each player a marker positioned
+        // by their solve % → rightmost is ahead. Finishers show their place; you
+        // are highlighted. Takes far less room than a bar per player.
         function renderOpponents() {
             const el = $('race-opponents');
             if (!state.room) { el.innerHTML = ''; return; }
             const total = state.board ? state.board.paths.length : 0;
-            el.innerHTML = state.room.players.map((p) => {
-                const you  = p.id === state.playerId;
-                const pr   = progress[p.id] || { cleared: 0, total };
-                const pct  = pr.total ? Math.round((pr.cleared / pr.total) * 100) : 0;
-                const out  = p.status === 'dnf' || p.status === 'disconnected';
-                const tag  = p.placement ? `#${p.placement}` : out ? 'out' : `${pct}%`;
-                const barColor = you ? '#10b981' : '#64748b';
-                return `<div class="w-full bg-white/85 backdrop-blur rounded-lg px-3 py-1.5 shadow-sm">
-                    <div class="flex items-center justify-between mb-1">
-                        <span class="text-[11px] font-bold text-slate-700">${escapeHtml(p.name)}${you ? ' (you)' : ''}</span>
-                        <span class="text-[11px] font-extrabold ${out ? 'text-rose-500' : p.placement ? 'text-emerald-600' : 'text-slate-400'}">${tag}</span>
-                    </div>
-                    <div class="w-full h-1.5 rounded-full bg-slate-200/70 overflow-hidden">
-                        <div class="prog-fill h-full rounded-full" style="width:${out ? 0 : pct}%;background:${barColor};"></div>
-                    </div>
-                </div>`;
+
+            const markers = state.room.players.map((p) => {
+                const you = p.id === state.playerId;
+                const pr = progress[p.id] || { cleared: 0, total };
+                const pct = Math.max(0, Math.min(100, pr.total ? Math.round((pr.cleared / pr.total) * 100) : 0));
+                const out = p.status === 'dnf' || p.status === 'disconnected';
+                const done = p.placement != null;
+                const bg = you ? '#10b981' : done ? '#f59e0b' : '#64748b';
+                const face = done ? `#${p.placement}` : escapeHtml((p.name || '?').trim().slice(0, 1).toUpperCase());
+                // Map 0..100% across the track, keeping markers clear of both
+                // edges and the finish flag.
+                const left = `calc((100% - 44px) * ${out ? 0 : pct} / 100 + 16px)`;
+                return `<div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-all duration-300 ${out ? 'opacity-40' : ''}"
+                             style="left:${left}; z-index:${you ? 6 : done ? 4 : 2};" title="${escapeHtml(p.name)}${you ? ' (you)' : ''} — ${out ? 'left' : done ? '#' + p.placement : pct + '%'}">
+                        <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-extrabold text-white shadow-md ${you ? 'ring-2 ring-white' : ''}"
+                             style="background:${bg};">${face}</div>
+                    </div>`;
             }).join('');
+
+            el.innerHTML = `
+                <div class="relative w-full h-8 bg-white/85 backdrop-blur rounded-full shadow-sm px-1">
+                    <div class="absolute left-3 right-8 top-1/2 -translate-y-1/2 h-1 rounded-full bg-slate-200"></div>
+                    <div class="absolute right-2 top-1/2 -translate-y-1/2 text-sm">🏁</div>
+                    ${markers}
+                </div>`;
         }
 
         // ── Race countdown timer ──────────────────────────────────────────────
@@ -417,7 +559,7 @@
             if (!endsAt) { el.innerText = ''; return; }
             const tick = () => {
                 const ms = Math.max(0, endsAt - Date.now());
-                const s  = Math.ceil(ms / 1000);
+                const s = Math.ceil(ms / 1000);
                 el.innerText = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
                 el.classList.toggle('text-rose-600', ms <= 10000);  // last 10s → red
                 el.classList.toggle('text-slate-700', ms > 10000);
@@ -441,22 +583,55 @@
             b._t = setTimeout(() => b.classList.add('hidden'), ms);
         }
 
-        function showStandings(results) {
-            clearInterval(raceTimerInterval);
-            const list = $('race-standings-list');
-            const medal = (n) => ({ 1: '🥇', 2: '🥈', 3: '🥉' }[n] || '');
-            list.innerHTML = (results || []).map((r) => {
-                const you   = r.id === state.playerId;
-                const place = r.placement ? `${medal(r.placement)} #${r.placement}` : '<span class="text-rose-500">left</span>';
-                // Solvers show "solved"; everyone else shows their % cleared at time-up.
-                const pct = r.solved ? 'solved'
-                          : (r.total ? Math.round((r.cleared / r.total) * 100) + '%' : '');
+        // Cumulative game leaderboard (points + rounds won), highlighting you/champions.
+        function standingsList(standings) {
+            const medal = (i) => ['🥇', '🥈', '🥉'][i] || '';
+            return (standings || []).map((s, i) => {
+                const you = s.id === state.playerId;
+                const champ = s.isChampion ? ' 👑' : '';
                 return `<div class="flex items-center justify-between rounded-lg px-3 py-2 ${you ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50'}">
-                    <span class="text-sm font-bold text-slate-800">${escapeHtml(r.name)}${you ? ' (you)' : ''}</span>
-                    <span class="text-sm font-extrabold text-slate-700">${place}<span class="text-[11px] font-semibold text-slate-400 ml-1.5">${pct}</span></span>
+                    <span class="text-sm font-bold text-slate-800">${medal(i)} ${escapeHtml(s.name)}${you ? ' (you)' : ''}${champ}</span>
+                    <span class="text-sm font-extrabold text-slate-700">${s.gamePoints} pts<span class="text-[11px] font-semibold text-slate-400 ml-1.5">${s.roundsWon}w</span></span>
                 </div>`;
             }).join('');
+        }
+
+        // Between rounds — show standings + a countdown to the next round.
+        function showRoundResult(m) {
+            clearInterval(raceTimerInterval);
+            state.round = m.round; state.totalRounds = m.totalRounds;
+            $('race-standings').innerHTML =
+                `<div class="text-xs font-extrabold text-emerald-600 uppercase tracking-widest">Round ${m.round} of ${m.totalRounds} complete</div>
+                 <h3 class="text-xl font-extrabold text-slate-800 tracking-tight">Standings</h3>
+                 <div class="w-full max-w-xs space-y-1.5">${standingsList(m.standings)}</div>
+                 <div id="results-countdown" class="text-sm font-bold text-slate-500 mt-1">Next round starting soon…</div>`;
             $('race-standings').classList.remove('hidden');
+        }
+
+        // Final round done — crown the champion(s); host can start another game here.
+        function showGameOver(m) {
+            clearInterval(raceTimerInterval); clearInterval(countdownTimer);
+            state.finished = true;
+            if (race && race.audio) race.audio.playFanfare();   // celebratory leaderboard chime
+            const champs = (m.champions || []).map((c) => escapeHtml(c.name)).join(' & ') || '—';
+            const many = m.champions && m.champions.length > 1;
+            const host = state.isHost;
+            $('race-standings').innerHTML =
+                `<div class="text-4xl">🏆</div>
+                 <div class="text-xs font-extrabold text-amber-500 uppercase tracking-widest">Champion${many ? 's' : ''}</div>
+                 <h3 class="text-2xl font-extrabold text-slate-800 tracking-tight">${champs}</h3>
+                 <div class="w-full max-w-xs space-y-1.5">${standingsList(m.standings)}</div>
+                 ${host
+                    ? `<div class="w-full max-w-xs mt-1">
+                         <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5 text-center">Play again — rounds</div>
+                         <div id="gameover-rounds" class="flex gap-2 mb-2"></div>
+                         <button onclick="onStart()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl glow-btn">Play Again</button>
+                       </div>`
+                    : `<div class="text-sm font-semibold text-slate-500 mt-1">Waiting for the host to start a new game…</div>`}
+                 <div id="results-countdown" class="text-sm font-bold text-emerald-600"></div>
+                 <button onclick="leaveRoom()" class="text-xs font-bold text-slate-400 hover:text-slate-600 mt-1">← Leave room</button>`;
+            $('race-standings').classList.remove('hidden');
+            if (host) renderRoundsSelector('gameover-rounds');
         }
 
         // ── Misc ────────────────────────────────────────────────────────────
@@ -476,7 +651,7 @@
                 ta.select();
                 ta.setSelectionRange(0, code.length);
                 let ok = false;
-                try { ok = document.execCommand('copy'); } catch (_) {}
+                try { ok = document.execCommand('copy'); } catch (_) { }
                 document.body.removeChild(ta);
                 ok ? flash() : prompt('Copy this room code:', code);
             };
@@ -525,4 +700,5 @@
         }
     </script>
 </body>
+
 </html>

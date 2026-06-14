@@ -80,4 +80,16 @@ class AudioEngine {
     playHint() {
         this.playTone(880, 'sine', 0.08, 0.15);
     }
+
+    // Triumphant fanfare for the final leaderboard / champion reveal.
+    playFanfare() {
+        this.init();
+        // Rising arpeggio (C–E–G–C)…
+        const arp = [523.25, 659.25, 783.99, 1046.50];
+        arp.forEach((f, i) => setTimeout(() => this.playTone(f, 'triangle', 0.12, 0.18), i * 100));
+        // …then a held major chord stab.
+        setTimeout(() => {
+            [523.25, 659.25, 783.99, 1046.50].forEach((f) => this.playTone(f, 'sine', 0.09, 0.7));
+        }, 430);
+    }
 }
