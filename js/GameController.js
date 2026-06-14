@@ -39,6 +39,12 @@ class GameController {
 
         // Container element for camera operations
         this.containerEl = null;
+
+        // Multiplayer race hooks (no-ops in single-player; set by RaceClient).
+        this.raceMode    = false;
+        this.onProgress  = null; // (cleared, total) => void — fired on each clear
+        this.onRaceWin   = null; // () => void — fired when the board is cleared
+        this.onRaceRetry = null; // () => void — fired when lives hit 0 (board resets, no elimination)
     }
 
     // ── Level lifecycle ───────────────────────────────────────────────────────
@@ -163,7 +169,13 @@ class GameController {
         this.addScore(10);
         this.audio.playPathCleared();
         this._updateUI();
+        if (this.onProgress) this.onProgress(this._clearedCount(), this.board.paths.length);
         this.checkWin();
+    }
+
+    // Count of pieces that have left the board (CLEARED or exit-logic fired).
+    _clearedCount() {
+        return this.board.paths.filter(p => p.state === 'CLEARED' || p._logicFired).length;
     }
 
     onCollision(path) {
@@ -204,6 +216,13 @@ class GameController {
         this.addScore(100); // win bonus
         this._updateUI();
 
+        // Race mode: report the finish and skip the single-player overlays /
+        // persistence. RaceClient drives the standings UI from here.
+        if (this.raceMode) {
+            if (this.onRaceWin) this.onRaceWin();
+            return;
+        }
+
         if (this.dailyMode) {
             this.persistence.clear(true);
             if (this.daily) {
@@ -220,6 +239,14 @@ class GameController {
 
     checkFail() {
         if (this.lives > 0) return;
+        // Race mode: out of lives → reset the board and keep racing from the
+        // beginning (no elimination). retryLevel() restores pieces + lives and
+        // clears isFailState, so gameplay simply continues.
+        if (this.raceMode) {
+            this.retryLevel();
+            if (this.onRaceRetry) this.onRaceRetry();
+            return;
+        }
         this.isFailState = true;
         setTimeout(() => this._showOverlay('fail-overlay'), 500);
     }
