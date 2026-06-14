@@ -14,6 +14,7 @@ const PRECACHE_URLS = [
     './index.html',
     './game.html',
     './daily.html',
+    './friends.html',
     './manifest.json',
     './icons/icon-192.png',
     './icons/icon-512.png',
@@ -62,6 +63,9 @@ const PRECACHE_URLS = [
     './js/DailyPuzzle.js',
     './js/boards-data.js',
     './js/main.js',
+    // Multiplayer (Play with Friends)
+    './js/NetClient.js',
+    './js/RaceClient.js',
 ];
 
 // ── Install — pre-cache all game assets ──────────────────────────────────────
