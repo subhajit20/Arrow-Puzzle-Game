@@ -66,6 +66,44 @@ class BoardLoader {
         };
     }
 
+    // ── Multiplayer: build from the server's serialized board ─────────────────
+
+    // Builds a board from the multiplayer server's board_json (Persistence V5
+    // shape + `mask`). Mirrors load(): claims node owners, reserves edges, and
+    // records originalNodes so retry/reset works.
+    // Returns { grid, paths, mask, difficulty } or null.
+    fromServer(b) {
+        if (!b || !Array.isArray(b.paths)) return null;
+
+        const grid = new Grid(b.gridRows, b.gridCols);
+
+        const paths = b.paths.map(p => {
+            const nodes = p.nodes.map(n => ({ r: n.r, c: n.c }));
+            const path  = new Path(p.id, nodes, p.heading);
+            for (const { r, c } of nodes) grid.setOwner(r, c, p.id);
+            return path;
+        });
+
+        for (const p of paths) {
+            for (let i = 0; i < p.nodes.length - 1; i++) {
+                const a = p.nodes[i], c = p.nodes[i + 1];
+                grid.reserveEdge(a.r, a.c, c.r, c.c, p.id);
+            }
+            p.originalNodes = p.nodes.map(n => ({ r: n.r, c: n.c }));
+        }
+
+        // Race boards are rectangular (mask null). Shaped masks ride through as
+        // the server's array form for the renderer's active-node test.
+        grid.mask = b.mask || null;
+
+        return {
+            grid,
+            paths,
+            mask:       b.mask || null,
+            difficulty: b.boardDifficulty || 'NORMAL',
+        };
+    }
+
     // ── Export ────────────────────────────────────────────────────────────────
 
     // Serialises a live board into a boards-data.js entry string.

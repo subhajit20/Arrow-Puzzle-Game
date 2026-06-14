@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en" style="height:-webkit-fill-available;">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="VECTO">
+    <meta name="theme-color" content="#0f172a">
+    <title>VECTO: Play with Friends</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+            user-select: none;
+            -webkit-user-select: none;
+            height: 100svh !important;
+            min-height: -webkit-fill-available;
+        }
+        .glow-btn:active { transform: scale(0.96); }
+        .glow-btn:disabled { opacity: 0.5; pointer-events: none; }
+        #join-section {
+            display: grid;
+            grid-template-rows: 0fr;
+            opacity: 0;
+            transition: grid-template-rows 0.25s ease, opacity 0.25s ease, margin 0.25s ease;
+            margin-top: 0;
+        }
+        #join-section.open { grid-template-rows: 1fr; opacity: 1; margin-top: 0.75rem; }
+        #join-section > div { overflow: hidden; }
+        #code-input { text-transform: uppercase; letter-spacing: 0.35em; }
+        #code-input::placeholder { letter-spacing: 0.2em; }
+        #countdown-num { font-variant-numeric: tabular-nums; }
+        .shake { animation: shake 0.4s; }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+        .prog-fill { transition: width 0.25s ease; }
+    </style>
+</head>
+<body class="w-screen flex flex-col justify-center items-center p-4 gap-3 md:gap-4 bg-slate-100"
+      style="padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));">
+
+    <!-- Logo -->
+    <div id="brand" class="text-center">
+        <div class="text-2xl md:text-3xl font-extrabold text-[#112540] tracking-tight">VECTO</div>
+        <div class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Play with Friends</div>
+    </div>
+
+    <!-- ════════════════ VIEW: ENTRY ════════════════ -->
+    <div id="view-entry" class="w-full max-w-sm flex flex-col items-center gap-3">
+        <div class="w-full rounded-2xl p-4 md:p-5 shadow-xl"
+             style="background: linear-gradient(135deg, #6ee7b7 0%, #10b981 45%, #0d9488 100%);">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-[9px] font-extrabold text-emerald-950/60 uppercase tracking-widest">Play with Friends</span>
+                <span class="text-sm">👥</span>
+            </div>
+            <label for="name-input" class="block text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide mb-1">Your name</label>
+            <input id="name-input" type="text" maxlength="16" autocomplete="off" spellcheck="false"
+                placeholder="Enter your name"
+                class="w-full py-2.5 px-3 font-bold text-sm rounded-xl outline-none border-2 border-transparent focus:border-emerald-900/40 transition-colors"
+                style="background: rgba(255,255,255,0.85); color: #064e3b;">
+            <div id="name-error" class="text-[11px] font-semibold text-red-800 mt-1 h-3.5"></div>
+            <button id="create-btn" onclick="onCreate()"
+                class="mt-1 w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn"
+                style="background: rgba(6,78,59,0.85); color: #d1fae5;">
+                Create a Room
+            </button>
+            <button id="join-toggle-btn" onclick="onJoinToggle()"
+                class="mt-2 w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn border"
+                style="background: rgba(255,255,255,0.18); color: #064e3b; border-color: rgba(6,78,59,0.3);">
+                Join a Room
+            </button>
+            <div id="join-section">
+                <div>
+                    <label for="code-input" class="block text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide mb-1">Room code</label>
+                    <input id="code-input" type="text" maxlength="6" autocomplete="off" spellcheck="false"
+                        inputmode="text" placeholder="ABCDEF"
+                        class="w-full py-2.5 px-3 font-extrabold text-center text-base rounded-xl outline-none border-2 border-transparent focus:border-emerald-900/40 transition-colors"
+                        style="background: rgba(255,255,255,0.85); color: #064e3b;">
+                    <div id="code-error" class="text-[11px] font-semibold text-red-800 mt-1 h-3.5"></div>
+                    <button id="join-confirm-btn" onclick="onJoinConfirm()"
+                        class="mt-1 w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn"
+                        style="background: rgba(6,78,59,0.85); color: #d1fae5;">
+                        Join Room →
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="conn-status" class="text-[11px] font-semibold text-slate-400 h-4"></div>
+        <button onclick="window.location.href='index.html'"
+            class="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors tracking-wide">← Back</button>
+    </div>
+
+    <!-- ════════════════ VIEW: LOBBY ════════════════ -->
+    <div id="view-lobby" class="hidden w-full max-w-sm flex flex-col items-center gap-3">
+        <div class="w-full rounded-2xl p-4 md:p-5 shadow-xl"
+             style="background: linear-gradient(135deg, #6ee7b7 0%, #10b981 45%, #0d9488 100%);">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-[9px] font-extrabold text-emerald-950/60 uppercase tracking-widest">Room</span>
+                <span id="lobby-status-pill" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide"
+                    style="background: rgba(6,78,59,0.25); color: #064e3b;">Lobby</span>
+            </div>
+            <div class="rounded-xl p-3 mb-3 flex items-center justify-between" style="background: rgba(255,255,255,0.85);">
+                <div>
+                    <div class="text-[10px] font-bold text-emerald-900/60 uppercase tracking-wide">Room code</div>
+                    <div id="lobby-code" class="text-2xl font-extrabold text-emerald-950" style="letter-spacing: 0.18em;">——————</div>
+                </div>
+                <button id="copy-btn" onclick="copyCode()"
+                    class="px-3 py-2 text-xs font-bold rounded-lg glow-btn transition-all"
+                    style="background: rgba(6,78,59,0.85); color: #d1fae5;">Copy code</button>
+            </div>
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide">Players</span>
+                <span id="lobby-count" class="text-[11px] font-bold text-emerald-950/70">0 / 4</span>
+            </div>
+            <div id="lobby-players" class="space-y-1.5 mb-3"></div>
+            <div id="lobby-countdown" class="hidden text-center py-2 mb-2">
+                <div class="text-[11px] font-bold text-emerald-900/70 uppercase tracking-widest">Get ready</div>
+                <div id="countdown-num" class="text-4xl font-extrabold text-emerald-950">3</div>
+            </div>
+            <button id="start-btn" onclick="onStart()"
+                class="w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn"
+                style="background: rgba(6,78,59,0.85); color: #d1fae5;">Start Race</button>
+            <div id="waiting-msg" class="hidden text-center text-xs font-semibold text-emerald-900/70 py-2.5">
+                Waiting for the host to start…
+            </div>
+        </div>
+        <button onclick="leaveRoom()" class="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors tracking-wide">← Leave room</button>
+    </div>
+
+    <!-- ════════════════ VIEW: RACE (full-screen board) ════════════════ -->
+    <div id="view-race" class="hidden fixed inset-0 z-40 bg-white">
+        <!-- Full-bleed board — no card, fills the screen like the main game. -->
+        <div id="board-container" class="absolute inset-0 flex justify-center items-center overflow-hidden">
+            <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+        </div>
+
+        <!-- Top HUD overlay: timer + lives. -->
+        <div class="absolute top-0 left-0 right-0 px-3 pt-3 pointer-events-none"
+             style="padding-top: max(12px, env(safe-area-inset-top));">
+            <div class="flex items-center justify-between">
+                <div id="race-timer" class="bg-white/85 backdrop-blur px-3 py-1 rounded-full shadow-sm text-sm font-extrabold text-slate-700"
+                     style="font-variant-numeric: tabular-nums;">2:00</div>
+                <div class="flex items-center gap-1 bg-white/85 backdrop-blur px-2 py-1 rounded-full shadow-sm">
+                    <div id="heart-1" class="text-rose-500 text-sm transition-all duration-300 transform scale-100">❤️</div>
+                    <div id="heart-2" class="text-rose-500 text-sm transition-all duration-300 transform scale-100">❤️</div>
+                    <div id="heart-3" class="text-rose-500 text-sm transition-all duration-300 transform scale-100">❤️</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom overlay: live player / opponent progress bars. -->
+        <div class="absolute bottom-0 left-0 right-0 px-3 pb-3 flex flex-col gap-1 pointer-events-none"
+             style="padding-bottom: max(12px, env(safe-area-inset-bottom));">
+            <div id="race-opponents" class="space-y-1"></div>
+        </div>
+
+        <!-- "You finished" banner -->
+        <div id="race-finish-banner" class="hidden absolute top-28 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-sm font-extrabold shadow-lg z-10"
+             style="background:#064e3b;color:#d1fae5;"></div>
+
+        <!-- Final standings overlay -->
+        <div id="race-standings" class="hidden absolute inset-0 bg-white/95 backdrop-blur-md flex flex-col justify-center items-center gap-3 z-20 p-6">
+            <div class="text-3xl">🏆</div>
+            <h3 class="text-xl font-extrabold text-slate-800 tracking-tight">Final Standings</h3>
+            <div id="race-standings-list" class="w-full max-w-xs space-y-1.5"></div>
+            <button onclick="leaveRoom()"
+                class="mt-2 px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl tracking-wide shadow-md transition-all duration-200 glow-btn">
+                Back to start
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Game engine (subset; no generator — boards come from the server) ── -->
+    <script src="js/Grid.js"></script>
+    <script src="js/Path.js"></script>
+    <script src="js/SolvabilityOracle.js"></script>
+    <script src="js/Camera.js"></script>
+    <script src="js/Renderer.js"></script>
+    <script src="js/AnimationEngine.js"></script>
+    <script src="js/InputHandler.js"></script>
+    <script src="js/AudioEngine.js"></script>
+    <script src="js/GameController.js"></script>
+    <script src="js/BoardLoader.js"></script>
+    <script src="js/RaceClient.js"></script>
+    <script src="js/NetClient.js"></script>
+
+    <script>
+        // ── Config ──────────────────────────────────────────────────────────
+        const params     = new URLSearchParams(location.search);
+        // Deployed backend (Render). Override with ?server=http://localhost:3001 for local dev.
+        const SERVER_URL  = params.get('server') || localStorage.getItem('vecto_server_url') || 'https://arrow-puzzle-backend.onrender.com';
+        // WebSocket endpoint — http→ws, https→wss.
+        const WS_URL      = SERVER_URL.replace(/^http/i, 'ws');
+        const NAME_KEY    = 'vecto_player_name';
+
+        // ── DOM ─────────────────────────────────────────────────────────────
+        const $ = (id) => document.getElementById(id);
+        const views = { entry: $('view-entry'), lobby: $('view-lobby'), race: $('view-race') };
+        const nameInput   = $('name-input');
+        const nameError   = $('name-error');
+        const codeInput   = $('code-input');
+        const codeError   = $('code-error');
+        const joinSection = $('join-section');
+        const joinToggle  = $('join-toggle-btn');
+        const connStatus  = $('conn-status');
+
+        // ── State ───────────────────────────────────────────────────────────
+        let net    = null;                 // NetClient (lazy)
+        let race   = null;                 // RaceClient (lazy)
+        const progress = {};               // playerId → { cleared, total }
+        const state = { code: null, playerId: null, room: null, board: null, isHost: false, finished: false };
+
+        function showView(name) {
+            for (const k in views) views[k].classList.toggle('hidden', k !== name);
+            $('brand').classList.toggle('hidden', name === 'race'); // give the board more room
+        }
+
+        // Name prefill + persistence.
+        nameInput.value = (localStorage.getItem(NAME_KEY) || '').slice(0, 16);
+        nameInput.addEventListener('input', () => { nameError.innerText = ''; localStorage.setItem(NAME_KEY, nameInput.value.trim()); });
+        function requireName() {
+            const name = nameInput.value.trim();
+            if (!name) { nameError.innerText = 'Please enter a name first'; nameInput.focus(); return null; }
+            localStorage.setItem(NAME_KEY, name);
+            return name;
+        }
+
+        // ── Net (WebSocket) ──────────────────────────────────────────────────
+        function ensureNet() {
+            if (net) return net;
+            net = new NetClient(WS_URL);
+
+            net.onStatus = (s) => {
+                if (s === 'open')  connStatus.innerText = '';
+                if (s === 'error') connStatus.innerText = `Can't reach server at ${SERVER_URL}`;
+                if (s === 'close') connStatus.innerText = 'Disconnected from server';
+            };
+
+            net.on('room:update', (m) => {
+                state.room = m.room; syncHostFlag(); renderLobby();
+                if (m.room.status === 'active' || m.room.status === 'finished') renderOpponents();
+            });
+            net.on('race:countdown', (m) => startCountdown(m.startAt));
+            net.on('race:start', (m) => {
+                state.board = m.board; if (m.room) state.room = m.room; state.endsAt = m.endsAt;
+                onRaceStart();
+            });
+
+            // Opponent progress (ephemeral).
+            net.on('race:progress', (m) => {
+                progress[m.playerId] = { cleared: m.cleared, total: m.total }; renderOpponents();
+            });
+            net.on('race:placement', () => { /* room:update carries authoritative placement */ });
+            net.on('race:finished', (m) => showStandings(m.results));
+
+            net.connect();
+            return net;
+        }
+        function syncHostFlag() { state.isHost = !!(state.room && state.room.hostId === state.playerId); }
+
+        // ── Create / Join ─────────────────────────────────────────────────────
+        function onCreate() {
+            const name = requireName(); if (!name) return;
+            connStatus.innerText = 'Connecting…';
+            ensureNet().request('room:create', { name }).then((res) => {
+                if (!res || res.error) { connStatus.innerText = res?.error || 'Failed to create room'; return; }
+                state.code = res.code; state.playerId = res.playerId; state.room = res.room;
+                syncHostFlag(); renderLobby(); showView('lobby');
+            });
+        }
+        function onJoinToggle() {
+            const opening = !joinSection.classList.contains('open');
+            joinSection.classList.toggle('open', opening);
+            joinToggle.style.opacity = opening ? '0.6' : '1';
+            if (opening) {
+                if (!requireName()) { joinSection.classList.remove('open'); joinToggle.style.opacity = '1'; return; }
+                setTimeout(() => codeInput.focus(), 200);
+            }
+        }
+        function onJoinConfirm() {
+            const name = requireName(); if (!name) return;
+            const code = codeInput.value.trim().toUpperCase();
+            if (code.length !== 6) { codeError.innerText = 'Enter the 6-character room code'; codeInput.focus(); return; }
+            codeError.innerText = '';
+            connStatus.innerText = 'Connecting…';
+            ensureNet().request('room:join', { code, name }).then((res) => {
+                if (!res || res.error) { codeError.innerText = res?.error || 'Failed to join'; return; }
+                state.code = res.room.code; state.playerId = res.playerId; state.room = res.room;
+                syncHostFlag(); renderLobby(); showView('lobby');
+            });
+        }
+        codeInput.addEventListener('input',   () => { codeError.innerText = ''; });
+        codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') onJoinConfirm(); });
+
+        // ── Lobby ─────────────────────────────────────────────────────────────
+        function renderLobby() {
+            const room = state.room; if (!room) return;
+            $('lobby-code').innerText  = room.code;
+            $('lobby-count').innerText = `${room.players.length} / ${room.maxPlayers}`;
+            const filled = room.players.map((p) => {
+                const you  = p.id === state.playerId;
+                const host = p.isHost ? '<span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full" style="background:rgba(6,78,59,0.85);color:#d1fae5;">HOST</span>' : '';
+                const dot  = '<span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-600 mr-2 align-middle"></span>';
+                return `<div class="flex items-center justify-between rounded-lg px-3 py-2" style="background:rgba(255,255,255,0.8);">
+                    <span class="text-sm font-bold text-emerald-950">${dot}${escapeHtml(p.name)}${you ? ' (you)' : ''}</span>${host}</div>`;
+            });
+            // Show remaining seats so everyone sees room fill up to 4.
+            const empties = [];
+            for (let i = room.players.length; i < room.maxPlayers; i++) {
+                empties.push(`<div class="flex items-center rounded-lg px-3 py-2 border border-dashed border-emerald-900/25">
+                    <span class="text-xs font-semibold text-emerald-900/40 italic">Waiting for a player…</span></div>`);
+            }
+            $('lobby-players').innerHTML = filled.concat(empties).join('');
+            const labels = { lobby: 'Lobby', countdown: 'Starting', active: 'Racing', finished: 'Finished' };
+            $('lobby-status-pill').innerText = labels[room.status] || room.status;
+            const inLobby = room.status === 'lobby';
+            $('start-btn').classList.toggle('hidden', !(inLobby && state.isHost));
+            $('waiting-msg').classList.toggle('hidden', !(inLobby && !state.isHost));
+            $('start-btn').disabled = room.players.length < 1;
+        }
+        function onStart() {
+            $('start-btn').disabled = true;
+            net.request('room:start').then((res) => { if (res && res.error) { $('start-btn').disabled = false; alert(res.error); } });
+        }
+
+        // ── Countdown ───────────────────────────────────────────────────────
+        let countdownTimer = null;
+        function startCountdown(startAt) {
+            $('lobby-countdown').classList.remove('hidden');
+            $('start-btn').classList.add('hidden');
+            $('waiting-msg').classList.add('hidden');
+            clearInterval(countdownTimer);
+            const tick = () => {
+                const remaining = Math.max(0, Math.ceil((startAt - Date.now()) / 1000));
+                $('countdown-num').innerText = remaining > 0 ? String(remaining) : 'GO';
+                if (remaining <= 0) clearInterval(countdownTimer);
+            };
+            tick();
+            countdownTimer = setInterval(tick, 200);
+        }
+
+        // ── Race ────────────────────────────────────────────────────────────
+        function onRaceStart() {
+            clearInterval(countdownTimer);
+            state.finished = false;
+            $('race-finish-banner').classList.add('hidden');
+            $('race-standings').classList.add('hidden');
+            const total = state.board ? state.board.paths.length : 0;
+            // Seed everyone at 0 so bars render immediately.
+            if (state.room) for (const p of state.room.players) progress[p.id] = { cleared: 0, total };
+            showView('race');
+            startRaceTimer(state.endsAt);
+
+            // Wait a frame so the board container has its layout box before resize measures it.
+            setTimeout(() => {
+                race = race || new RaceClient();
+                race.start(state.board, {
+                    onProgress: (cleared, tot) => {
+                        progress[state.playerId] = { cleared, total: tot };
+                        renderOpponents();
+                        net.send('race:progress', { cleared, total: tot });
+                    },
+                    onWin: () => {
+                        state.finished = true;
+                        net.request('race:finished').then((res) => {
+                            if (res && res.placement) showFinishBanner(`You finished #${res.placement}! 🎉`);
+                        });
+                    },
+                    onRetry: () => {
+                        // Out of lives — board reset to the start; opponents see the bar drop.
+                        const tot = race.total();
+                        progress[state.playerId] = { cleared: 0, total: tot };
+                        renderOpponents();
+                        net.send('race:progress', { cleared: 0, total: tot });
+                        showFlash('💔 Out of lives — board reset! Solve it again.');
+                    },
+                });
+                renderOpponents();
+            }, 60);
+        }
+
+        function renderOpponents() {
+            const el = $('race-opponents');
+            if (!state.room) { el.innerHTML = ''; return; }
+            const total = state.board ? state.board.paths.length : 0;
+            el.innerHTML = state.room.players.map((p) => {
+                const you  = p.id === state.playerId;
+                const pr   = progress[p.id] || { cleared: 0, total };
+                const pct  = pr.total ? Math.round((pr.cleared / pr.total) * 100) : 0;
+                const out  = p.status === 'dnf' || p.status === 'disconnected';
+                const tag  = p.placement ? `#${p.placement}` : out ? 'out' : `${pct}%`;
+                const barColor = you ? '#10b981' : '#64748b';
+                return `<div class="w-full bg-white/85 backdrop-blur rounded-lg px-3 py-1.5 shadow-sm">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[11px] font-bold text-slate-700">${escapeHtml(p.name)}${you ? ' (you)' : ''}</span>
+                        <span class="text-[11px] font-extrabold ${out ? 'text-rose-500' : p.placement ? 'text-emerald-600' : 'text-slate-400'}">${tag}</span>
+                    </div>
+                    <div class="w-full h-1.5 rounded-full bg-slate-200/70 overflow-hidden">
+                        <div class="prog-fill h-full rounded-full" style="width:${out ? 0 : pct}%;background:${barColor};"></div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // ── Race countdown timer ──────────────────────────────────────────────
+        let raceTimerInterval = null;
+        function startRaceTimer(endsAt) {
+            clearInterval(raceTimerInterval);
+            const el = $('race-timer');
+            if (!endsAt) { el.innerText = ''; return; }
+            const tick = () => {
+                const ms = Math.max(0, endsAt - Date.now());
+                const s  = Math.ceil(ms / 1000);
+                el.innerText = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+                el.classList.toggle('text-rose-600', ms <= 10000);  // last 10s → red
+                el.classList.toggle('text-slate-700', ms > 10000);
+                if (ms <= 0) clearInterval(raceTimerInterval);
+            };
+            tick();
+            raceTimerInterval = setInterval(tick, 250);
+        }
+
+        function showFinishBanner(text) {
+            const b = $('race-finish-banner');
+            clearTimeout(b._t);            // don't let a transient flash hide the finish banner
+            b.innerText = text; b.classList.remove('hidden');
+        }
+
+        // Transient banner that auto-hides (e.g. the out-of-lives reset notice).
+        function showFlash(text, ms = 2000) {
+            const b = $('race-finish-banner');
+            b.innerText = text; b.classList.remove('hidden');
+            clearTimeout(b._t);
+            b._t = setTimeout(() => b.classList.add('hidden'), ms);
+        }
+
+        function showStandings(results) {
+            clearInterval(raceTimerInterval);
+            const list = $('race-standings-list');
+            const medal = (n) => ({ 1: '🥇', 2: '🥈', 3: '🥉' }[n] || '');
+            list.innerHTML = (results || []).map((r) => {
+                const you   = r.id === state.playerId;
+                const place = r.placement ? `${medal(r.placement)} #${r.placement}` : '<span class="text-rose-500">left</span>';
+                // Solvers show "solved"; everyone else shows their % cleared at time-up.
+                const pct = r.solved ? 'solved'
+                          : (r.total ? Math.round((r.cleared / r.total) * 100) + '%' : '');
+                return `<div class="flex items-center justify-between rounded-lg px-3 py-2 ${you ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50'}">
+                    <span class="text-sm font-bold text-slate-800">${escapeHtml(r.name)}${you ? ' (you)' : ''}</span>
+                    <span class="text-sm font-extrabold text-slate-700">${place}<span class="text-[11px] font-semibold text-slate-400 ml-1.5">${pct}</span></span>
+                </div>`;
+            }).join('');
+            $('race-standings').classList.remove('hidden');
+        }
+
+        // ── Misc ────────────────────────────────────────────────────────────
+        function copyCode() {
+            const code = state.room && state.room.code;
+            if (!code) return;
+            const flash = () => { const btn = $('copy-btn'); btn.innerText = 'Copied!'; setTimeout(() => { btn.innerText = 'Copy code'; }, 1200); };
+            // execCommand fallback for non-secure contexts (file://, http LAN IP)
+            // where navigator.clipboard is unavailable.
+            const fallback = () => {
+                const ta = document.createElement('textarea');
+                ta.value = code;
+                ta.setAttribute('readonly', '');
+                ta.style.position = 'fixed';
+                ta.style.top = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                ta.setSelectionRange(0, code.length);
+                let ok = false;
+                try { ok = document.execCommand('copy'); } catch (_) {}
+                document.body.removeChild(ta);
+                ok ? flash() : prompt('Copy this room code:', code);
+            };
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(code).then(flash).catch(fallback);
+            } else {
+                fallback();
+            }
+        }
+
+        function leaveRoom() {
+            if (net) net.send('room:leave');
+            if (race) race.stop();
+            clearInterval(countdownTimer);
+            clearInterval(raceTimerInterval);
+            for (const k in progress) delete progress[k];
+            state.code = state.playerId = state.room = state.board = null;
+            state.isHost = false; state.finished = false;
+            $('lobby-countdown').classList.add('hidden');
+            $('race-standings').classList.add('hidden');
+            $('race-finish-banner').classList.add('hidden');
+            showView('entry');
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        // Shareable invite link: ?join=CODE prefills the join flow.
+        (function initInvite() {
+            const join = params.get('join');
+            if (join && /^[A-Z0-9]{6}$/i.test(join)) {
+                joinSection.classList.add('open');
+                codeInput.value = join.toUpperCase();
+                if (!nameInput.value) nameInput.focus();
+            }
+        })();
+    </script>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+                    .catch((err) => console.warn('[SW] Registration failed:', err));
+            });
+        }
+    </script>
+</body>
+</html>

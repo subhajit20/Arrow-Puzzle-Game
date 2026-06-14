@@ -37,19 +37,19 @@
         <div class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Colossal Mosaic Edition</div>
     </div>
 
-    <!-- Daily Puzzle Card -->
+    <!-- Play with Friends Card -->
     <div class="w-full max-w-sm rounded-2xl p-4 md:p-5 shadow-xl"
-         style="background: linear-gradient(135deg, #fde68a 0%, #fbbf24 45%, #f59e0b 100%);">
+         style="background: linear-gradient(135deg, #6ee7b7 0%, #10b981 45%, #0d9488 100%);">
         <div class="flex items-center justify-between mb-1.5">
-            <span class="text-[9px] font-extrabold text-amber-900/60 uppercase tracking-widest">Daily Puzzle</span>
-            <span class="text-sm">☀️</span>
+            <span class="text-[9px] font-extrabold text-emerald-950/60 uppercase tracking-widest">Play with Friends</span>
+            <span class="text-sm">👥</span>
         </div>
-        <div id="daily-date-display" class="text-sm font-extrabold text-amber-900 tracking-tight leading-snug"></div>
-        <div id="daily-best-display" class="text-xs text-amber-800/70 font-medium mt-0.5"></div>
-        <button id="daily-play-btn" onclick="goDaily()"
+        <div class="text-sm font-extrabold text-emerald-950 tracking-tight leading-snug">Race up to 4 players</div>
+        <div class="text-xs text-emerald-900/70 font-medium mt-0.5">Create a room or join with a code — first to solve wins</div>
+        <button id="friends-play-btn" onclick="goFriends()"
             class="mt-3 w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn"
-            style="background: rgba(120,53,15,0.75); color: #fef3c7;">
-            Play Today's Puzzle →
+            style="background: rgba(6,78,59,0.75); color: #d1fae5;">
+            Create or Join a Room →
         </button>
     </div>
 
@@ -72,32 +72,6 @@
     <script>
         // Read localStorage directly — no game JS needed on the splash page.
         const SAVE_KEY  = 'vecto_colossal_mosaic_save_v5';
-        const DAILY_KEY = 'vecto_daily_puzzle_v1';
-
-        function getToday() {
-            const d = new Date();
-            return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
-        }
-        function formatDate() {
-            return new Date().toLocaleDateString(undefined,
-                { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-        }
-
-        // Populate Daily card
-        document.getElementById('daily-date-display').innerText = formatDate();
-        try {
-            const raw = localStorage.getItem(DAILY_KEY);
-            const daily = raw ? JSON.parse(raw) : null;
-            const todayKey = String(getToday());
-            if (daily && daily.date === todayKey && daily.bestScore !== undefined) {
-                document.getElementById('daily-best-display').innerText =
-                    `Best today: ${daily.bestScore} pts`;
-                document.getElementById('daily-play-btn').innerText = 'Play Again →';
-            } else {
-                document.getElementById('daily-best-display').innerText =
-                    'Fresh puzzle — no attempts yet';
-            }
-        } catch (e) {}
 
         // Populate Level Play card
         try {
@@ -116,8 +90,8 @@
             document.getElementById('level-play-status').innerText = 'Start Fresh';
         }
 
-        function goDaily()  { window.location.href = 'daily.html'; }
-        function goNormal() { window.location.href = 'game.html'; }
+        function goFriends() { window.location.href = 'friends.html'; }
+        function goNormal()  { window.location.href = 'game.html'; }
     </script>
 
     <script>
