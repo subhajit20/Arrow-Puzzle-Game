@@ -241,9 +241,7 @@ class InputHandler {
                 this.camera.cssZoom = newZoom;
                 this.camera.matE    = midX - newZoom * this._pinchAnchorX;
                 this.camera.matF    = midY - newZoom * this._pinchAnchorY;
-                // 'visible' — keep the zoom anchored to the pinch point; don't
-                // snap a smaller-than-screen board to centre mid-gesture.
-                this.camera.clampPan(this.containerEl, 'visible');
+                this.camera.clampPan(this.containerEl);
             }
         }
         e.preventDefault();
@@ -261,11 +259,6 @@ class InputHandler {
             );
             if (!this._ignoreTap && duration < 250 && distMoved < 15)
                 this.onTap(this._tapStartX, this._tapStartY);
-        }
-
-        // Pinch released → settle a smaller-than-screen board back to centre.
-        if (this._touchMode === 'pinch') {
-            this.camera.clampPan(this.containerEl, 'center');
         }
 
         this._touchMode = e.touches.length === 0 ? 'none' : 'pan';
