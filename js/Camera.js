@@ -136,14 +136,7 @@ class Camera {
     // ── Pan clamping ──────────────────────────────────────────────────────────
 
     // Clamps matE/matF so the board stays on screen with 1-cell overscroll.
-    //
-    // mode === 'center' (default): when the board is smaller than the viewport
-    //   in an axis, snap it to the centre. Used at rest / on release / on pan.
-    // mode === 'visible': when the board is smaller than the viewport, just keep
-    //   it fully on screen (allowing it to sit off-centre). Used DURING a pinch
-    //   so the zoom stays anchored to the pinch point instead of snapping to
-    //   centre mid-gesture.
-    clampPan(containerEl, mode = 'center') {
+    clampPan(containerEl) {
         if (!containerEl || !this.cellSize) return;
 
         this.cssZoom = Math.min(Camera.MAX_ZOOM, Math.max(this.minZoom, this.cssZoom));
@@ -157,15 +150,8 @@ class Camera {
         // Horizontal
         const scaledW = boardW * this.cssZoom;
         if (scaledW <= bcr.width) {
-            if (mode === 'center') {
-                // Board narrower than container — centre it
-                this.matE = (bcr.width - this.canvasW * this.cssZoom) / 2;
-            } else {
-                // Keep the board fully on screen but let it slide (no snap)
-                const leftBound  = -this.offsetX * this.cssZoom;
-                const rightBound = bcr.width - (this.offsetX + boardW) * this.cssZoom;
-                this.matE = Math.min(rightBound, Math.max(leftBound, this.matE));
-            }
+            // Board narrower than container — centre it
+            this.matE = (bcr.width - this.canvasW * this.cssZoom) / 2;
         } else {
             // Overscroll = half the screen width so the edge can reach the centre
             const osH = bcr.width * 0.5;
@@ -183,14 +169,8 @@ class Camera {
 
         const scaledH = boardH * this.cssZoom;
         if (scaledH <= visibleH) {
-            if (mode === 'center') {
-                // Board shorter than visible area — centre it
-                this.matF = visibleH / 2 - (this.offsetY + boardH / 2) * this.cssZoom;
-            } else {
-                const topBound = -this.offsetY * this.cssZoom;
-                const botBound = visibleH - (this.offsetY + boardH) * this.cssZoom;
-                this.matF = Math.min(botBound, Math.max(topBound, this.matF));
-            }
+            // Board shorter than visible area — centre it
+            this.matF = visibleH / 2 - (this.offsetY + boardH / 2) * this.cssZoom;
         } else {
             // Overscroll = half the screen height so the edge can reach the centre
             const osV = visibleH * 0.5;
