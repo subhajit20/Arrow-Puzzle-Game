@@ -51,8 +51,8 @@ class PipelineConfig {
     static motifWeightsForLevel(level, seed = null) {
         // Predefined 7 theme palettes using CORRIDOR, NESTED_RECT, RING, LOOP, SNAKE
         const palettes = [
-            { CORRIDOR: 40, SPIRAL: 0, NESTED_RECT: 40, LOOP: 0, SNAKE: 0, ZIGZAG: 0, RING: 40, CHAMBER: 0 }, // CORRIDOR, NESTED_RECT, RING
-            { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 45, LOOP: 30, SNAKE: 0, ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // NESTED_RECT, LOOP, RING
+            { CORRIDOR: 33, SPIRAL: 0, NESTED_RECT: 33, LOOP: 0, SNAKE: 0, ZIGZAG: 0, RING: 33, CHAMBER: 0 }, // CORRIDOR, NESTED_RECT, RING
+            { CORRIDOR: 33, SPIRAL: 0, NESTED_RECT: 33, LOOP: 33, SNAKE: 0, ZIGZAG: 0, RING: 0, CHAMBER: 0 }, // NESTED_RECT, LOOP, RING
             // { CORRIDOR: 50, SPIRAL: 0, NESTED_RECT: 0, LOOP: 35, SNAKE: 20, ZIGZAG: 0, RING: 0, CHAMBER: 0 }, // LOOP, SNAKE, CORRIDOR
             // { CORRIDOR: 45, SPIRAL: 0, NESTED_RECT: 0, LOOP: 35, SNAKE: 0, ZIGZAG: 0, RING: 40, CHAMBER: 0 }, // CORRIDOR, LOOP, RING
             // { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 45, LOOP: 0, SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // NESTED_RECT, SNAKE, RING
@@ -64,88 +64,6 @@ class PipelineConfig {
         const val = seed !== null ? seed : level;
         const idx = Math.abs(val | 0) % palettes.length;
         return { ...palettes[idx] };
-
-        // Early (1–10): only simple linear motifs
-        if (level <= 10) {
-            return {
-                CORRIDOR: 50,
-                LOOP: 30,
-                SNAKE: 15,
-                ZIGZAG: 5,
-                SPIRAL: 0,
-                RING: 0,
-                NESTED_RECT: 0,
-                CHAMBER: 0,
-            };
-        }
-
-        // Beginner (11–30): linear motifs dominate; RING introduced lightly
-        if (level <= 30) {
-            return {
-                CORRIDOR: 40,
-                LOOP: 30,
-                SNAKE: 18,
-                ZIGZAG: 7,
-                SPIRAL: 0,
-                RING: 5,
-                NESTED_RECT: 0,
-                CHAMBER: 0,
-            };
-        }
-
-        // Intermediate (31–50): SPIRAL and RING enter; linear motifs reduce
-        if (level <= 50) {
-            return {
-                CORRIDOR: 28,
-                LOOP: 20,
-                SNAKE: 15,
-                ZIGZAG: 10,
-                SPIRAL: 15,
-                RING: 12,
-                NESTED_RECT: 0,
-                CHAMBER: 0,
-            };
-        }
-
-        // Advanced (51–60): SPIRAL becomes dominant; RING grows
-        if (level <= 60) {
-            return {
-                CORRIDOR: 22,
-                LOOP: 14,
-                SNAKE: 13,
-                ZIGZAG: 9,
-                SPIRAL: 22,
-                RING: 15,
-                NESTED_RECT: 0,
-                CHAMBER: 5,
-            };
-        }
-
-        // Expert (61–80): NESTED_RECT unlocked; CHAMBER grows
-        if (level <= 80) {
-            return {
-                CORRIDOR: 18,
-                LOOP: 10,
-                SNAKE: 10,
-                ZIGZAG: 8,
-                SPIRAL: 22,
-                RING: 12,
-                NESTED_RECT: 14,
-                CHAMBER: 6,
-            };
-        }
-
-        // Master (81+): full motif palette; NESTED_RECT and SPIRAL lead
-        return {
-            CORRIDOR: 13,
-            LOOP: 9,
-            SNAKE: 9,
-            ZIGZAG: 6,
-            SPIRAL: 22,
-            RING: 11,
-            NESTED_RECT: 20,
-            CHAMBER: 10,
-        };
     }
 
     // ── Topology weights ──────────────────────────────────────────────────────
