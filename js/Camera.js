@@ -328,28 +328,95 @@ class Camera {
 
     // ── Input events ──────────────────────────────────────────────────────────
 
-    onPinch(newZoom, originX, originY, containerEl) {
+    // Zoom anchored to a focal point. Free during the gesture (no pan clamp) —
+    // bounds are restored by settle() on release (rubber-band).
+    onPinch(newZoom, originX, originY) {
         const before = this.cssZoom;
         this.cssZoom = Math.min(Camera.MAX_ZOOM, Math.max(this.minZoom, newZoom));
         const ratio = this.cssZoom / before;
         this.matE = originX - (originX - this.matE) * ratio;
         this.matF = originY - (originY - this.matF) * ratio;
-        this.clampPan(containerEl);
     }
 
-    onScroll(delta, x, y, containerEl) {
+    onScroll(delta, x, y) {
         const factor = delta > 0 ? 0.92 : 1.08;
         const before = this.cssZoom;
         this.cssZoom = Math.min(Camera.MAX_ZOOM, Math.max(this.minZoom, this.cssZoom * factor));
         const ratio = this.cssZoom / before;
         this.matE = x - (x - this.matE) * ratio;
         this.matF = y - (y - this.matF) * ratio;
-        this.clampPan(containerEl);
     }
 
-    onPan(dx, dy, containerEl) {
+    // Free drag — board follows the finger/cursor 1:1, anywhere (even off-screen).
+    onPan(dx, dy) {
         this.matE += dx;
         this.matF += dy;
-        this.clampPan(containerEl);
+    }
+
+    // ── Rubber-band settle ──────────────────────────────────────────────────────
+
+    // The valid resting position for the current zoom: zoom clamped to limits,
+    // board centred on any axis where it's smaller than the viewport, otherwise
+    // clamped so the board still covers the viewport (nearest dragged-past edge
+    // snaps back). Returns { zoom, e, f } without mutating.
+    _restTarget(containerEl) {
+        const zoom = Math.min(Camera.MAX_ZOOM, Math.max(this.minZoom, this.cssZoom));
+        const bcr = containerEl.getBoundingClientRect();
+        const isMobile = bcr.width < 768 && bcr.width < bcr.height;
+        const boardW = this.gridCols * this.cellSize;
+        const boardH = this.gridRows * this.cellSize;
+
+        let e;
+        if (boardW * zoom <= bcr.width) {
+            e = (bcr.width - this.canvasW * zoom) / 2;                 // centre
+        } else {
+            const maxE = -this.offsetX * zoom;                        // board left flush to 0
+            const minE = bcr.width - (this.offsetX + boardW) * zoom;  // board right flush to width
+            e = Math.min(maxE, Math.max(minE, this.matE));
+        }
+
+        const header = document.getElementById('game-header');
+        const topBarH = header ? header.getBoundingClientRect().height : 0;
+        const visibleH = isMobile ? Math.min(bcr.height, window.innerHeight - topBarH) : bcr.height;
+
+        let f;
+        if (boardH * zoom <= visibleH) {
+            f = visibleH / 2 - (this.offsetY + boardH / 2) * zoom;     // centre
+        } else {
+            const maxF = -this.offsetY * zoom;
+            const minF = visibleH - (this.offsetY + boardH) * zoom;
+            f = Math.min(maxF, Math.max(minF, this.matF));
+        }
+        return { zoom, e, f };
+    }
+
+    // Animates the camera back to its valid resting position (ease-out).
+    // Called when a drag/pinch/scroll gesture ends.
+    settle(containerEl) {
+        if (!containerEl || !this.cellSize) return;
+        if (this._animReq) { cancelAnimationFrame(this._animReq); this._animReq = null; }
+
+        const { zoom, e, f } = this._restTarget(containerEl);
+        const startZ = this.cssZoom, startE = this.matE, startF = this.matF;
+
+        // Already in bounds — nothing to do.
+        if (Math.abs(zoom - startZ) < 1e-3 && Math.abs(e - startE) < 0.5 && Math.abs(f - startF) < 0.5) {
+            this.cssZoom = zoom; this.matE = e; this.matF = f;
+            return;
+        }
+
+        const DUR = 280;
+        const t0 = performance.now();
+        const self = this;
+        const step = now => {
+            const p = Math.min(1, (now - t0) / DUR);
+            const t = 1 - Math.pow(1 - p, 3); // ease-out cubic
+            self.cssZoom = startZ + (zoom - startZ) * t;
+            self.matE = startE + (e - startE) * t;
+            self.matF = startF + (f - startF) * t;
+            if (p < 1) { self._animReq = requestAnimationFrame(step); }
+            else { self.cssZoom = zoom; self.matE = e; self.matF = f; self._animReq = null; }
+        };
+        this._animReq = requestAnimationFrame(step);
     }
 }

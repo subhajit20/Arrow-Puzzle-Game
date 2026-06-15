@@ -235,13 +235,15 @@ class InputHandler {
             const o2 = this._containerOffset(e.touches[1].clientX, e.touches[1].clientY);
             const cur = Math.hypot(o1.x - o2.x, o1.y - o2.y);
             if (this._startDist > 0 && cur > 0) {
-                const newZoom = this._startZoom * cur / this._startDist;
+                // Clamp ZOOM to limits, but leave pan free (anchored to the
+                // pinch midpoint). Bounds are restored by settle() on release.
+                const newZoom = Math.min(Camera.MAX_ZOOM,
+                    Math.max(this.camera.minZoom, this._startZoom * cur / this._startDist));
                 const midX    = (o1.x + o2.x) / 2;
                 const midY    = (o1.y + o2.y) / 2;
                 this.camera.cssZoom = newZoom;
                 this.camera.matE    = midX - newZoom * this._pinchAnchorX;
                 this.camera.matF    = midY - newZoom * this._pinchAnchorY;
-                this.camera.clampPan(this.containerEl);
             }
         }
         e.preventDefault();
@@ -259,6 +261,11 @@ class InputHandler {
             );
             if (!this._ignoreTap && duration < 250 && distMoved < 15)
                 this.onTap(this._tapStartX, this._tapStartY);
+        }
+
+        // All fingers lifted after a drag/pinch → rubber-band back into bounds.
+        if (e.touches.length === 0 && (this._touchMode === 'pan' || this._touchMode === 'pinch')) {
+            this.camera.settle(this.containerEl);
         }
 
         this._touchMode = e.touches.length === 0 ? 'none' : 'pan';
@@ -310,12 +317,16 @@ class InputHandler {
         this._mouseDown = false;
         if (Date.now() - this._clickTime < 250)
             this.onTap(this._clickStartX, this._clickStartY);
+        this.camera.settle(this.containerEl);   // rubber-band back into bounds
     }
 
     _handleWheel(e) {
         e.preventDefault();
         if (this.gc.revealActive || this.gc.isWinState || this.gc.isFailState) return;
         const rel = this._containerOffset(e.clientX, e.clientY);
-        this.camera.onScroll(e.deltaY, rel.x, rel.y, this.containerEl);
+        this.camera.onScroll(e.deltaY, rel.x, rel.y);
+        // Settle shortly after the wheel stops (no explicit "release" event).
+        clearTimeout(this._wheelSettleT);
+        this._wheelSettleT = setTimeout(() => this.camera.settle(this.containerEl), 200);
     }
 }
