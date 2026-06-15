@@ -361,23 +361,29 @@ class Camera {
     // snaps back). Returns { zoom, e, f } without mutating.
     _restTarget(containerEl) {
         const zoom = Math.min(Camera.MAX_ZOOM, Math.max(this.minZoom, this.cssZoom));
+        if (!containerEl || !this.cellSize) return { zoom, e: this.matE, f: this.matF };
+
         const bcr = containerEl.getBoundingClientRect();
         const isMobile = bcr.width < 768 && bcr.width < bcr.height;
-        const boardW = this.gridCols * this.cellSize;
-        const boardH = this.gridRows * this.cellSize;
-
         const header = document.getElementById('game-header');
         const topBarH = header ? header.getBoundingClientRect().height : 0;
         const visibleH = isMobile ? Math.min(bcr.height, window.innerHeight - topBarH) : bcr.height;
+        const boardW = this.gridCols * this.cellSize;
+        const boardH = this.gridRows * this.cellSize;
 
-        // Keep the dragged position; only clamp so the board stays within the
-        // viewport — never re-centre. When the board is larger than the viewport
-        // the two bounds keep it covering the screen; when smaller they keep it
-        // fully visible (off-centre is allowed). Matches the desktop feel.
-        const clampAxis = (pos, b1, b2) => Math.max(Math.min(b1, b2), Math.min(Math.max(b1, b2), pos));
+        // The board may be dragged far off-screen and stays where it's dropped,
+        // BUT at least `margin` px of it must remain visible so it's always
+        // grabbable. Only an over-drag past that limit springs back (to the
+        // margin, never to the centre).
+        const margin = Math.max(70, Math.min(bcr.width, visibleH) * 0.18);
+        const clampAxis = (pos, lo, hi) => Math.max(Math.min(lo, hi), Math.min(Math.max(lo, hi), pos));
 
-        const e = clampAxis(this.matE, -this.offsetX * zoom, bcr.width - (this.offsetX + boardW) * zoom);
-        const f = clampAxis(this.matF, -this.offsetY * zoom, visibleH - (this.offsetY + boardH) * zoom);
+        const e = clampAxis(this.matE,
+            margin - (this.offsetX + boardW) * zoom,   // board's right edge can't go left of `margin`
+            bcr.width - margin - this.offsetX * zoom);  // board's left edge can't go right of width-`margin`
+        const f = clampAxis(this.matF,
+            margin - (this.offsetY + boardH) * zoom,
+            visibleH - margin - this.offsetY * zoom);
 
         return { zoom, e, f };
     }
