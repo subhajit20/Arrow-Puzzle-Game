@@ -366,27 +366,19 @@ class Camera {
         const boardW = this.gridCols * this.cellSize;
         const boardH = this.gridRows * this.cellSize;
 
-        let e;
-        if (boardW * zoom <= bcr.width) {
-            e = (bcr.width - this.canvasW * zoom) / 2;                 // centre
-        } else {
-            const maxE = -this.offsetX * zoom;                        // board left flush to 0
-            const minE = bcr.width - (this.offsetX + boardW) * zoom;  // board right flush to width
-            e = Math.min(maxE, Math.max(minE, this.matE));
-        }
-
         const header = document.getElementById('game-header');
         const topBarH = header ? header.getBoundingClientRect().height : 0;
         const visibleH = isMobile ? Math.min(bcr.height, window.innerHeight - topBarH) : bcr.height;
 
-        let f;
-        if (boardH * zoom <= visibleH) {
-            f = visibleH / 2 - (this.offsetY + boardH / 2) * zoom;     // centre
-        } else {
-            const maxF = -this.offsetY * zoom;
-            const minF = visibleH - (this.offsetY + boardH) * zoom;
-            f = Math.min(maxF, Math.max(minF, this.matF));
-        }
+        // Keep the dragged position; only clamp so the board stays within the
+        // viewport — never re-centre. When the board is larger than the viewport
+        // the two bounds keep it covering the screen; when smaller they keep it
+        // fully visible (off-centre is allowed). Matches the desktop feel.
+        const clampAxis = (pos, b1, b2) => Math.max(Math.min(b1, b2), Math.min(Math.max(b1, b2), pos));
+
+        const e = clampAxis(this.matE, -this.offsetX * zoom, bcr.width - (this.offsetX + boardW) * zoom);
+        const f = clampAxis(this.matF, -this.offsetY * zoom, visibleH - (this.offsetY + boardH) * zoom);
+
         return { zoom, e, f };
     }
 
