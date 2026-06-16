@@ -45,6 +45,11 @@ class GameController {
         this.onProgress  = null; // (cleared, total) => void — fired on each clear
         this.onRaceWin   = null; // () => void — fired when the board is cleared
         this.onRaceRetry = null; // () => void — fired when lives hit 0 (board resets, no elimination)
+
+        // Order in which paths were cleared, for server-side finish verification
+        // (race mode). The server replays this against the board to confirm the
+        // solve is real before recording a placement.
+        this._clearOrder = [];
     }
 
     // ── Level lifecycle ───────────────────────────────────────────────────────
@@ -59,6 +64,7 @@ class GameController {
         this.selectedPathId = null;
         this.containerEl    = containerEl;
         this.revealActive   = false;
+        this._clearOrder    = [];
 
         // Commit board data
         this.board = boardData;
@@ -124,6 +130,7 @@ class GameController {
         this.isFailState    = false;
         this.hintPathId     = null;
         this.selectedPathId = null;
+        this._clearOrder    = []; // board resets to start — re-solve from scratch
         this._hideOverlay('fail-overlay');
 
         for (const p of this.board.paths) {
@@ -167,11 +174,23 @@ class GameController {
     // ── Callbacks from AnimationEngine ────────────────────────────────────────
 
     onPathCleared(path) {
+        // Record clear order once per path (AnimationEngine gates this via
+        // _logicFired, but guard anyway so a re-fire can't corrupt the order).
+        if (this._clearOrder[this._clearOrder.length - 1] !== path.id &&
+            !this._clearOrder.includes(path.id)) {
+            this._clearOrder.push(path.id);
+        }
         this.addScore(10);
         this.audio.playPathCleared();
         this._updateUI();
         if (this.onProgress) this.onProgress(this._clearedCount(), this.board.paths.length);
         this.checkWin();
+    }
+
+    // The order in which paths were cleared this solve — sent to the server on
+    // race finish so it can verify the solve against the board.
+    getClearOrder() {
+        return this._clearOrder.slice();
     }
 
     // Count of pieces that have left the board (CLEARED or exit-logic fired).
