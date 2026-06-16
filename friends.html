@@ -106,6 +106,34 @@
                 transform: rotate(360deg);
             }
         }
+
+        /* Live race-event cues. These live ONLY on the opponent strip and the
+           top-edge banner — never over the board — so they never interrupt play. */
+        @keyframes marker-pulse {
+            0%   { transform: scale(1); }
+            40%  { transform: scale(1.5); }
+            100% { transform: scale(1); }
+        }
+        .fx-pulse { animation: marker-pulse 0.45s ease-out; }
+
+        @keyframes marker-wipeout {
+            0%, 100% { transform: translateX(0); }
+            20%      { transform: translateX(-2px); }
+            40%      { transform: translateX(2px); }
+            60%      { transform: translateX(-2px); }
+            80%      { transform: translateX(2px); }
+        }
+        .fx-wipeout {
+            animation: marker-wipeout 0.5s ease-in-out;
+            box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.7) !important;
+        }
+
+        #race-event-banner {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            opacity: 0;
+            transform: translate(-50%, -8px);
+        }
+        #race-event-banner.show { opacity: 1; transform: translate(-50%, 0); }
     </style>
 </head>
 
@@ -248,8 +276,17 @@
         <!-- Bottom overlay: live player / opponent progress bars. -->
         <div class="absolute bottom-0 left-0 right-0 px-3 pb-3 flex flex-col gap-1 pointer-events-none"
             style="padding-bottom: max(12px, env(safe-area-inset-bottom));">
+            <div class="flex justify-end">
+                <button id="fx-toggle" type="button" title="Toggle race effects"
+                    class="pointer-events-auto bg-white/85 backdrop-blur w-7 h-7 rounded-full shadow-sm text-sm flex items-center justify-center">✨</button>
+            </div>
             <div id="race-opponents" class="space-y-1"></div>
         </div>
+
+        <!-- Live lead-change banner — top edge, taps pass through to the board. -->
+        <div id="race-event-banner"
+            class="absolute top-16 left-1/2 px-3 py-1.5 rounded-full text-xs font-extrabold shadow-lg z-10 pointer-events-none"
+            style="background:#1e293b;color:#e2e8f0;"></div>
 
         <!-- "You finished" banner -->
         <div id="race-finish-banner"
@@ -300,6 +337,10 @@
         let net = null;                 // NetClient (lazy)
         let race = null;                 // RaceClient (lazy)
         const progress = {};               // playerId → { cleared, total }
+        const prevCleared = {};            // playerId → last seen cleared count (event detection)
+        const fx = {};                     // playerId → transient marker effect for next render
+        let leaderId = null;               // current front-runner (for lead-change banner)
+        let eventsMuted = false;           // "reduce distractions" toggle
         const ROUND_OPTIONS = [1, 3, 5, 7];
         const state = { code: null, playerId: null, room: null, board: null, isHost: false, finished: false, rounds: 3 };
 
@@ -360,7 +401,7 @@
 
             // Opponent progress (ephemeral).
             net.on('race:progress', (m) => {
-                progress[m.playerId] = { cleared: m.cleared, total: m.total }; renderOpponents();
+                applyProgress(m.playerId, m.cleared, m.total);
             });
             net.on('race:placement', () => { /* room:update carries authoritative placement */ });
             net.on('round:result', (m) => showRoundResult(m)); // intermission between rounds
@@ -370,6 +411,17 @@
             return net;
         }
         function syncHostFlag() { state.isHost = !!(state.room && state.room.hostId === state.playerId); }
+
+        // "Reduce distractions" — mutes the live clear/wipeout/lead-change cues
+        // for players who want to focus purely on the board.
+        $('fx-toggle').addEventListener('click', () => {
+            eventsMuted = !eventsMuted;
+            const btn = $('fx-toggle');
+            btn.innerText = eventsMuted ? '🔕' : '✨';
+            btn.classList.toggle('opacity-50', eventsMuted);
+            btn.title = eventsMuted ? 'Race effects off — tap to enable' : 'Race effects on — tap to mute';
+            if (eventsMuted) $('race-event-banner').classList.remove('show');
+        });
 
         // ── Create / Join ─────────────────────────────────────────────────────
         function onCreate() {
@@ -483,8 +535,13 @@
             $('race-finish-banner').classList.add('hidden');
             $('race-standings').classList.add('hidden');
             const total = state.board ? state.board.paths.length : 0;
-            // Seed everyone at 0 so bars render immediately.
-            if (state.room) for (const p of state.room.players) progress[p.id] = { cleared: 0, total };
+            // Reset live-event tracking for the new round, then seed everyone at 0
+            // so bars render immediately and the first real clear is detected.
+            leaderId = null;
+            for (const k in fx) delete fx[k];
+            for (const k in prevCleared) delete prevCleared[k];
+            $('race-event-banner').classList.remove('show');
+            if (state.room) for (const p of state.room.players) { progress[p.id] = { cleared: 0, total }; prevCleared[p.id] = 0; }
             showView('race');
             $('race-round').innerText = `Round ${state.round || 1}/${state.totalRounds || 1}`;
             startRaceTimer(state.endsAt);
@@ -494,27 +551,85 @@
                 race = race || new RaceClient();
                 race.start(state.board, {
                     onProgress: (cleared, tot) => {
-                        progress[state.playerId] = { cleared, total: tot };
-                        renderOpponents();
+                        applyProgress(state.playerId, cleared, tot);
                         net.send('race:progress', { cleared, total: tot });
                     },
                     onWin: () => {
                         state.finished = true;
-                        net.request('race:finished').then((res) => {
+                        // Send the clear order so the server can verify the solve.
+                        net.request('race:finished', { order: race.clearOrder() }).then((res) => {
                             if (res && res.placement) showFinishBanner(`You finished #${res.placement}! 🎉`);
+                            else if (res && res.error) showFlash('⚠️ Finish not accepted — please keep racing.');
                         });
                     },
                     onRetry: () => {
                         // Out of lives — board reset to the start; opponents see the bar drop.
                         const tot = race.total();
-                        progress[state.playerId] = { cleared: 0, total: tot };
-                        renderOpponents();
+                        applyProgress(state.playerId, 0, tot);
                         net.send('race:progress', { cleared: 0, total: tot });
                         showFlash('💔 Out of lives — board reset! Solve it again.');
                     },
                 });
                 renderOpponents();
             }, 60);
+        }
+
+        // Single entry point for every progress update (yours and opponents').
+        // Reads the drama out of the numbers — a clear (count went up), a wipeout
+        // (count dropped to 0 = out of lives), a lead change — then redraws the
+        // strip. All cues stay on the strip / top edge; the board is never touched.
+        function applyProgress(playerId, cleared, total) {
+            const prev = prevCleared[playerId];
+            progress[playerId] = { cleared, total };
+
+            if (prev != null && !eventsMuted && state.room && !state.finished) {
+                const you = playerId === state.playerId;
+                if (cleared > prev) {
+                    fx[playerId] = 'pulse';                       // made progress
+                } else if (prev > 0 && cleared === 0) {
+                    fx[playerId] = 'wipeout';                     // out of lives — board reset
+                    if (!you) {
+                        const p = state.room.players.find((q) => q.id === playerId);
+                        showEventBanner(`💥 ${escapeHtml((p && p.name) || 'Someone')} wiped out!`);
+                    }
+                }
+            }
+            prevCleared[playerId] = cleared;
+
+            renderOpponents();
+            if (prev != null) checkLeadChange();
+        }
+
+        // Front-runner = most pieces cleared. Announces ONLY a real, non-tied
+        // change to a new leader, so it can never spam. The first leader is
+        // recorded silently (no banner for "0 → someone's ahead at the start").
+        function checkLeadChange() {
+            if (eventsMuted || !state.room || state.finished) return;
+            let best = null, bestN = -1, tie = false;
+            for (const p of state.room.players) {
+                const n = (progress[p.id] || {}).cleared || 0;
+                if (n > bestN) { bestN = n; best = p.id; tie = false; }
+                else if (n === bestN) tie = true;
+            }
+            if (bestN <= 0 || tie || best === leaderId) return;
+            const wasSet = leaderId != null;
+            leaderId = best;
+            if (!wasSet) return;
+            const p = state.room.players.find((q) => q.id === best);
+            showEventBanner(best === state.playerId
+                ? '🚀 You took the lead!'
+                : `⚡ ${escapeHtml((p && p.name) || 'Someone')} took the lead!`);
+        }
+
+        // Small auto-fading banner at the top edge. pointer-events-none, so it
+        // never blocks a tap on the board beneath it.
+        let eventBannerT = null;
+        function showEventBanner(text) {
+            const b = $('race-event-banner');
+            b.innerHTML = text;
+            b.classList.add('show');
+            clearTimeout(eventBannerT);
+            eventBannerT = setTimeout(() => b.classList.remove('show'), 1400);
         }
 
         // Compact shared "race track": one line, each player a marker positioned
@@ -533,15 +648,20 @@
                 const done = p.placement != null;
                 const bg = you ? '#10b981' : done ? '#f59e0b' : '#64748b';
                 const face = done ? `#${p.placement}` : escapeHtml((p.name || '?').trim().slice(0, 1).toUpperCase());
+                // Transient effect for this marker (pulse on clear, shake on wipeout).
+                const effect = fx[p.id] === 'wipeout' ? 'fx-wipeout' : fx[p.id] === 'pulse' ? 'fx-pulse' : '';
                 // Map 0..100% across the track, keeping markers clear of both
                 // edges and the finish flag.
                 const left = `calc((100% - 44px) * ${out ? 0 : pct} / 100 + 16px)`;
                 return `<div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-all duration-300 ${out ? 'opacity-40' : ''}"
                              style="left:${left}; z-index:${you ? 6 : done ? 4 : 2};" title="${escapeHtml(p.name)}${you ? ' (you)' : ''} — ${out ? 'left' : done ? '#' + p.placement : pct + '%'}">
-                        <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-extrabold text-white shadow-md ${you ? 'ring-2 ring-white' : ''}"
+                        <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-extrabold text-white shadow-md ${you ? 'ring-2 ring-white' : ''} ${effect}"
                              style="background:${bg};">${face}</div>
                     </div>`;
             }).join('');
+
+            // Effects are one-shot — consume them so the next render doesn't replay.
+            for (const k in fx) delete fx[k];
 
             el.innerHTML = `
                 <div class="relative w-full h-8 bg-white/85 backdrop-blur rounded-full shadow-sm px-1">
@@ -583,6 +703,62 @@
             b._t = setTimeout(() => b.classList.add('hidden'), ms);
         }
 
+        // Renders a clean snapshot of a round's puzzle (every arrow in its start
+        // position) to a data URL for the results screen. Drawn from board data —
+        // not the live canvas, which is zoomed-in and cleared by round end — so it
+        // always shows the WHOLE puzzle. Mirrors the in-game look: navy paths +
+        // arrowheads on a white board.
+        function boardThumbnail(board, maxW = 240, maxH = 240) {
+            if (!board || !Array.isArray(board.paths) || !board.gridRows || !board.gridCols) return '';
+            const gR = board.gridRows, gC = board.gridCols, pad = 6;
+            const cell = Math.max(1, Math.min((maxW - pad * 2) / gC, (maxH - pad * 2) / gR));
+            const w = Math.round(gC * cell + pad * 2), h = Math.round(gR * cell + pad * 2);
+            const dpr = window.devicePixelRatio || 1;
+
+            const cv = document.createElement('canvas');
+            cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+            const ctx = cv.getContext('2d');
+            ctx.scale(dpr, dpr);
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+
+            const X = (c) => pad + c * cell, Y = (r) => pad + r * cell;
+            const NAVY = '#112540';
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.lineWidth = Math.max(1.2, cell * 0.16);
+            ctx.strokeStyle = NAVY; ctx.fillStyle = NAVY;
+
+            const HD = { UP: [0, -1], DOWN: [0, 1], LEFT: [-1, 0], RIGHT: [1, 0] };
+            for (const p of board.paths) {
+                const ns = p.nodes;
+                if (!ns || ns.length < 2) continue;
+                ctx.beginPath();
+                ctx.moveTo(X(ns[0].c), Y(ns[0].r));
+                for (let i = 1; i < ns.length; i++) ctx.lineTo(X(ns[i].c), Y(ns[i].r));
+                ctx.stroke();
+
+                // Arrowhead at the head node, pointing along the path's heading.
+                const head = ns[ns.length - 1];
+                const [vx, vy] = HD[p.heading] || [1, 0];
+                const px = -vy, py = vx;                 // perpendicular
+                const hx = X(head.c), hy = Y(head.r), a = Math.max(2.5, cell * 0.55);
+                ctx.beginPath();
+                ctx.moveTo(hx + vx * a * 0.6, hy + vy * a * 0.6);
+                ctx.lineTo(hx - vx * a * 0.4 + px * a * 0.5, hy - vy * a * 0.4 + py * a * 0.5);
+                ctx.lineTo(hx - vx * a * 0.4 - px * a * 0.5, hy - vy * a * 0.4 - py * a * 0.5);
+                ctx.closePath();
+                ctx.fill();
+            }
+            return cv.toDataURL('image/png');
+        }
+
+        // <img> markup for a round's puzzle snapshot (empty string if unavailable).
+        function puzzleSnapMarkup() {
+            const src = boardThumbnail(state.board);
+            if (!src) return '';
+            return `<img src="${src}" alt="This round's puzzle"
+                 class="rounded-xl shadow-md border border-slate-200 w-auto max-w-[220px] max-h-[40vh] object-contain" />`;
+        }
+
         // Cumulative game leaderboard (points + rounds won), highlighting you/champions.
         function standingsList(standings) {
             const medal = (i) => ['🥇', '🥈', '🥉'][i] || '';
@@ -602,6 +778,7 @@
             state.round = m.round; state.totalRounds = m.totalRounds;
             $('race-standings').innerHTML =
                 `<div class="text-xs font-extrabold text-emerald-600 uppercase tracking-widest">Round ${m.round} of ${m.totalRounds} complete</div>
+                 ${puzzleSnapMarkup()}
                  <h3 class="text-xl font-extrabold text-slate-800 tracking-tight">Standings</h3>
                  <div class="w-full max-w-xs space-y-1.5">${standingsList(m.standings)}</div>
                  <div id="results-countdown" class="text-sm font-bold text-slate-500 mt-1">Next round starting soon…</div>`;
@@ -620,6 +797,7 @@
                 `<div class="text-4xl">🏆</div>
                  <div class="text-xs font-extrabold text-amber-500 uppercase tracking-widest">Champion${many ? 's' : ''}</div>
                  <h3 class="text-2xl font-extrabold text-slate-800 tracking-tight">${champs}</h3>
+                 ${puzzleSnapMarkup()}
                  <div class="w-full max-w-xs space-y-1.5">${standingsList(m.standings)}</div>
                  ${host
                     ? `<div class="w-full max-w-xs mt-1">

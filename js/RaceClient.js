@@ -70,6 +70,10 @@ class RaceClient {
     // Total pieces on the current board (for progress display).
     total() { return this.gc.board ? this.gc.board.paths.length : 0; }
 
+    // The order in which the player cleared paths — sent on finish so the
+    // server can verify the solve before recording a placement.
+    clearOrder() { return this.gc.getClearOrder(); }
+
     stop() {
         this.input.detach();
         this.animation.stop();
