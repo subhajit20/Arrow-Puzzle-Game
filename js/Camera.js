@@ -17,6 +17,15 @@ class Camera {
     static GRID_SCALES = {
         // Normal levels
         '8x6': 0.8,
+        // Small early-level sizes — previously fell through to the low
+        // node-count fallback (~0.40) and rendered tiny/marooned. Pinned to
+        // 0.8 to match their in-table siblings (12x8, 14x8, 16x10, 18x10).
+        '10x6': 0.8,
+        '8x8': 0.8,
+        '14x10': 0.8,
+        '12x12': 0.8,
+        '18x12': 0.8,
+        '14x14': 0.8,
         '12x8': 0.8,
         '14x8': 0.8,
         '16x10': 0.8,

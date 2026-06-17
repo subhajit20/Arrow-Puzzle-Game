@@ -15,6 +15,7 @@
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/ui-sound.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
 
@@ -87,7 +88,7 @@
                 padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
             }
             #level-display { font-size: 1rem !important; line-height: 1.25 !important; }
-            #score-display  { font-size: 1rem !important; line-height: 1.25 !important; }
+            #paths-remaining { font-size: 1rem !important; line-height: 1.25 !important; }
             #tier-badge     { font-size: 0.6rem !important; margin-top: 0 !important; }
             #game-header .flex.items-center.gap-1 { padding: 0.2rem 0.5rem !important; }
             #hint-btn { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
@@ -104,7 +105,7 @@
             #game-header { padding-top: max(0.4rem, env(safe-area-inset-top)) !important; padding-bottom: 0.4rem !important; }
             #game-controls { padding-top: 0.4rem !important; padding-bottom: max(0.4rem, env(safe-area-inset-bottom)) !important; }
             #level-display { font-size: 1rem !important; line-height: 1.2 !important; }
-            #score-display { font-size: 1rem !important; }
+            #paths-remaining { font-size: 1rem !important; }
             #tier-badge    { display: none !important; }
             .hint-label    { display: none; }
         }
@@ -202,18 +203,32 @@
     <!-- Top Navigation HUD -->
     <div id="game-header"
         class="w-full max-w-md bg-white rounded-2xl p-3 md:p-4 flex justify-between items-center premium-shadow transition-all duration-300">
-        <div class="flex flex-col">
+        <!-- Left: arrow icon + clicks remaining (counts down as paths clear) -->
+        <div class="flex items-center gap-1.5">
+            <svg class="w-5 h-5 md:w-6 md:h-6 text-[#112540]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+                <path d="m13 13 6 6" />
+            </svg>
+            <span id="paths-remaining" class="text-xl md:text-2xl font-extrabold text-[#112540] tracking-tight">0</span>
+        </div>
+        <!-- Center: level + lives -->
+        <div class="flex flex-col items-center gap-1">
             <span id="level-display" class="text-xl md:text-2xl font-extrabold text-[#112540] tracking-tight">Level 1</span>
-            <span id="tier-badge" class="text-[10px] font-extrabold text-indigo-600 uppercase tracking-widest mt-0.5">NORMAL</span>
+            <div class="flex items-center gap-1.5">
+                <svg id="heart-1" class="w-5 h-5 text-rose-500 transition-all duration-300 transform scale-100" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.74 9.256a25.175 25.175 0 01-4.243 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.004.001a.752.752 0 01-.704 0z" />
+                </svg>
+                <svg id="heart-2" class="w-5 h-5 text-rose-500 transition-all duration-300 transform scale-100" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.74 9.256a25.175 25.175 0 01-4.243 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.004.001a.752.752 0 01-.704 0z" />
+                </svg>
+                <svg id="heart-3" class="w-5 h-5 text-rose-500 transition-all duration-300 transform scale-100" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.74 9.256a25.175 25.175 0 01-4.243 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.004.001a.752.752 0 01-.704 0z" />
+                </svg>
+            </div>
         </div>
-        <div class="flex flex-col items-center">
-            <span class="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Points</span>
-            <span id="score-display" class="text-xl md:text-2xl font-extrabold text-slate-800 tracking-tight">0</span>
-        </div>
-        <div class="flex items-center gap-1 bg-slate-50 px-2 py-1.5 rounded-xl border border-slate-100">
-            <div id="heart-1" class="text-rose-500 transition-all duration-300 transform scale-100">❤️</div>
-            <div id="heart-2" class="text-rose-500 transition-all duration-300 transform scale-100">❤️</div>
-            <div id="heart-3" class="text-rose-500 transition-all duration-300 transform scale-100">❤️</div>
+        <!-- Right: difficulty mode -->
+        <div class="flex flex-col items-end">
+            <span id="tier-badge" class="text-[10px] md:text-xs font-extrabold text-indigo-600 uppercase tracking-widest">NORMAL</span>
         </div>
     </div>
 

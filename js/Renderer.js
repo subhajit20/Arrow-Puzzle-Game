@@ -39,8 +39,9 @@ class Renderer {
             lvl.innerText = gameState.dailyMode ? 'Daily Puzzle' : `Level ${gameState.level}`;
         }
 
-        const score = document.getElementById('score-display');
-        if (score) score.innerText = gameState.dailyMode ? gameState.dailyScore : gameState.score;
+        // Left-side counter: arrow clicks (paths) still needed to clear the board.
+        const remaining = document.getElementById('paths-remaining');
+        if (remaining) remaining.innerText = gameState.pathsRemaining ?? 0;
 
         const badge = document.getElementById('tier-badge');
         if (badge) {

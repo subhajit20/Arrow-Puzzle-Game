@@ -7,7 +7,7 @@
 // immediately so users always get the latest files on next reload.
 // =============================================================================
 
-const CACHE_NAME = 'vecto-v24';
+const CACHE_NAME = 'vecto-v25';
 
 const PRECACHE_URLS = [
     './',
@@ -63,6 +63,7 @@ const PRECACHE_URLS = [
     './js/DailyPuzzle.js',
     './js/boards-data.js',
     './js/main.js',
+    './js/ui-sound.js',
     // Multiplayer (Play with Friends)
     './js/NetClient.js',
     './js/RaceClient.js',
