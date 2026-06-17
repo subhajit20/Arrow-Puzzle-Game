@@ -274,13 +274,15 @@ class GameController {
     // ── Internal ──────────────────────────────────────────────────────────────
 
     _updateUI() {
+        const totalPaths = this.board?.paths?.length || 0;
         this.renderer.updateDomUI({
-            level:      this.level,
-            score:      this.score,
-            dailyScore: this.dailyScore,
-            lives:      this.lives,
-            difficulty: this.board?.difficulty || 'NORMAL',
-            dailyMode:  this.dailyMode,
+            level:          this.level,
+            score:          this.score,
+            dailyScore:     this.dailyScore,
+            lives:          this.lives,
+            difficulty:     this.board?.difficulty || 'NORMAL',
+            dailyMode:      this.dailyMode,
+            pathsRemaining: this.board ? totalPaths - this._clearedCount() : totalPaths,
         });
     }
 

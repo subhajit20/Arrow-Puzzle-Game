@@ -14,6 +14,7 @@
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/ui-sound.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
 
@@ -35,6 +36,22 @@
             opacity: 0.5;
             pointer-events: none;
         }
+
+        /* Gamey background: dot-grid + rising arrows (fixed + clipped) */
+        .bg-fx { position: fixed; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
+        .grid-pan { position: absolute; inset: -40px;
+            background-image: radial-gradient(circle, rgba(15,23,42,.06) 1.5px, transparent 1.5px);
+            background-size: 26px 26px; animation: pan 22s linear infinite;
+            -webkit-mask-image: radial-gradient(130% 95% at 50% 35%, #000 35%, transparent 82%);
+                    mask-image: radial-gradient(130% 95% at 50% 35%, #000 35%, transparent 82%); }
+        .spark { position: absolute; bottom: -30px; opacity: 0; animation: rise linear infinite; }
+        @keyframes pan  { from { background-position: 0 0 } to { background-position: 0 -520px } }
+        @keyframes rise { 0% { transform: translateY(0) scale(.8); opacity: 0 }
+                          12% { opacity: .55 } 80% { opacity: .4 }
+                          100% { transform: translateY(-88vh) scale(1.05); opacity: 0 } }
+        .wordmark { background: linear-gradient(100deg, #f59e0b, #ec4899 50%, #8b5cf6 92%);
+            -webkit-background-clip: text; background-clip: text;
+            -webkit-text-fill-color: transparent; color: transparent; }
 
         #join-section {
             display: grid;
@@ -137,106 +154,123 @@
     </style>
 </head>
 
-<body class="w-screen flex flex-col justify-center items-center p-4 gap-3 md:gap-4 bg-slate-100"
+<body class="w-screen flex flex-col justify-center items-center p-4 gap-3 md:gap-4 bg-white"
     style="padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));">
 
+    <!-- Gamey background: dot-grid + rising arrows -->
+    <div class="bg-fx">
+        <div class="grid-pan"></div>
+        <svg class="spark" style="left:14%; animation-duration:9s;  animation-delay:0s;"   width="18" height="18" fill="none" stroke="#fb923c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        <svg class="spark" style="left:38%; animation-duration:11s; animation-delay:2.5s;" width="14" height="14" fill="none" stroke="#d946ef" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        <svg class="spark" style="left:64%; animation-duration:8s;  animation-delay:1.2s;" width="16" height="16" fill="none" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        <svg class="spark" style="left:82%; animation-duration:12s; animation-delay:4s;"   width="13" height="13" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        <svg class="spark" style="left:26%; animation-duration:10s; animation-delay:5.5s;" width="15" height="15" fill="none" stroke="#fb7185" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+    </div>
+
     <!-- Logo -->
-    <div id="brand" class="text-center">
-        <div class="text-2xl md:text-3xl font-extrabold text-[#112540] tracking-tight">VECTO</div>
-        <div class="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Play with
-            Friends</div>
+    <div id="brand" class="relative z-10 flex items-center gap-2">
+        <svg class="w-6 h-6 md:w-7 md:h-7 text-[#0f172a]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></svg>
+        <div class="wordmark text-3xl md:text-4xl font-extrabold tracking-tighter leading-none">VECTO</div>
     </div>
 
     <!-- ════════════════ VIEW: ENTRY ════════════════ -->
-    <div id="view-entry" class="w-full max-w-sm flex flex-col items-center gap-3">
-        <div class="w-full rounded-2xl p-4 md:p-5 shadow-xl"
-            style="background: linear-gradient(135deg, #6ee7b7 0%, #10b981 45%, #0d9488 100%);">
-            <div class="flex items-center justify-between mb-3">
-                <span class="text-[9px] font-extrabold text-emerald-950/60 uppercase tracking-widest">Play with
-                    Friends</span>
-                <span class="text-sm">👥</span>
+    <div id="view-entry" class="relative z-10 w-full max-w-sm flex flex-col items-center gap-3">
+        <div class="relative w-full rounded-[26px] p-5 overflow-hidden"
+            style="background: linear-gradient(140deg, #1e40af 0%, #0284c7 52%, #38bdf8 100%); box-shadow: 0 22px 48px -18px rgba(2,132,199,.6), inset 0 1px 0 rgba(255,255,255,.25);">
+            <div class="flex items-center justify-between mb-4">
+                <span class="text-[10px] font-extrabold text-white/50 uppercase tracking-[0.18em]">Play with Friends</span>
+                <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-lg shadow-inner">👥</div>
             </div>
+
             <label for="name-input"
-                class="block text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide mb-1">Your name</label>
+                class="block text-[11px] font-bold text-white/55 uppercase tracking-wide mb-1.5">Your name</label>
             <input id="name-input" type="text" maxlength="16" autocomplete="off" spellcheck="false"
                 placeholder="Enter your name"
-                class="w-full py-2.5 px-3 font-bold text-sm rounded-xl outline-none border-2 border-transparent focus:border-emerald-900/40 transition-colors"
-                style="background: rgba(255,255,255,0.85); color: #064e3b;">
-            <div id="name-error" class="text-[11px] font-semibold text-red-800 mt-1 h-3.5"></div>
+                class="w-full py-3 px-3.5 font-bold text-sm rounded-2xl outline-none border-2 border-white/10 focus:border-amber-400 transition-colors placeholder:text-white/30"
+                style="background: rgba(255,255,255,0.08); color: #ffffff;">
+            <div id="name-error" class="text-[11px] font-semibold text-rose-300 mt-1 h-3.5"></div>
+
             <button id="create-btn" onclick="onCreate()"
-                class="mt-1 w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn"
-                style="background: rgba(6,78,59,0.85); color: #d1fae5;">
-                Create a Room
+                class="mt-1 w-full py-3.5 font-extrabold text-[15px] rounded-2xl tracking-wide transition-all duration-200 glow-btn flex items-center justify-center gap-2"
+                style="background: #d97706; color: #ffffff; box-shadow: 0 10px 26px -8px rgba(217,119,6,.7);">
+                <span class="text-lg leading-none">＋</span> Create a Room
             </button>
+
+            <div class="flex items-center gap-3 my-3.5">
+                <div class="h-px flex-1 bg-white/10"></div>
+                <span class="text-[10px] font-extrabold text-white/35 uppercase tracking-widest">or</span>
+                <div class="h-px flex-1 bg-white/10"></div>
+            </div>
+
             <button id="join-toggle-btn" onclick="onJoinToggle()"
-                class="mt-2 w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn border"
-                style="background: rgba(255,255,255,0.18); color: #064e3b; border-color: rgba(6,78,59,0.3);">
+                class="w-full py-3.5 font-extrabold text-[15px] rounded-2xl tracking-wide transition-all duration-200 glow-btn border border-white/20"
+                style="background: rgba(255,255,255,0.06); color: #ffffff;">
                 Join a Room
             </button>
+
             <div id="join-section">
                 <div>
                     <label for="code-input"
-                        class="block text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide mb-1">Room
-                        code</label>
+                        class="block text-[11px] font-bold text-white/55 uppercase tracking-wide mb-1.5 mt-1">Room code</label>
                     <input id="code-input" type="text" maxlength="6" autocomplete="off" spellcheck="false"
                         inputmode="text" placeholder="ABCDEF"
-                        class="w-full py-2.5 px-3 font-extrabold text-center text-base rounded-xl outline-none border-2 border-transparent focus:border-emerald-900/40 transition-colors"
-                        style="background: rgba(255,255,255,0.85); color: #064e3b;">
-                    <div id="code-error" class="text-[11px] font-semibold text-red-800 mt-1 h-3.5"></div>
+                        class="w-full py-3 px-3.5 font-extrabold text-center text-xl rounded-2xl outline-none border-2 border-white/10 focus:border-amber-400 transition-colors placeholder:text-white/25"
+                        style="background: rgba(255,255,255,0.08); color: #ffffff;">
+                    <div id="code-error" class="text-[11px] font-semibold text-rose-300 mt-1 h-3.5"></div>
                     <button id="join-confirm-btn" onclick="onJoinConfirm()"
-                        class="mt-1 w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn"
-                        style="background: rgba(6,78,59,0.85); color: #d1fae5;">
-                        Join Room →
+                        class="mt-1 w-full py-3.5 font-extrabold text-[15px] rounded-2xl tracking-wide transition-all duration-200 glow-btn flex items-center justify-center gap-2"
+                        style="background: #0c4a6e; color: #ffffff; box-shadow: 0 8px 18px -6px rgba(12,74,110,.6);">
+                        Join Room <span class="text-lg leading-none">→</span>
                     </button>
                 </div>
             </div>
         </div>
-        <div id="conn-status" class="text-[11px] font-semibold text-slate-400 h-4"></div>
+        <div id="conn-status" class="relative z-10 text-[11px] font-semibold text-slate-400 h-4"></div>
         <button onclick="window.location.href='index.html'"
-            class="text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors tracking-wide">←
+            class="relative z-10 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors tracking-wide">←
             Back</button>
     </div>
 
     <!-- ════════════════ VIEW: LOBBY ════════════════ -->
-    <div id="view-lobby" class="hidden w-full max-w-sm flex flex-col items-center gap-3">
-        <div class="w-full rounded-2xl p-4 md:p-5 shadow-xl"
-            style="background: linear-gradient(135deg, #6ee7b7 0%, #10b981 45%, #0d9488 100%);">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-[9px] font-extrabold text-emerald-950/60 uppercase tracking-widest">Room</span>
+    <div id="view-lobby" class="hidden relative z-10 w-full max-w-sm flex flex-col items-center gap-3">
+        <div class="relative w-full rounded-[26px] p-5 overflow-hidden"
+            style="background: linear-gradient(140deg, #1e40af 0%, #0284c7 52%, #38bdf8 100%); box-shadow: 0 22px 48px -18px rgba(2,132,199,.6), inset 0 1px 0 rgba(255,255,255,.25);">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-[10px] font-extrabold text-white/50 uppercase tracking-[0.18em]">Room</span>
                 <span id="lobby-status-pill"
-                    class="text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide"
-                    style="background: rgba(6,78,59,0.25); color: #064e3b;">Lobby</span>
+                    class="text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wide"
+                    style="background: rgba(255,255,255,0.18); color: #ffffff;">Lobby</span>
             </div>
-            <div class="rounded-xl p-3 mb-3 flex items-center justify-between"
-                style="background: rgba(255,255,255,0.85);">
+            <div class="rounded-2xl p-3.5 mb-3 flex items-center justify-between"
+                style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.12);">
                 <div>
-                    <div class="text-[10px] font-bold text-emerald-900/60 uppercase tracking-wide">Room code</div>
-                    <div id="lobby-code" class="text-2xl font-extrabold text-emerald-950"
+                    <div class="text-[10px] font-bold text-white/55 uppercase tracking-wide">Room code</div>
+                    <div id="lobby-code" class="text-2xl font-extrabold text-white"
                         style="letter-spacing: 0.18em;">——————</div>
                 </div>
                 <button id="copy-btn" onclick="copyCode()"
-                    class="px-3 py-2 text-xs font-bold rounded-lg glow-btn transition-all"
-                    style="background: rgba(6,78,59,0.85); color: #d1fae5;">Copy code</button>
+                    class="px-3 py-2 text-xs font-bold rounded-xl glow-btn transition-all border border-white/20"
+                    style="background: rgba(255,255,255,0.12); color: #ffffff;">Copy code</button>
             </div>
-            <div class="flex items-center justify-between mb-1">
-                <span class="text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide">Players</span>
-                <span id="lobby-count" class="text-[11px] font-bold text-emerald-950/70">0 / 4</span>
+            <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[11px] font-bold text-white/70 uppercase tracking-wide">Players</span>
+                <span id="lobby-count" class="text-[11px] font-bold text-white/70">0 / 4</span>
             </div>
             <div id="lobby-players" class="space-y-1.5 mb-3"></div>
             <!-- Rounds selector (host only) -->
             <div id="rounds-select" class="hidden mb-3">
-                <div class="text-[11px] font-bold text-emerald-950/70 uppercase tracking-wide mb-1.5">Rounds</div>
+                <div class="text-[11px] font-bold text-white/70 uppercase tracking-wide mb-1.5">Rounds</div>
                 <div id="rounds-options" class="flex gap-2"></div>
             </div>
             <div id="lobby-countdown" class="hidden text-center py-2 mb-2">
-                <div id="countdown-label" class="text-[11px] font-bold text-emerald-900/70 uppercase tracking-widest">
+                <div id="countdown-label" class="text-[11px] font-bold text-white/70 uppercase tracking-widest">
                     Get ready</div>
-                <div id="countdown-num" class="text-4xl font-extrabold text-emerald-950">3</div>
+                <div id="countdown-num" class="text-4xl font-extrabold text-white">3</div>
             </div>
             <button id="start-btn" onclick="onStart()"
-                class="w-full py-2.5 font-bold text-sm rounded-xl tracking-wide transition-all duration-200 glow-btn"
-                style="background: rgba(6,78,59,0.85); color: #d1fae5;">Start Game</button>
-            <div id="waiting-msg" class="hidden text-center text-xs font-semibold text-emerald-900/70 py-2.5">
+                class="w-full py-3.5 font-extrabold text-[15px] rounded-2xl tracking-wide transition-all duration-200 glow-btn"
+                style="background: #d97706; color: #ffffff; box-shadow: 0 10px 26px -8px rgba(217,119,6,.7);">Start Game</button>
+            <div id="waiting-msg" class="hidden text-center text-xs font-semibold text-white/70 py-2.5">
                 Waiting for the host to start…
             </div>
         </div>
@@ -351,8 +385,8 @@
             el.innerHTML = ROUND_OPTIONS.map((n) => {
                 const active = n === state.rounds;
                 return `<button onclick="setRounds(${n})" data-n="${n}"
-                    class="rounds-btn flex-1 py-2 rounded-lg text-sm font-extrabold transition-all glow-btn"
-                    style="background:${active ? 'rgba(6,78,59,0.9)' : 'rgba(255,255,255,0.6)'};color:${active ? '#d1fae5' : '#064e3b'};">${n}</button>`;
+                    class="rounds-btn flex-1 py-2 rounded-lg text-sm font-extrabold transition-all glow-btn border ${active ? 'border-transparent' : 'border-black/10'}"
+                    style="background:${active ? '#d97706' : 'rgba(255,255,255,0.9)'};color:${active ? '#ffffff' : '#1e293b'};">${n}</button>`;
             }).join('');
         }
         function setRounds(n) {
@@ -464,16 +498,16 @@
             $('lobby-count').innerText = `${room.players.length} / ${room.maxPlayers}`;
             const filled = room.players.map((p) => {
                 const you = p.id === state.playerId;
-                const host = p.isHost ? '<span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full" style="background:rgba(6,78,59,0.85);color:#d1fae5;">HOST</span>' : '';
-                const dot = '<span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-600 mr-2 align-middle"></span>';
-                return `<div class="flex items-center justify-between rounded-lg px-3 py-2" style="background:rgba(255,255,255,0.8);">
-                    <span class="text-sm font-bold text-emerald-950">${dot}${escapeHtml(p.name)}${you ? ' (you)' : ''}</span>${host}</div>`;
+                const host = p.isHost ? '<span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full" style="background:rgba(255,255,255,0.22);color:#ffffff;">HOST</span>' : '';
+                const dot = '<span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-2 align-middle"></span>';
+                return `<div class="flex items-center justify-between rounded-xl px-3 py-2" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.1);">
+                    <span class="text-sm font-bold text-white">${dot}${escapeHtml(p.name)}${you ? ' (you)' : ''}</span>${host}</div>`;
             });
             // Show remaining seats so everyone sees room fill up to 4.
             const empties = [];
             for (let i = room.players.length; i < room.maxPlayers; i++) {
-                empties.push(`<div class="flex items-center rounded-lg px-3 py-2 border border-dashed border-emerald-900/25">
-                    <span class="text-xs font-semibold text-emerald-900/40 italic">Waiting for a player…</span></div>`);
+                empties.push(`<div class="flex items-center rounded-xl px-3 py-2 border border-dashed border-white/25">
+                    <span class="text-xs font-semibold text-white/45 italic">Waiting for a player…</span></div>`);
             }
             $('lobby-players').innerHTML = filled.concat(empties).join('');
             const labels = { lobby: 'Lobby', countdown: 'Starting', active: 'Racing', intermission: 'Intermission', gameover: 'Game Over' };
