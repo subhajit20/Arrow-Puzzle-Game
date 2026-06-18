@@ -7,7 +7,7 @@
 // immediately so users always get the latest files on next reload.
 // =============================================================================
 
-const CACHE_NAME = 'vecto-v25';
+const CACHE_NAME = 'vecto-v27';
 
 const PRECACHE_URLS = [
     './',
@@ -18,6 +18,13 @@ const PRECACHE_URLS = [
     './manifest.json',
     './icons/icon-192.png',
     './icons/icon-512.png',
+    // Vendored (offline) — Tailwind engine + Plus Jakarta Sans
+    './vendor/tailwind.js',
+    './vendor/fonts/fonts.css',
+    './vendor/fonts/LDIoaomQNQcsA88c7O9yZ4KMCoOg4Ko20yw.woff2',
+    './vendor/fonts/LDIoaomQNQcsA88c7O9yZ4KMCoOg4Ko40yyygA.woff2',
+    './vendor/fonts/LDIoaomQNQcsA88c7O9yZ4KMCoOg4Ko50yyygA.woff2',
+    './vendor/fonts/LDIoaomQNQcsA88c7O9yZ4KMCoOg4Ko70yyygA.woff2',
     // Foundation
     './js/Grid.js',
     './js/Path.js',

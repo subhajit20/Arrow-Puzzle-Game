@@ -141,10 +141,10 @@
     // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
     // Remove this block when test mode is no longer needed.
     const TEST_MODE = false;
-    const TEST_ROWS = 48;
-    const TEST_COLS = 28;
-    const TEST_LEVEL = 68;   // (70/10)%2 = 1 → heart mask
-    const TEST_TIER = 'EXPERT';
+    const TEST_ROWS = 50;
+    const TEST_COLS = 30;
+    const TEST_LEVEL = 56;   // (70/10)%2 = 1 → heart mask
+    const TEST_TIER = 'TITAN';
 
     // Exposed on window so existing HTML onclick attributes still work.
     window.startNormalGame = function () {
