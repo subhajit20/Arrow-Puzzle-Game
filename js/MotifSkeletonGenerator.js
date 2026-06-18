@@ -587,33 +587,29 @@ class MotifSkeletonGenerator {
         return seq;
     }
 
-    // SPIRAL — inward CW to center, outward CCW back out.
-    // Rings computed from bbox so spiral fills the whole region.
-    _spiralOrdered({ center }, bb) {
-        const cr = ((bb.minR + bb.maxR) / 2 + 0.5) | 0;
-        const cc = ((bb.minC + bb.maxC) / 2 + 0.5) | 0;
-        const maxRings = Math.max(1, Math.min(
-            cr - bb.minR, bb.maxR - cr, cc - bb.minC, bb.maxC - cc
-        ));
-        const seq = [];
-        for (let k = maxRings; k >= 1; k--) {
-            const r0 = cr - k, r1 = cr + k, c0 = cc - k, c1 = cc + k;
-            for (let c = c0; c <= c1; c++) seq.push({ r: r0, c });
-            for (let r = r0 + 1; r <= r1; r++) seq.push({ r, c: c1 });
-            for (let c = c1 - 1; c >= c0; c--) seq.push({ r: r1, c });
-            for (let r = r1 - 1; r > r0 + 1; r--) seq.push({ r, c: c0 });
-            seq.push({ r: r0 + 1, c: c0 });
-            seq.push({ r: r0 + 1, c: c0 + 1 });
-        }
-        seq.push({ r: cr, c: cc });
-        for (let k = 1; k <= maxRings; k++) {
-            const r0 = cr - k, r1 = cr + k, c0 = cc - k, c1 = cc + k;
-            seq.push({ r: r0 + 1, c: c1 });
-            seq.push({ r: r0, c: c1 });
-            for (let c = c1 - 1; c >= c0; c--) seq.push({ r: r0, c });
-            for (let r = r0 + 1; r <= r1; r++) seq.push({ r, c: c0 });
-            for (let c = c0 + 1; c <= c1; c++) seq.push({ r: r1, c });
-            for (let r = r1 - 1; r > r0 + 1; r--) seq.push({ r, c: c1 });
+    // SPIRAL — one continuous arm winding inward, arms spaced 2 cells apart so
+    // the gap between turns is visible (distinct from the closed concentric
+    // rectangles of RING/NESTED_RECT). The left leg stops 2 short of the top
+    // and a 2-step connector bridges into the next, inset arm — keeping every
+    // step orthogonally adjacent so _collectAdjacent never severs the path.
+    _spiralOrdered(_params, bb) {
+        let { minR: top, maxR: bottom, minC: left, maxC: right } = bb;
+        const seq = [{ r: top, c: left }];
+
+        while (top <= bottom && left <= right) {
+            for (let c = left + 1; c <= right; c++)  seq.push({ r: top, c });      // top  →
+            for (let r = top + 1; r <= bottom; r++)  seq.push({ r, c: right });    // right ↓
+            if (top < bottom)
+                for (let c = right - 1; c >= left; c--) seq.push({ r: bottom, c }); // bottom ←
+            if (left < right)
+                for (let r = bottom - 1; r >= top + 2; r--) seq.push({ r, c: left }); // left ↑ (stop 2 short → arm gap)
+
+            top += 2; left += 2; bottom -= 2; right -= 2;
+
+            if (top <= bottom && left <= right) {     // connector into the inset arm
+                seq.push({ r: top, c: left - 1 });
+                seq.push({ r: top, c: left });
+            }
         }
         return seq;
     }

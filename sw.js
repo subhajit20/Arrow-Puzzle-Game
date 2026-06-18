@@ -7,7 +7,7 @@
 // immediately so users always get the latest files on next reload.
 // =============================================================================
 
-const CACHE_NAME = 'vecto-v26';
+const CACHE_NAME = 'vecto-v27';
 
 const PRECACHE_URLS = [
     './',

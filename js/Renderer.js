@@ -274,7 +274,7 @@ class Renderer {
         // Draw with rounded corners: at each turn, use a quadratic bezier
         // that approaches the corner, curves around it, and exits cleanly.
         const pts = drawPoints;
-        const radius = cSize * 0.25; // rounding radius — fraction of one cell
+        const radius = cSize * 0.02; // rounding radius — fraction of one cell (lower = sharper bends)
 
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
@@ -315,8 +315,8 @@ class Renderer {
         // Arrowhead size: larger multiplier on bigger grids so heads stay visible.
         const _nodes2 = (this.camera.gridRows + 1) * (this.camera.gridCols + 1);
         const _t2 = Math.max(0, Math.min(1, (_nodes2 - 63) / (2806 - 63)));
-        const _aMult = 0.34 + _t2 * 0.12;  // 0.34 (small) → 0.46 (large)
-        const aSize = Math.max(3.0, cSize * _aMult);
+        const _aMult = 0.37 + _t2 * 0.13;  // 0.37 (small) → 0.50 (large)
+        const aSize = Math.max(3.2, cSize * _aMult);
         let hx, hy;
         if (path.state === 'IDLE' && !(revealState && revealState.active)) {
             const headNode = path.nodes[path.nodes.length - 1];

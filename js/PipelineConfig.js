@@ -49,16 +49,16 @@ class PipelineConfig {
     //   NESTED_RECT   — concentric rectangles; square regions, area ≥ 60 nodes
     //   CHAMBER       — rooms + connectors; irregular regions
     static motifWeightsForLevel(level, seed = null) {
-        // Predefined 7 theme palettes using CORRIDOR, NESTED_RECT, RING, LOOP, SNAKE
+        // 5 theme palettes (SPIRAL, CHAMBER, SNAKE intentionally unused → 0).
+        // Weights are relative (need not sum to 100) and are consumed by
+        // MotifAssigner for weighted random selection; motifs that cannot fit a
+        // given region fall back automatically.
         const palettes = [
-            { CORRIDOR: 33, SPIRAL: 0, NESTED_RECT: 33, LOOP: 0, SNAKE: 0, ZIGZAG: 0, RING: 33, CHAMBER: 0 }, // CORRIDOR, NESTED_RECT, RING
-            // { CORRIDOR: 33, SPIRAL: 0, NESTED_RECT: 33, LOOP: 33, SNAKE: 0, ZIGZAG: 0, RING: 0, CHAMBER: 0 }, // NESTED_RECT, LOOP, RING
-            // { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 0, LOOP: 0, SNAKE: 50, ZIGZAG: 50, RING: 0, CHAMBER: 0 }, // LOOP, SNAKE, CORRIDOR
-            // { CORRIDOR: 45, SPIRAL: 0, NESTED_RECT: 0, LOOP: 35, SNAKE: 0, ZIGZAG: 0, RING: 40, CHAMBER: 0 }, // CORRIDOR, LOOP, RING
-            // { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 45, LOOP: 0, SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // NESTED_RECT, SNAKE, RING
-            // { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 0, LOOP: 35, SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 }, // LOOP, SNAKE, RING
-            // { CORRIDOR: 45, SPIRAL: 0, NESTED_RECT: 0, LOOP: 0, SNAKE: 20, ZIGZAG: 0, RING: 45, CHAMBER: 0 },  // CORRIDOR, SNAKE, RING
-            // { CORRIDOR: 50, SPIRAL: 0, NESTED_RECT: 50, LOOP: 0, SNAKE: 0, ZIGZAG: 0, RING: 0, CHAMBER: 0 }  // CORRIDOR, NESTED_RECT
+            { CORRIDOR: 55, SPIRAL: 0, NESTED_RECT: 40, LOOP: 20, SNAKE: 0, ZIGZAG: 0, RING: 20, CHAMBER: 0 }, // Channels      — CORRIDOR + LOOP
+            { CORRIDOR: 60, SPIRAL: 0, NESTED_RECT: 50, LOOP: 0, SNAKE: 0, ZIGZAG: 5, RING: 0, CHAMBER: 0 }, // Zigzag        — CORRIDOR + some ZIGZAG
+            { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 50, LOOP: 0, SNAKE: 0, ZIGZAG: 0, RING: 50, CHAMBER: 0 }, // Concentric    — NESTED_RECT + RING
+            { CORRIDOR: 0, SPIRAL: 0, NESTED_RECT: 0, LOOP: 45, SNAKE: 0, ZIGZAG: 0, RING: 55, CHAMBER: 0 }, // Rings & Loops — RING + LOOP
+            { CORRIDOR: 50, SPIRAL: 0, NESTED_RECT: 50, LOOP: 50, SNAKE: 0, ZIGZAG: 0, RING: 50, CHAMBER: 0 }, // Balanced      — all five
         ];
 
         const val = seed !== null ? seed : level;

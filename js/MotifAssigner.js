@@ -82,12 +82,12 @@ class MotifAssigner {
             if (condition && motifWeights[key] > 0) w[key] = motifWeights[key];
         };
 
-        add('CORRIDOR',    aspectRatio > 2.0 && area > 15);
+        add('CORRIDOR',    aspectRatio > 1.5 && area > 15);   // A: was > 2.0 — too strict, CORRIDOR ~never qualified
         add('SPIRAL',      aspectRatio <= 2.2 && area > 40 && compactness > 0.3);
         add('NESTED_RECT', aspectRatio <= 2.2 && area > 60);
         add('LOOP',        area > 20);
         add('SNAKE',       aspectRatio > 1.5 && area > 12);
-        add('ZIGZAG',      shapeClass !== 'SQUARE');
+        add('ZIGZAG',      shapeClass !== 'SQUARE' || area > 20);   // B: allow square regions too — ZIGZAG was effectively dead
         add('RING',        aspectRatio <= 2.2 && area >= 15 && area <= 80);
         add('CHAMBER',     area > 25); // works for any region shape
 
@@ -95,7 +95,8 @@ class MotifAssigner {
         // LEAF regions lean toward complex motifs (SPIRAL/NESTED_RECT)
         if (topoNode) {
             if (topoNode.role === 'ROOT') {
-                if (w.LOOP)      w.LOOP      = Math.round(w.LOOP * 1.4);
+                // C: dropped the LOOP ×1.4 boost — LOOP is already the universal
+                // fallback, so amplifying it here made it dominate (~61% of regions).
                 if (w.CORRIDOR)  w.CORRIDOR  = Math.round(w.CORRIDOR * 1.2);
             }
             if (topoNode.role === 'LEAF') {
