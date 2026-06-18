@@ -1200,7 +1200,74 @@ class GridShape {
         return mask;
     }
 
-    // Cycles: circle → heart → star → donut → octagon → skull → shield → leaf → trophy → crown → badge → dinosaur → chromeDino → metamaskFox → camel → scorpion → seahorse → unicornHead → petals → elephant → pawPrint → whale → brain → burger → …
+    // Chess knight (horse head) facing left: pointed ears, muzzle with a
+    // nostril hole, eye hole, flowing mane down the right with its signature
+    // gap line, on a two-tier base (two separate island bars below the head).
+    // Traced from artwork. Tall silhouette (~2:3 aspect).
+    static chessKnight(R, C) {
+        const ART = [
+            '00000000011000000000000000000000',
+            '00000000011100000000000000000000',
+            '00000000011110000000000000000000',
+            '00000000001111001111000000000000',
+            '00000000001111101111111000000000',
+            '00000000001111110111111110000000',
+            '00000000011111111001111111000000',
+            '00000000111111111110011111100000',
+            '00000001111111111111101111110000',
+            '00000011111111111111110111110000',
+            '00000011100111111111111011111000',
+            '00000011000111111111111001111100',
+            '00000111111111111111111101111100',
+            '00001111111111111111111110111110',
+            '00001111111111111111111110111110',
+            '00011111111111111111111111011110',
+            '00111111111111111111111111011111',
+            '01111111111111111111111111011111',
+            '11111111111111111111111111001111',
+            '11011111111111011111111111101111',
+            '11011111111000011111111111101111',
+            '11111111100000111111111111101111',
+            '01111110000000111111111111101111',
+            '00111110000001111111111111101111',
+            '00001000000011111111111111101111',
+            '00000000000111111111111111101111',
+            '00000000001111111111111111101111',
+            '00000000011111111111111111011110',
+            '00000000011111111111111111011110',
+            '00000000111111111111111111011110',
+            '00000000111111111111111111011100',
+            '00000000111111111111111111000000',
+            '00000001111111111111111111000000',
+            '00000001111111111111111111000000',
+            '00000001111111111111111111000000',
+            '00000001111111111111111111100000',
+            '00000001111111111111111111100000',
+            '00000000000000000000000000000000',
+            '00000011111111111111111111111000',
+            '00000111111111111111111111111000',
+            '00000011111111111111111111110000',
+            '00000000000000000000000000000000',
+            '00001111111111111111111111111100',
+            '00001111111111111111111111111110',
+            '00011111111111111111111111111110',
+            '00011111111111111111111111111110',
+            '00001111111111111111111111111110',
+        ];
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const aR = ART.length, aC = ART[0].length;
+        for (let r = 0; r <= R; r++) {
+            const ar = Math.min(aR - 1, Math.floor(r * aR / (R + 1)));
+            for (let c = 0; c <= C; c++) {
+                const ac = Math.min(aC - 1, Math.floor(c * aC / (C + 1)));
+                mask[r * W + c] = ART[ar][ac] === '1' ? 1 : 0;
+            }
+        }
+        return mask;
+    }
+
+    // Cycles: circle → heart → star → donut → octagon → skull → shield → leaf → trophy → crown → badge → dinosaur → chromeDino → metamaskFox → camel → scorpion → seahorse → unicornHead → petals → elephant → pawPrint → whale → brain → burger → cup → cube → cubesStack → apple → swans → dolphin → chessKnight → …
     static forLevel(level) {
         const shapes = [
             GridShape.circle,
@@ -1233,6 +1300,7 @@ class GridShape {
             GridShape.apple,
             GridShape.swans,
             GridShape.dolphin,
+            GridShape.chessKnight,
         ];
         return shapes[(Math.floor(level / 10) - 1) % shapes.length];
     }
@@ -1244,36 +1312,37 @@ class GridShape {
     // lattice (rows+1)×(cols+1) ≤ 3500 so the blueprint pipeline (regions,
     // motifs, solve-order planning) stays active.
     static SHAPE_SIZES = {
-        circle:      [{ rows: 40, cols: 40 }, { rows: 42, cols: 42 }, { rows: 44, cols: 44 }],
-        heart:       [{ rows: 44, cols: 42 }, { rows: 46, cols: 44 }, { rows: 48, cols: 46 }],
-        star:        [{ rows: 46, cols: 46 }, { rows: 48, cols: 48 }, { rows: 50, cols: 50 }],
-        donut:       [{ rows: 42, cols: 42 }, { rows: 44, cols: 44 }, { rows: 46, cols: 46 }],
-        octagon:     [{ rows: 40, cols: 40 }, { rows: 42, cols: 42 }, { rows: 44, cols: 44 }],
-        skull:       [{ rows: 46, cols: 42 }, { rows: 48, cols: 44 }, { rows: 50, cols: 46 }],
-        shield:      [{ rows: 46, cols: 40 }, { rows: 48, cols: 42 }, { rows: 50, cols: 44 }],
-        leaf:        [{ rows: 46, cols: 40 }, { rows: 48, cols: 42 }, { rows: 50, cols: 44 }],
-        trophy:      [{ rows: 48, cols: 42 }, { rows: 50, cols: 44 }, { rows: 52, cols: 46 }],
-        crown:       [{ rows: 38, cols: 48 }, { rows: 40, cols: 50 }, { rows: 42, cols: 52 }],
-        badge:       [{ rows: 42, cols: 42 }, { rows: 44, cols: 44 }, { rows: 46, cols: 46 }],
-        dinosaur:    [{ rows: 44, cols: 52 }, { rows: 46, cols: 54 }, { rows: 48, cols: 56 }],
-        chromeDino:  [{ rows: 44, cols: 46 }, { rows: 46, cols: 48 }, { rows: 48, cols: 50 }],
+        circle: [{ rows: 40, cols: 40 }, { rows: 42, cols: 42 }, { rows: 44, cols: 44 }],
+        heart: [{ rows: 44, cols: 42 }, { rows: 46, cols: 44 }, { rows: 48, cols: 46 }],
+        star: [{ rows: 46, cols: 46 }, { rows: 48, cols: 48 }, { rows: 50, cols: 50 }],
+        donut: [{ rows: 42, cols: 42 }, { rows: 44, cols: 44 }, { rows: 46, cols: 46 }],
+        octagon: [{ rows: 40, cols: 40 }, { rows: 42, cols: 42 }, { rows: 44, cols: 44 }],
+        skull: [{ rows: 46, cols: 42 }, { rows: 48, cols: 44 }, { rows: 50, cols: 46 }],
+        shield: [{ rows: 46, cols: 40 }, { rows: 48, cols: 42 }, { rows: 50, cols: 44 }],
+        leaf: [{ rows: 46, cols: 40 }, { rows: 48, cols: 42 }, { rows: 50, cols: 44 }],
+        trophy: [{ rows: 48, cols: 42 }, { rows: 50, cols: 44 }, { rows: 52, cols: 46 }],
+        crown: [{ rows: 38, cols: 48 }, { rows: 40, cols: 50 }, { rows: 42, cols: 52 }],
+        badge: [{ rows: 42, cols: 42 }, { rows: 44, cols: 44 }, { rows: 46, cols: 46 }],
+        dinosaur: [{ rows: 44, cols: 52 }, { rows: 46, cols: 54 }, { rows: 48, cols: 56 }],
+        chromeDino: [{ rows: 44, cols: 46 }, { rows: 46, cols: 48 }, { rows: 48, cols: 50 }],
         metamaskFox: [{ rows: 46, cols: 46 }, { rows: 48, cols: 48 }, { rows: 50, cols: 50 }],
-        camel:       [{ rows: 42, cols: 50 }, { rows: 44, cols: 52 }, { rows: 46, cols: 54 }],
-        scorpion:    [{ rows: 50, cols: 52 }, { rows: 52, cols: 54 }, { rows: 54, cols: 56 }],
-        seahorse:    [{ rows: 52, cols: 38 }, { rows: 54, cols: 40 }, { rows: 56, cols: 42 }],
+        camel: [{ rows: 42, cols: 50 }, { rows: 44, cols: 52 }, { rows: 46, cols: 54 }],
+        scorpion: [{ rows: 50, cols: 52 }, { rows: 52, cols: 54 }, { rows: 54, cols: 56 }],
+        seahorse: [{ rows: 52, cols: 38 }, { rows: 54, cols: 40 }, { rows: 56, cols: 42 }],
         unicornHead: [{ rows: 48, cols: 42 }, { rows: 50, cols: 44 }, { rows: 52, cols: 46 }],
-        petals:      [{ rows: 44, cols: 44 }, { rows: 46, cols: 46 }, { rows: 48, cols: 48 }],
-        elephant:    [{ rows: 44, cols: 50 }, { rows: 46, cols: 52 }, { rows: 48, cols: 54 }],
-        pawPrint:    [{ rows: 42, cols: 44 }, { rows: 44, cols: 46 }, { rows: 46, cols: 48 }],
-        whale:       [{ rows: 40, cols: 52 }, { rows: 42, cols: 54 }, { rows: 44, cols: 56 }],
-        brain:       [{ rows: 42, cols: 48 }, { rows: 44, cols: 50 }, { rows: 46, cols: 52 }],
-        burger:      [{ rows: 40, cols: 48 }, { rows: 42, cols: 50 }, { rows: 44, cols: 52 }],
-        cup:         [{ rows: 44, cols: 50 }, { rows: 46, cols: 52 }, { rows: 48, cols: 54 }],
-        cube:        [{ rows: 46, cols: 46 }, { rows: 48, cols: 48 }, { rows: 50, cols: 50 }],
-        cubesStack:  [{ rows: 52, cols: 52 }, { rows: 54, cols: 54 }, { rows: 55, cols: 55 }],
-        apple:       [{ rows: 46, cols: 44 }, { rows: 48, cols: 46 }, { rows: 50, cols: 48 }],
-        swans:       [{ rows: 44, cols: 48 }, { rows: 46, cols: 50 }, { rows: 48, cols: 52 }],
-        dolphin:     [{ rows: 42, cols: 50 }, { rows: 44, cols: 52 }, { rows: 46, cols: 54 }],
+        petals: [{ rows: 44, cols: 44 }, { rows: 46, cols: 46 }, { rows: 48, cols: 48 }],
+        elephant: [{ rows: 44, cols: 50 }, { rows: 46, cols: 52 }, { rows: 48, cols: 54 }],
+        pawPrint: [{ rows: 42, cols: 44 }, { rows: 44, cols: 46 }, { rows: 46, cols: 48 }],
+        whale: [{ rows: 40, cols: 52 }, { rows: 42, cols: 54 }, { rows: 44, cols: 56 }],
+        brain: [{ rows: 42, cols: 48 }, { rows: 44, cols: 50 }, { rows: 46, cols: 52 }],
+        burger: [{ rows: 40, cols: 48 }, { rows: 42, cols: 50 }, { rows: 44, cols: 52 }],
+        cup: [{ rows: 44, cols: 50 }, { rows: 46, cols: 52 }, { rows: 48, cols: 54 }],
+        cube: [{ rows: 46, cols: 46 }, { rows: 48, cols: 48 }, { rows: 50, cols: 50 }],
+        cubesStack: [{ rows: 52, cols: 52 }, { rows: 54, cols: 54 }, { rows: 55, cols: 55 }],
+        apple: [{ rows: 46, cols: 44 }, { rows: 48, cols: 46 }, { rows: 50, cols: 48 }],
+        swans: [{ rows: 44, cols: 48 }, { rows: 46, cols: 50 }, { rows: 48, cols: 52 }],
+        dolphin: [{ rows: 42, cols: 50 }, { rows: 44, cols: 52 }, { rows: 46, cols: 54 }],
+        chessKnight: [{ rows: 50, cols: 34 }, { rows: 52, cols: 36 }, { rows: 54, cols: 38 }],
     };
 
     // Returns the 3 candidate grid sizes for the milestone shape at this level.
@@ -1316,6 +1385,7 @@ class GridShape {
             GridShape.cup,
             GridShape.cube,
             GridShape.apple,
+            GridShape.chessKnight,
         ];
         return shapes[dayOfYr % shapes.length];
     }
