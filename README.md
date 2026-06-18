@@ -17,6 +17,9 @@
     <td><img src="game snaps/Puzzle 5.png" width="180"/></td>
     <td><img src="game snaps/Puzzle 6.png" width="180"/></td>
   </tr>
+  <tr>
+    <td><img src="game snaps/Puzzle 7.png" width="180"/></td>
+  </tr>
 </table>
 
 ---
