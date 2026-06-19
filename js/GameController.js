@@ -32,6 +32,12 @@ class GameController {
         this.dailyScore         = 0;
         this.recentDifficulties = [];
 
+        // First-play tutorial. When tutorialMode is true: life loss is
+        // suppressed (blocked taps just bounce), the board is never saved, and
+        // tap/clear/collision events are forwarded to the TutorialController.
+        this.tutorialMode = false;
+        this.tutorial     = null;
+
         // UI references (set by renderer)
         this.selectedPathId = null;
         this.hintPathId     = null;
@@ -50,6 +56,13 @@ class GameController {
         // (race mode). The server replays this against the board to confirm the
         // solve is real before recording a placement.
         this._clearOrder = [];
+    }
+
+    // Persist the current snapshot — no-op during the tutorial so the
+    // handcrafted boards never overwrite a real (or replaying player's) save.
+    _persist() {
+        if (this.tutorialMode) return;
+        this.persistence.save(this._snapshot(), this.dailyMode);
     }
 
     // ── Level lifecycle ───────────────────────────────────────────────────────
@@ -100,7 +113,7 @@ class GameController {
         }
 
         // Save and update display
-        this.persistence.save(this._snapshot(), this.dailyMode);
+        this._persist();
         this._updateUI();
 
         // Start reveal animation → entrance animation
@@ -144,7 +157,7 @@ class GameController {
             }
         }
 
-        this.persistence.save(this._snapshot(), this.dailyMode);
+        this._persist();
         this._updateUI();
     }
 
@@ -185,6 +198,7 @@ class GameController {
         this._updateUI();
         if (this.onProgress) this.onProgress(this._clearedCount(), this.board.paths.length);
         this.checkWin();
+        if (this.tutorialMode && this.tutorial) this.tutorial.notifyCleared(path.id);
     }
 
     // The order in which paths were cleared this solve — sent to the server on
@@ -201,6 +215,12 @@ class GameController {
     onCollision(path) {
         this.audio.playCollision();
         this._triggerCameraShake();
+        // Tutorial: a blocked tap just bounces — no life lost. Forward it so the
+        // "clear the blocker first" beat can advance off the demonstrated block.
+        if (this.tutorialMode) {
+            if (this.tutorial) this.tutorial.notifyCollision(path.id);
+            return;
+        }
         this.deductLife();
     }
 
@@ -209,12 +229,12 @@ class GameController {
     addScore(amount) {
         if (this.dailyMode) this.dailyScore += amount;
         else                this.score      += amount;
-        this.persistence.save(this._snapshot(), this.dailyMode);
+        this._persist();
     }
 
     deductLife() {
         this.lives--;
-        this.persistence.save(this._snapshot(), this.dailyMode);
+        this._persist();
         this._updateUI();
         this.checkFail();
     }
@@ -252,7 +272,9 @@ class GameController {
                 setTimeout(() => this._showOverlay('daily-result-overlay'), 700);
             }
         } else {
-            this.persistence.clear(false);
+            // Never touch the normal save during the tutorial — a returning
+            // player replaying it (?tutorial=1) must keep their real progress.
+            if (!this.tutorialMode) this.persistence.clear(false);
             setTimeout(() => this._showWinOverlay(), 600);
         }
     }

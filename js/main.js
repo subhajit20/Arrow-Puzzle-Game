@@ -39,8 +39,13 @@
     const audio = new AudioEngine();
     const persistence = new Persistence();
 
-    // Pre-built boards (BOARDS defined in boards-data.js, empty object if missing)
-    const boardsData = typeof BOARDS !== 'undefined' ? BOARDS : {};
+    // Pre-built boards (BOARDS in boards-data.js) + handcrafted tutorial boards
+    // for levels 0 and 1 (TUTORIAL_BOARDS in tutorial-boards.js).
+    const boardsData = Object.assign(
+        {},
+        typeof BOARDS !== 'undefined' ? BOARDS : {},
+        typeof TUTORIAL_BOARDS !== 'undefined' ? TUTORIAL_BOARDS : {}
+    );
     const loader = new BoardLoader(boardsData);
 
     // Game controller (board set later in startLevel)
@@ -52,6 +57,14 @@
 
     // Input (attach after gc is ready)
     const input = new InputHandler(canvas, camera, gc);
+
+    // First-play coached tutorial (levels 0 and 1)
+    const tutorial = new TutorialController(gc, camera, containerEl, persistence);
+    gc.tutorial = tutorial;
+    tutorial.onExit = (target) => {
+        if (target === 'menu') { window.location.href = 'index.html'; return; }
+        startNormalLevel(target);
+    };
 
     // ── Window resize ─────────────────────────────────────────────────────────
 
@@ -133,7 +146,25 @@
             animation.start(board, gc);
             input.attach(containerEl);
             gc.startLevel(level, board, containerEl);
+            // Arm / disarm coaching for this level (no-op past level 1 or once seen).
+            tutorial.beginLevel(level);
         }, 50);
+    }
+
+    // Routes a normal-game launch: resume a save, else first-play tutorial,
+    // else the handcrafted level 1.
+    function launchNormal() {
+        // 1. Restore a valid in-progress save → resume that level.
+        const saved = persistence.load(lvl => generator.sizesForLevel(lvl));
+        if (saved) { startNormalLevel(saved.level); return; }
+        // 2. A save blob exists but couldn't be fully restored (stale board
+        //    dims, etc.) — this is a RETURNING player. Resume at their level
+        //    (board regenerated); never drop them into the new-player tutorial.
+        const priorLevel = persistence.savedLevel();
+        if (priorLevel != null) { startNormalLevel(priorLevel); return; }
+        // 3. Genuinely fresh install — first-play tutorial (or level 1 if seen).
+        if (!persistence.tutorialSeen()) { startNormalLevel(0); return; }
+        startNormalLevel(1);
     }
 
     // ── Public API (called from HTML onclick attributes) ────────────────────────
@@ -141,9 +172,9 @@
     // ── TEST MODE — 40×40, level 70 (milestone → heart mask), HARD
     // Remove this block when test mode is no longer needed.
     const TEST_MODE = false;
-    const TEST_ROWS = 50;
-    const TEST_COLS = 34;
-    const TEST_LEVEL = 310;   // (70/10)%2 = 1 → heart mask
+    const TEST_ROWS = 3;
+    const TEST_COLS = 3;
+    const TEST_LEVEL = 0;   // (70/10)%2 = 1 → heart mask
     const TEST_TIER = 'TITAN';
 
     // Exposed on window so existing HTML onclick attributes still work.
@@ -170,9 +201,7 @@
                 return;
             }
             hideLoader();
-            const saved = persistence.load(lvl => generator.sizesForLevel(lvl));
-            const level = saved ? saved.level : 1;
-            startNormalLevel(level);
+            launchNormal();
         }, 50);
     };
 
@@ -251,14 +280,17 @@
         if (mode === 'daily' || isDailyPage) {
             daily._hideSplash();
             startDailyGame();
+        } else if (params.get('tutorial') === '1') {
+            // Forced replay from the menu's "How to Play" — coach regardless of
+            // the seen flag, and exit to the menu so the real save is untouched.
+            tutorial.forced = true;
+            startNormalLevel(0);
         } else {
             if (TEST_MODE) {
                 window.startNormalGame();
             } else {
-                // Normal game — resume saved progress or start fresh
-                const saved = persistence.load(lvl => generator.sizesForLevel(lvl));
-                const level = saved ? saved.level : 1;
-                startNormalLevel(level);
+                // Normal game — resume save, first-play tutorial, or level 1.
+                launchNormal();
             }
         }
     };

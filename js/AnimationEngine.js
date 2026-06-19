@@ -96,6 +96,9 @@ class AnimationEngine {
             hintPathId: gameController ? gameController.hintPathId : null,
             revealState,
             particles: this.particles,
+            tutorial: (gameController && gameController.tutorialMode && gameController.tutorial)
+                ? gameController.tutorial.getRenderHint()
+                : null,
         });
     }
 

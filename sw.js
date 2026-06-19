@@ -7,7 +7,7 @@
 // immediately so users always get the latest files on next reload.
 // =============================================================================
 
-const CACHE_NAME = 'vecto-v28';
+const CACHE_NAME = 'vecto-v31';
 
 const PRECACHE_URLS = [
     './',
@@ -67,8 +67,10 @@ const PRECACHE_URLS = [
     // Integration
     './js/Persistence.js',
     './js/BoardLoader.js',
+    './js/TutorialController.js',
     './js/DailyPuzzle.js',
     './js/boards-data.js',
+    './js/tutorial-boards.js',
     './js/main.js',
     './js/ui-sound.js',
     // Multiplayer (Play with Friends)

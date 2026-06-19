@@ -169,6 +169,10 @@ class InputHandler {
         const path = this.hitTest(canvasX, canvasY);
         if (!path) return;
 
+        // Tutorial gating — only the coached arrow responds until the player
+        // makes the intended move (the final step opens the gate).
+        if (this.gc.tutorialMode && this.gc.tutorial && !this.gc.tutorial.allowsTap(path.id)) return;
+
         this._lastTapFiredAt = now;
         this.gc.audio.playTap();
         this.gc.selectedPathId = path.id;
