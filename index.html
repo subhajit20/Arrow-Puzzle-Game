@@ -126,6 +126,14 @@
             </button>
         </div>
 
+        <!-- How to Play — replays the coached tutorial without touching progress -->
+        <button onclick="goTutorial()"
+            class="glow-btn w-full mt-1 py-2.5 rounded-2xl flex items-center justify-center gap-2 font-bold text-[13px] text-slate-500 bg-white/70 border border-slate-200/80"
+            style="box-shadow: 0 6px 16px -10px rgba(15,23,42,.25);">
+            <span class="text-base leading-none">💡</span>
+            <span>How to Play</span>
+        </button>
+
     </div>
 
     <script>
@@ -148,8 +156,9 @@
             document.getElementById('level-play-cta').innerText    = 'Start Playing';
         }
 
-        function goFriends() { window.location.href = 'friends.html'; }
-        function goNormal()  { window.location.href = 'game.html'; }
+        function goFriends()  { window.location.href = 'friends.html'; }
+        function goNormal()   { window.location.href = 'game.html'; }
+        function goTutorial() { window.location.href = 'game.html?tutorial=1'; }
     </script>
 
     <script>

@@ -10,8 +10,35 @@
 
 class Persistence {
     constructor() {
-        this.KEY_NORMAL = 'vecto_colossal_mosaic_save_v5';
-        this.KEY_DAILY  = 'vecto_daily_puzzle_board_save_v1';
+        this.KEY_NORMAL   = 'vecto_colossal_mosaic_save_v5';
+        this.KEY_DAILY    = 'vecto_daily_puzzle_board_save_v1';
+        this.KEY_TUTORIAL = 'vecto_tutorial_seen_v1';
+    }
+
+    // ── Tutorial-seen flag ──────────────────────────────────────────────────────
+
+    tutorialSeen() {
+        try { return localStorage.getItem(this.KEY_TUTORIAL) === '1'; }
+        catch (e) { return false; }
+    }
+
+    setTutorialSeen() {
+        try { localStorage.setItem(this.KEY_TUTORIAL, '1'); }
+        catch (e) { /* storage unavailable — tutorial may replay; harmless */ }
+    }
+
+    // Returns the level number from the raw save blob WITHOUT validating the
+    // board (no dimension guard). Used to detect a returning player and resume
+    // at their level even if the full board failed to restore — so an existing
+    // player is never mistaken for a new one and dropped into the tutorial.
+    savedLevel(dailyMode = false) {
+        const key = dailyMode ? this.KEY_DAILY : this.KEY_NORMAL;
+        try {
+            const raw = localStorage.getItem(key);
+            if (!raw) return null;
+            const s = JSON.parse(raw);
+            return (typeof s.level === 'number') ? s.level : null;
+        } catch (e) { return null; }
     }
 
     // ── Save ──────────────────────────────────────────────────────────────────

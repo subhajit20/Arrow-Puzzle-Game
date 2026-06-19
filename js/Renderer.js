@@ -36,7 +36,9 @@ class Renderer {
     updateDomUI(gameState) {
         const lvl = document.getElementById('level-display');
         if (lvl) {
-            lvl.innerText = gameState.dailyMode ? 'Daily Puzzle' : `Level ${gameState.level}`;
+            lvl.innerText = gameState.dailyMode
+                ? 'Daily Puzzle'
+                : (gameState.level === 0 ? 'Tutorial' : `Level ${gameState.level}`);
         }
 
         // Left-side counter: arrow clicks (paths) still needed to clear the board.
@@ -410,10 +412,72 @@ class Renderer {
             );
         });
 
+        // Tutorial coaching pointer — pulsing ring + tap cursor on the target
+        // arrow's head. Drawn in board space so it tracks the arrow under pan/zoom.
+        if (gameState.tutorial) this.drawTutorialHint(gameState.tutorial);
+
         // Confetti (no clip — can extend outside board area)
         if (gameState.particles && gameState.particles.length > 0)
             this.drawConfetti(gameState.particles);
 
         ctx.restore(); // end camera transform
+    }
+
+    // ── Tutorial coaching pointer ───────────────────────────────────────────────
+
+    // hint: { r, c, heading } — node lattice coords of the target arrowhead.
+    drawTutorialHint(hint) {
+        const ctx   = this.ctx;
+        const cSize = this.camera.cellSize;
+        const x = this.camera.offsetX + hint.c * cSize;
+        const y = this.camera.offsetY + hint.r * cSize;
+
+        const t     = (typeof performance !== 'undefined' ? performance.now() : 0) / 1000;
+        const pulse = 0.5 + 0.5 * Math.sin(t * 4);          // 0..1
+        const bob   = Math.sin(t * 4) * cSize * 0.10;        // pointer bob
+
+        const accent = '#d97706'; // amber — matches the menu's Level Play accent
+
+        ctx.save();
+
+        // Expanding ripple ring (says "tap here")
+        const ringR = cSize * (0.55 + pulse * 0.45);
+        ctx.beginPath();
+        ctx.arc(x, y, ringR, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(217,119,6,${0.55 * (1 - pulse)})`;
+        ctx.lineWidth = Math.max(2, cSize * 0.05);
+        ctx.stroke();
+
+        // Solid inner halo
+        ctx.beginPath();
+        ctx.arc(x, y, cSize * 0.42, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(217,119,6,0.16)';
+        ctx.fill();
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = Math.max(2, cSize * 0.05);
+        ctx.stroke();
+
+        // Cursor/tap pointer, tip near the node, bobbing toward it from lower-right
+        const s  = Math.max(10, cSize * 0.42);
+        const px = x + cSize * 0.30;
+        const py = y + cSize * 0.30 + bob;
+        ctx.translate(px, py);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, s * 1.0);
+        ctx.lineTo(s * 0.26, s * 0.74);
+        ctx.lineTo(s * 0.44, s * 1.12);
+        ctx.lineTo(s * 0.58, s * 1.06);
+        ctx.lineTo(s * 0.40, s * 0.68);
+        ctx.lineTo(s * 0.70, s * 0.68);
+        ctx.closePath();
+        ctx.fillStyle = '#1e3a8a';      // navy — matches the menu wordmark/brand
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = Math.max(1.2, s * 0.08);
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        ctx.restore();
     }
 }
