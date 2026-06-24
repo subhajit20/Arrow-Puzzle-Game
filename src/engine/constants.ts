@@ -100,7 +100,7 @@ export function tierForLevel(level) {
 // TEST_MODE = true  → every board uses TEST_LEVEL + TEST_TIER (the level progression is ignored),
 //                     so you can test one specific level/difficulty. Winning replays the same config.
 // TEST_MODE = false → normal game: starts at level 1 and the tier ramps with the level (EASY→TITAN).
-export const TEST_MODE = true;
+export const TEST_MODE = false;
 export const TEST_LEVEL = 63;          // level number used while testing
 export const TEST_TIER = "EXPERT";      // "EASY" | "NORMAL" | "HARD" | "EXPERT" | "TITAN"
 export const TEST_SIZE = [38, 48];      // [cols, rows] to force any grid size while testing; null = use the level's size
