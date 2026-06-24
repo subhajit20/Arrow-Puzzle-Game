@@ -67,7 +67,7 @@ export class InputHandler {
             const midX = (a.x + b.x) / 2 - rect.left, midY = (a.y + b.y) / 2 - rect.top;
             if (this.pinchDist > 0) {
                 const ratio = dist / this.pinchDist;
-                const gain = 1 + (ratio - 1) * 40.0;   // strong amplification; easing keeps it smooth
+                const gain = 1 + (ratio - 1) * 40.0;   // a bit faster than the fingers, still controlled
                 this.camera.zoomTo(this.camera.targetZoom * gain, midX, midY);
             }
             this.pinchDist = dist;
@@ -93,8 +93,11 @@ export class InputHandler {
     #wheel(e) {
         e.preventDefault();
         const rect = this.renderer.cv.getBoundingClientRect();
-        // Continuous, magnitude-aware zoom (smooth like a map; trackpad pinch sends many events).
-        const factor = Math.exp(-e.deltaY * 0.1);
+        // Continuous, magnitude-aware zoom (smooth like a map). Trackpad pinch fires wheel+ctrlKey
+        // with SMALL deltas, so it needs a bigger coefficient than a mouse wheel's large deltaY
+        // notches — otherwise the trackpad feels sluggish while the mouse wheel feels right.
+        const coeff = e.ctrlKey ? 0.015 : 0.0015;
+        const factor = Math.exp(-e.deltaY * coeff);
         this.camera.zoomTo(this.camera.targetZoom * factor, e.clientX - rect.left, e.clientY - rect.top);
     }
 }
