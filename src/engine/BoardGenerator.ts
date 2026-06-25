@@ -107,7 +107,7 @@ export class BoardGenerator {
             { name: 'snake', weight: 22, target: () => 14 + rnd(20) },
             { name: 'wander', weight: 20, target: () => 12 + rnd(16) },    // drunk-walk: organic one-off squiggle
             { name: 'bend', weight: 12, target: () => 6 + rnd(8) },
-            { name: 'spiral', weight: 6, target: () => 16 + rnd(16) },
+            { name: 'spiral', weight: 10, target: () => 16 + rnd(16) },
         ];
         let palette;
         if (motifs && motifs.length) {

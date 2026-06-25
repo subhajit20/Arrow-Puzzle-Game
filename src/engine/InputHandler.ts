@@ -67,7 +67,7 @@ export class InputHandler {
             const midX = (a.x + b.x) / 2 - rect.left, midY = (a.y + b.y) / 2 - rect.top;
             if (this.pinchDist > 0) {
                 const ratio = dist / this.pinchDist;
-                const gain = 1 + (ratio - 1) * 40.0;   // a bit faster than the fingers, still controlled
+                const gain = 1 + (ratio - 1) * 1.5;   // just above 1:1 with the fingers (calm pinch)
                 this.camera.zoomTo(this.camera.targetZoom * gain, midX, midY);
             }
             this.pinchDist = dist;
