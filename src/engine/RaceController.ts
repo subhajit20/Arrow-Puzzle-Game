@@ -12,10 +12,17 @@ export class RaceController {
     // board = { level, tier, COLS, ROWS, mask, arrows:[{id,body,dir}] } from the server.
     constructor(canvas, board, hooks = {}) {
         this.hooks = hooks;     // { onProgress(cleared,total), onWin(order), onLifeLost(hearts), onLose() }
+        this.board = board;     // kept so we can rebuild the SAME board after a life-out wipe
         this.camera = new Camera();
         this.renderer = new Renderer(canvas, this.camera);
         this.input = new InputHandler(this.renderer, this);
+        this.wiping = false;    // true during the brief pause after losing all lives, before the board resets
+        this.#buildState();
+    }
 
+    // (Re)create a fresh GameState from the original server board — full pieces, full lives, no progress.
+    #buildState() {
+        const board = this.board;
         const mask = board.mask ? Uint8Array.from(board.mask) : null;
         this.G = new GameState(board.level || 1, board.COLS, board.ROWS, board.arrows, mask);
         this.G.tierName = board.tier;
@@ -24,23 +31,37 @@ export class RaceController {
         this.finished = false;
     }
 
+    #reveal(dur) {
+        this.renderer.setGame(this.G);
+        this.G.revealing = true;
+        this.G.revealT0 = performance.now();
+        this.G.revealDur = dur;
+        this.renderer.resetView();
+        this.camera.startEntrance();
+    }
+
     start() {
         this.input.attach();
         this._onResize = () => { if (this.G) this.renderer.layout(); };
         window.addEventListener('resize', this._onResize);
-        this.renderer.setGame(this.G);
         // Entrance reveal (same staggered wave as solo), then taps are accepted.
-        this.G.revealing = true;
-        this.G.revealT0 = performance.now();
-        this.G.revealDur = 1100;
-        this.renderer.resetView();
-        this.camera.startEntrance();
+        this.#reveal(1100);
         this.renderer.startLoop();
+    }
+
+    // Player ran out of lives — restart the SAME board from the beginning so they can keep racing
+    // (a time penalty, not a dead end). Resets progress + lives and tells the socket layer.
+    restart() {
+        this.wiping = false;
+        this.#buildState();
+        this.#reveal(700);
+        this.hooks.onLifeLost && this.hooks.onLifeLost(this.G.hearts);   // hearts back to full
+        this.hooks.onProgress && this.hooks.onProgress(0, this.total);   // marker back to the start line
     }
 
     tap(cell) {
         const G = this.G;
-        if (!G || G.over || G.revealing) return;
+        if (!G || G.over || G.revealing || this.wiping) return;
         if (cell == null || !G.board.has(cell)) return;
         const id = G.board.get(cell);
         const a = G.arrows.find(x => x.id === id);
@@ -63,7 +84,12 @@ export class RaceController {
                 a.blocked = true;
                 G.hearts--;
                 this.hooks.onLifeLost && this.hooks.onLifeLost(G.hearts);
-                if (G.hearts <= 0) { G.over = true; this.hooks.onLose && this.hooks.onLose(); }
+                if (G.hearts <= 0) {
+                    // Out of lives: show this last bump, flash a message, then rebuild the same board.
+                    this.wiping = true;
+                    this.hooks.onLose && this.hooks.onLose();
+                    this._wipeTimer = setTimeout(() => this.restart(), 750);
+                }
             }
             const now = performance.now();
             const reach = Math.min(this.#gap(a), 6) + 0.5;
@@ -104,6 +130,7 @@ export class RaceController {
     }
 
     destroy() {
+        if (this._wipeTimer) clearTimeout(this._wipeTimer);
         this.renderer.stop();
         this.input.detach();
         if (this._onResize) window.removeEventListener('resize', this._onResize);
