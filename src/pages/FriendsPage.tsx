@@ -229,6 +229,7 @@ export default function FriendsPage() {
     const lowTime = endsAt > 0 && remain <= 15000
     return (
       <div className="app" style={font}>
+        {lowTime && <div className="time-danger" />}
         <div className="topbar">
           <button className="icon-btn" onClick={leave}>
             <svg viewBox="0 0 24 24" fill="none" stroke="#3D8BFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
