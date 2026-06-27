@@ -402,6 +402,40 @@ export class GridShape {
         return mask;
     }
 
+    // Emerald-cut "gem": a tall rectangle with the four corners chamfered at 45°. `cut` is the
+    // chamfer depth in cells (scaled to width); a corner cell is removed when it falls inside one of
+    // the four 45° corner triangles.
+    static gem(R, C) {
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const cut = Math.round(C * 0.10);
+        for (let r = 0; r <= R; r++) for (let c = 0; c <= C; c++) {
+            const cutCorner =
+                (c + r) < cut ||                    // top-left
+                ((C - c) + r) < cut ||              // top-right
+                (c + (R - r)) < cut ||              // bottom-left
+                ((C - c) + (R - r)) < cut;          // bottom-right
+            mask[r * W + c] = cutCorner ? 0 : 1;
+        }
+        return mask;
+    }
+
+    // Rounded rectangle: a portrait rectangle whose four corners are arcs of radius `rad`. Each cell
+    // is tested against the rounded-rect distance field — clamp the point into the inner rectangle
+    // (inset by rad on every side), then keep it if it's within `rad` of that clamped point.
+    static roundedRect(R, C) {
+        const W = C + 1;
+        const mask = new Uint8Array((R + 1) * W);
+        const rad = Math.round(C * 0.20);
+        for (let r = 0; r <= R; r++) for (let c = 0; c <= C; c++) {
+            const qx = Math.max(rad, Math.min(C - rad, c));
+            const qy = Math.max(rad, Math.min(R - rad, r));
+            const dx = c - qx, dy = r - qy;
+            mask[r * W + c] = (dx * dx + dy * dy <= rad * rad) ? 1 : 0;
+        }
+        return mask;
+    }
+
     static skull(R, C) {
         const W = C + 1;
         const mask = new Uint8Array((R + 1) * W);
@@ -1300,6 +1334,8 @@ export class GridShape {
         swans: [{ rows: 57, cols: 62 }, { rows: 60, cols: 65 }, { rows: 62, cols: 68 }],
         dolphin: [{ rows: 55, cols: 65 }, { rows: 57, cols: 68 }, { rows: 60, cols: 70 }],
         chessKnight: [{ rows: 65, cols: 44 }, { rows: 68, cols: 47 }, { rows: 70, cols: 49 }],
+        gem: [{ rows: 62, cols: 40 }, { rows: 65, cols: 42 }, { rows: 68, cols: 44 }],
+        roundedRect: [{ rows: 60, cols: 42 }, { rows: 63, cols: 44 }, { rows: 66, cols: 46 }],
     };
 
     // ── Level → shape + suitable size ─────────────────────────────────────────
@@ -1309,44 +1345,46 @@ export class GridShape {
         "circle", "heart", "star", "donut", "octagon", "skull", "shield", "leaf", "trophy", "crown",
         "badge", "dinosaur", "chromeDino", "metamaskFox", "camel", "scorpion", "seahorse", "unicornHead",
         "petals", "elephant", "pawPrint", "whale", "brain", "burger", "cup", "cube", "cubesStack",
-        "apple", "swans", "dolphin", "chessKnight",
+        "apple", "swans", "dolphin", "chessKnight", "gem", "roundedRect",
     ];
 
     // Motifs each shape may use to fill its mask. Big open shapes allow long pieces; thin/detailed
-    // pictograms use only short pieces (bend/staircase) that fit their narrow features. Include
+    // pictograms use only short pieces (bend/wander) that fit their narrow features. Include
     // "corridor" to allow the long-straight accent. Falls back to all motifs if a shape is missing.
     static SHAPE_MOTIFS = {
         circle: ["spiral", "comb", "bend", "corridor"],
         heart: ["spiral", "comb", "snake", "bend"],
-        star: ["meander", "staircase", "bend"],
+        star: ["meander", "wander", "bend"],
         donut: ["spiral", "comb", "bend"],
-        octagon: ["meander", "comb", "staircase", "bend", "corridor"],
-        skull: ["bend", "staircase"],
+        octagon: ["meander", "comb", "wander", "bend", "corridor"],
+        skull: ["bend", "wander"],
         shield: ["meander", "comb", "bend"],
-        leaf: ["staircase", "bend", "comb"],
-        trophy: ["comb", "staircase", "bend"],
-        crown: ["meander", "staircase", "bend"],
+        leaf: ["wander", "bend", "comb"],
+        trophy: ["comb", "wander", "bend"],
+        crown: ["meander", "wander", "bend"],
         badge: ["spiral", "comb", "bend"],
-        dinosaur: ["bend", "staircase"],
-        chromeDino: ["bend", "staircase"],
-        metamaskFox: ["staircase", "bend", "meander"],
-        camel: ["bend", "staircase"],
-        scorpion: ["bend", "staircase"],
-        seahorse: ["bend", "staircase"],
-        unicornHead: ["bend", "staircase"],
+        dinosaur: ["bend", "wander"],
+        chromeDino: ["bend", "wander"],
+        metamaskFox: ["wander", "bend", "meander"],
+        camel: ["bend", "wander"],
+        scorpion: ["bend", "wander"],
+        seahorse: ["bend", "wander"],
+        unicornHead: ["bend", "meander"],
         petals: ["spiral", "comb", "bend"],
-        elephant: ["bend", "staircase", "comb"],
+        elephant: ["bend", "wander", "comb", "meander"],
         pawPrint: ["spiral", "bend"],
         whale: ["snake", "comb", "bend"],
         brain: ["meander", "comb", "bend"],
         burger: ["snake", "comb", "bend"],
-        cup: ["comb", "staircase", "bend"],
-        cube: ["comb", "staircase", "bend", "meander"],
-        cubesStack: ["meander", "comb", "staircase", "bend"],
+        cup: ["comb", "wander", "bend"],
+        cube: ["comb", "wander", "bend", "meander"],
+        cubesStack: ["meander", "comb", "wander", "bend"],
         apple: ["spiral", "comb", "bend"],
-        swans: ["bend", "staircase", "comb"],
-        dolphin: ["snake", "bend", "staircase"],
+        swans: ["bend", "wander", "comb"],
+        dolphin: ["snake", "bend", "wander"],
         chessKnight: ["meander", "snake", "spiral"],
+        gem: ["meander", "comb", "snake", "bend", "corridor"],
+        roundedRect: ["meander", "comb", "snake", "bend", "corridor"],
     };
 
     // The motif allow-list for a shape (null → generator uses its normal random palette).
