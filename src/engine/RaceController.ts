@@ -72,6 +72,7 @@ export class RaceController {
             G.arrows = G.arrows.filter(x => x.id !== id);
             G.anims.push({ kind: 'out', arrow: a, t0: performance.now(), dur: 700 });
             this.order.push(id);
+            this.hooks.onClear && this.hooks.onClear();   // free exit lane → tap sound (same as solo)
             const cleared = this.total - G.arrows.length;
             this.hooks.onProgress && this.hooks.onProgress(cleared, this.total);
             if (G.arrows.length === 0 && !this.finished) {
