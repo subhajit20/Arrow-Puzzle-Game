@@ -14,6 +14,17 @@ import { cr, rnd, pick, occNbrs, lane } from './utils';
 // generateForTier calibration absorbs any small openness drift).
 export const DEEP_HEAD_BALANCE = 8;
 
+// How strongly a new piece is discouraged from pointing the SAME direction as the already-placed
+// pieces touching its head. Global direction balancing (DEEP_HEAD_BALANCE) keeps N/S/E/W even
+// board-wide but still allows LOCAL clumps where many neighbouring arrows point the same way —
+// that local agreement is what reads as striping / "everything goes the same direction". This
+// penalty spreads direction LOCALLY: each placed neighbour pointing direction d subtracts this much
+// from choosing d for the new piece. 0 = off. Overridable per-instance via `this.localDirPenalty`.
+// 8 chosen empirically: ~20–27% less directional clustering on hard/big boards (where striping
+// shows) with openness — and therefore difficulty — essentially unchanged. Higher starts to backfire
+// on small boards (forced awkward turns re-introduce clumping).
+export const LOCAL_DIR_PENALTY = 8;
+
 export class BoardGenerator {
     // Generate a board of C columns x R rows. Optional `mask` (Uint8Array, 1=in-board, 0=outside)
     // shapes the board. `difficulty` (0..1) controls head placement only (not piece length/shape):
@@ -63,6 +74,31 @@ export class BoardGenerator {
             if (ok) clear++;
         }
         return arrows.length ? clear / arrows.length : 0;
+    }
+
+    // Directional-clustering score (0..1): of all boundaries between two touching pieces, the fraction
+    // where BOTH pieces point the same direction. High = many neighbours agree → the striped /
+    // "everything goes the same way" look from the screenshots. Size-independent (a ratio). Used to
+    // measure whether the local-direction penalty is working; not part of generation.
+    measureDirClustering(arrows, C, R) {
+        const N = C * R;
+        const owner = new Int32Array(N).fill(-1);
+        const dirOf = new Map(arrows.map(a => [a.id, a.dir]));
+        for (const a of arrows) for (const c of a.body) owner[c] = a.id;
+        let same = 0, tot = 0;
+        for (let id = 0; id < N; id++) {
+            const o = owner[id]; if (o === -1) continue;
+            const x = id % C, y = Math.floor(id / C);
+            for (const [dx, dy] of [[1, 0], [0, 1]]) {            // right + down avoids double-counting
+                const nx = x + dx, ny = y + dy;
+                if (nx >= C || ny >= R) continue;
+                const o2 = owner[ny * C + nx];
+                if (o2 === -1 || o2 === o) continue;
+                tot++;
+                if (dirOf.get(o) === dirOf.get(o2)) same++;
+            }
+        }
+        return tot ? same / tot : 0;
     }
 
     #build(C, R, mask, difficulty = 0, motifs = null) {
@@ -139,6 +175,23 @@ export class BoardGenerator {
             return d === 'E' ? C - 1 - x : d === 'W' ? x : d === 'S' ? R - 1 - y : y;
         };
 
+        // Local-direction de-clustering. `placedDir` records, per cell, the direction of the piece that
+        // claimed it (set as each piece is finalised). localSameDir(h,d) = how many of head h's four
+        // neighbours belong to an already-placed piece pointing direction d → we penalise reusing d,
+        // so neighbouring pieces fan out across directions instead of clumping into stripes.
+        const placedDir = new Int8Array(N).fill(-1);
+        const DI = { N: 0, S: 1, E: 2, W: 3 };
+        const LDP = this.localDirPenalty != null ? this.localDirPenalty : LOCAL_DIR_PENALTY;
+        const localSameDir = (h, d) => {
+            const di = DI[d], x = h % C, y = Math.floor(h / C);
+            let cnt = 0;
+            if (x + 1 < C && placedDir[y * C + x + 1] === di) cnt++;
+            if (x - 1 >= 0 && placedDir[y * C + x - 1] === di) cnt++;
+            if (y + 1 < R && placedDir[(y + 1) * C + x] === di) cnt++;
+            if (y - 1 >= 0 && placedDir[(y - 1) * C + x] === di) cnt++;
+            return cnt;
+        };
+
         while (cand.size) {
             // Head selection. With probability `difficulty`, use the DEEP-HEAD bias: prefer
             // candidate heads with LONG clear exit lanes (buried interior heads, far from their
@@ -163,7 +216,8 @@ export class BoardGenerator {
                         return bx >= 0 && bx < C && by >= 0 && by < R && occ[by * C + bx];
                     });
                     for (const d of (hg.length ? hg : hv)) {
-                        const score = laneLenOf(h, d) - DEEP_HEAD_BALANCE * (dirCount[d] - minDir) + Math.random() * 0.5;
+                        const score = laneLenOf(h, d) - DEEP_HEAD_BALANCE * (dirCount[d] - minDir)
+                            - LDP * localSameDir(h, d) + Math.random() * 0.5;
                         if (score > bestScore) { bestScore = score; H = h; D = d; }
                     }
                 }
@@ -178,7 +232,10 @@ export class BoardGenerator {
                 });
                 const opts = growable.length ? growable : valid;
                 D = opts[0]; let best = 1e9;
-                for (const d of opts) if (dirCount[d] < best) { best = dirCount[d]; D = d; }
+                for (const d of opts) {
+                    const sc = dirCount[d] + LDP * localSameDir(H, d);   // global balance + local de-clustering
+                    if (sc < best) { best = sc; D = d; }
+                }
             }
             dirCount[D]++;
 
@@ -314,6 +371,8 @@ export class BoardGenerator {
             // Never emit a lone arrowhead-dot. A length-1 body just becomes an empty cell that
             // fillGaps re-covers (by tail-extend, or by pairing it into a proper 2-cell arrow).
             if (body.length >= 2) {
+                const di = DI[D];
+                for (const cell of body) placedDir[cell] = di;   // record direction for neighbours' de-clustering
                 arrows.push({ id: idc++, body: body.slice().reverse(), dir: D });
                 motifCount[mode] = (motifCount[mode] || 0) + 1;
             }

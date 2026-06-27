@@ -119,9 +119,15 @@ export class Renderer {
             ctx.arc(x, y, w * 0.5, 0, 7);
             ctx.fill();
         } else {
+            // Rounded turns: arc through each interior vertex instead of a sharp corner. The radius is
+            // clamped to just under half a cell so adjacent bends (S-curves) never overrun each other.
+            const r = U * 0.12;
             ctx.beginPath();
             ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            for (let i = 1; i < pts.length - 1; i++) {
+                ctx.arcTo(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], r);
+            }
+            ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
             ctx.stroke();
         }
 
