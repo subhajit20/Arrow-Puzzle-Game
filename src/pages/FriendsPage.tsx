@@ -3,6 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { RaceSocket } from '../net/raceSocket'
 import { RaceController } from '../engine/RaceController'
 import bgmUrl from '../assets/bgm.mp3'
+import tapUrl from '../assets/tap.mp3'
+
+// Short tap sound on a successful clear — mirrors solo (BgAudio.playTap). A fresh Audio per clear so
+// rapid clears overlap instead of cutting each other off; respects the global mute flag.
+function playTapSound() {
+  if (localStorage.getItem('arrowEscapeMuted') === '1') return
+  const s = new Audio(tapUrl)
+  s.volume = 0.7
+  s.play().catch(() => {})
+}
 
 // ── Types (loose; matches backend publicRoom / event payloads) ──────────────
 type Player = {
@@ -25,11 +35,11 @@ const LANE_COLORS = ['#3D8BFF', '#9B5DE5', '#F15BB5', '#16B26B']
 const MEDALS = ['🥇', '🥈', '🥉']
 
 // Mounts a canvas and runs the race engine on a server-provided board.
-function RaceBoard({ board, onProgress, onWin, onLifeLost, onLose }: any) {
+function RaceBoard({ board, onProgress, onWin, onLifeLost, onLose, onClear }: any) {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     if (!ref.current) return
-    const ctrl = new RaceController(ref.current, board, { onProgress, onWin, onLifeLost, onLose })
+    const ctrl = new RaceController(ref.current, board, { onProgress, onWin, onLifeLost, onLose, onClear })
     ctrl.start()
     return () => ctrl.destroy()
     // board is fixed for the life of this component (one race)
@@ -250,7 +260,7 @@ export default function FriendsPage() {
         </div>
         <div className="stage">
           <RaceBoard board={board} onProgress={onProgress} onWin={onWin}
-            onLifeLost={(h: number) => setHearts(h)} onLose={onLose} />
+            onLifeLost={(h: number) => setHearts(h)} onLose={onLose} onClear={playTapSound} />
           {loseFlash && (
             <div className="overlay show" style={{ background: 'rgba(255,75,85,.12)' }}>
               <div className="card">
