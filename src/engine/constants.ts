@@ -70,11 +70,11 @@ export const BOARD_SHAPE = "rect";
 // 75% of a solve, divided by sqrt(total pieces): high = many choices throughout (easy), low = few
 // (hard). The sqrt normalisation keeps one band set valid across grid sizes.
 export const TIERS = [
-    { name: "EASY", knob: 0.25, min: 1.05, max: Infinity },
-    { name: "NORMAL", knob: 0.45, min: 0.88, max: 1.05 },
-    { name: "HARD", knob: 0.62, min: 0.72, max: 0.88 },
-    { name: "EXPERT", knob: 0.80, min: 0.55, max: 0.72 },
-    { name: "TITAN", knob: 0.95, min: 0.00, max: 0.55 },
+    { name: "EASY", knob: 0.25, min: 0.80, max: Infinity },
+    { name: "NORMAL", knob: 0.55, min: 0.62, max: 0.80 },
+    { name: "HARD", knob: 0.80, min: 0.48, max: 0.62 },
+    { name: "EXPERT", knob: 0.95, min: 0.38, max: 0.48 },
+    { name: "TITAN", knob: 1.00, min: 0.00, max: 0.38 },
 ];
 
 // Level -> tier. Instead of one fixed tier per band, each level range has a POOL of allowed tiers

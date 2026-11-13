@@ -320,6 +320,7 @@ export class BoardGenerator {
             }
         };
         const regionShare = d => regionCounts[4] ? regionCounts[DI[d]] / regionCounts[4] : 0;
+        const deepRDP = RDP * (1 - difficulty);
 
         while (cand.size) {
             // Head selection. With probability `difficulty`, use the DEEP-HEAD bias: prefer
@@ -344,9 +345,9 @@ export class BoardGenerator {
                         const bx = x - DIRS[d][0], by = y - DIRS[d][1];
                         return bx >= 0 && bx < C && by >= 0 && by < R && occ[by * C + bx];
                     });
-                    if (RDP) countRegion(h);
+                    if (deepRDP) countRegion(h);
                     for (const d of (hg.length ? hg : hv)) {
-                        const score = laneLenOf(h, d) * (1 - RDP * regionShare(d))
+                        const score = laneLenOf(h, d) * (1 - deepRDP * regionShare(d))
                             - DEEP_HEAD_BALANCE * (dirCount[d] - minDir)
                             - LDP * localSameDir(h, d) + rand() * 0.5;
                         if (score > bestScore) { bestScore = score; H = h; D = d; }
