@@ -25,6 +25,18 @@ export const DEEP_HEAD_BALANCE = 8;
 // on small boards (forced awkward turns re-introduce clumping).
 export const LOCAL_DIR_PENALTY = 8;
 
+// Regional direction de-clustering. LOCAL_DIR_PENALTY only sees the four cells touching a head, and
+// the deep-head bias rewards lane length (up to the board's longest side), so a corridor opened up
+// during construction fills with many heads that all exit the same way — big one-direction patches.
+// This looks at every already-placed cell within REGION_RADIUS of the head: a deep-head candidate's
+// lane-length score is scaled by (1 − REGION_DIR_PENALTY × share of those cells pointing the same
+// way), and easy-path picks sample a few heads and keep the least clustered. 0 = off. Overridable
+// per-instance via `this.regionDirPenalty`.
+export const REGION_RADIUS = 3;
+export const REGION_DIR_PENALTY = 0.8;
+// Heads sampled per easy-path pick (1 = plain random pick).
+export const EASY_HEAD_SAMPLES = 4;
+
 // Boards built per generateForTier call before settling for the closest one to the tier's band.
 export const CALIBRATION_ATTEMPTS = 10;
 
@@ -173,6 +185,30 @@ export class BoardGenerator {
         return tot ? same / tot : 0;
     }
 
+    // Regional directional-clustering score (0..1): for each piece, the share of OTHER pieces' cells
+    // within REGION_RADIUS of its head that point the same way, averaged over pieces. Catches the
+    // patches where a whole area points one way even though touching pieces vary, which
+    // measureDirClustering misses. ~0.25 = directions mixed as if random. Diagnostic only.
+    measureRegionalDirClustering(arrows, C, R, radius = REGION_RADIUS) {
+        const owner = new Int32Array(C * R).fill(-1);
+        arrows.forEach((a, i) => { for (const c of a.body) owner[c] = i; });
+        let sum = 0, counted = 0;
+        arrows.forEach((a, i) => {
+            const h = a.body[a.body.length - 1], hx = h % C, hy = Math.floor(h / C);
+            let same = 0, tot = 0;
+            for (let y = Math.max(0, hy - radius); y <= Math.min(R - 1, hy + radius); y++) {
+                for (let x = Math.max(0, hx - radius); x <= Math.min(C - 1, hx + radius); x++) {
+                    const o = owner[y * C + x];
+                    if (o === -1 || o === i) continue;
+                    tot++;
+                    if (arrows[o].dir === a.dir) same++;
+                }
+            }
+            if (tot) { sum += same / tot; counted++; }
+        });
+        return counted ? sum / counted : 0;
+    }
+
     #build(C, R, mask, difficulty = 0, motifs = null) {
         const rand = this.rng;
         const rnd = n => Math.floor(rand() * n);
@@ -271,6 +307,19 @@ export class BoardGenerator {
             if (y - 1 >= 0 && placedDir[(y - 1) * C + x] === di) cnt++;
             return cnt;
         };
+        const RDP = this.regionDirPenalty != null ? this.regionDirPenalty : REGION_DIR_PENALTY;
+        const regionCounts = new Int32Array(5);   // [N, S, E, W, total] placed cells around a head
+        const countRegion = h => {
+            regionCounts.fill(0);
+            const hx = h % C, hy = Math.floor(h / C);
+            for (let y = Math.max(0, hy - REGION_RADIUS); y <= Math.min(R - 1, hy + REGION_RADIUS); y++) {
+                for (let x = Math.max(0, hx - REGION_RADIUS); x <= Math.min(C - 1, hx + REGION_RADIUS); x++) {
+                    const di = placedDir[y * C + x];
+                    if (di !== -1) { regionCounts[di]++; regionCounts[4]++; }
+                }
+            }
+        };
+        const regionShare = d => regionCounts[4] ? regionCounts[DI[d]] / regionCounts[4] : 0;
 
         while (cand.size) {
             // Head selection. With probability `difficulty`, use the DEEP-HEAD bias: prefer
@@ -295,26 +344,36 @@ export class BoardGenerator {
                         const bx = x - DIRS[d][0], by = y - DIRS[d][1];
                         return bx >= 0 && bx < C && by >= 0 && by < R && occ[by * C + bx];
                     });
+                    if (RDP) countRegion(h);
                     for (const d of (hg.length ? hg : hv)) {
-                        const score = laneLenOf(h, d) - DEEP_HEAD_BALANCE * (dirCount[d] - minDir)
+                        const score = laneLenOf(h, d) * (1 - RDP * regionShare(d))
+                            - DEEP_HEAD_BALANCE * (dirCount[d] - minDir)
                             - LDP * localSameDir(h, d) + rand() * 0.5;
                         if (score > bestScore) { bestScore = score; H = h; D = d; }
                     }
                 }
             }
             if (H === null) {                       // easy path (or bias found nothing): random head
-                H = pick([...cand]);
-                const valid = DK.filter(d => ahead[d][H] === 0);
-                const [hx, hy] = cr(H, C);
-                const growable = valid.filter(d => {
-                    const bx = hx - DIRS[d][0], by = hy - DIRS[d][1];
-                    return bx >= 0 && bx < C && by >= 0 && by < R && occ[by * C + bx];
-                });
-                const opts = growable.length ? growable : valid;
-                D = opts[0]; let best = 1e9;
-                for (const d of opts) {
-                    const sc = dirCount[d] + LDP * localSameDir(H, d);   // global balance + local de-clustering
-                    if (sc < best) { best = sc; D = d; }
+                // Sample a few random heads and keep the one whose best direction is least clustered
+                // (regional term weighted like up to 4 same-direction touching neighbours).
+                const heads = [...cand];
+                const minDir = Math.min(dirCount.N, dirCount.S, dirCount.E, dirCount.W);
+                const samples = RDP ? EASY_HEAD_SAMPLES : 1;
+                let best = Infinity;
+                for (let s = 0; s < samples; s++) {
+                    const h = pick(heads);
+                    const valid = DK.filter(d => ahead[d][h] === 0);
+                    const [hx, hy] = cr(h, C);
+                    const growable = valid.filter(d => {
+                        const bx = hx - DIRS[d][0], by = hy - DIRS[d][1];
+                        return bx >= 0 && bx < C && by >= 0 && by < R && occ[by * C + bx];
+                    });
+                    if (RDP) countRegion(h);
+                    for (const d of (growable.length ? growable : valid)) {
+                        const sc = (dirCount[d] - minDir)
+                            + LDP * (localSameDir(h, d) + 4 * RDP * regionShare(d));
+                        if (sc < best) { best = sc; H = h; D = d; }
+                    }
                 }
             }
             dirCount[D]++;

@@ -110,6 +110,24 @@ describe('BoardGenerator boards', () => {
   })
 })
 
+describe('direction variety', () => {
+  it('regional penalty keeps areas from all pointing one way', () => {
+    const avgRegional = (penalty: number) => {
+      const g = new BoardGenerator()
+      ;(g as unknown as { regionDirPenalty: number }).regionDirPenalty = penalty
+      let sum = 0, n = 0
+      for (const t of TIERS) for (let seed = 1; seed <= 3; seed++) {
+        sum += g.measureRegionalDirClustering(g.generateForTier(30, 50, null, t, null, seed).arrows, 30, 50)
+        n++
+      }
+      return sum / n
+    }
+    const without = avgRegional(0), withPenalty = avgRegional(0.8)
+    expect(withPenalty).toBeLessThan(without - 0.03)
+    expect(withPenalty).toBeLessThan(0.26)
+  })
+})
+
 describe('tier calibration', () => {
   // Sizes each tier actually appears at in tierForLevel / sizeForLevel.
   const cases: [string, number, number][] = [
