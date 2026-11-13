@@ -63,19 +63,18 @@ export const BOARD_SHAPE = "rect";
 
 // Difficulty tiers. Each tier defines:
 //   knob     — starting deep-head-bias strength (0..1) the generator builds with
-//   min/max  — the target BRANCHING band (avg pieces clearable per step) this tier must land in
+//   min/max  — the target BRANCHING band this tier must land in
 // The generator builds, measures the real branching, adapts the knob, and keeps a board whose
 // measured branching is inside [min, max] — so every board provably plays at its tier (not a guess).
-// Difficulty is measured as a SIZE-INDEPENDENT fraction: how open the board is = pieces clearable
-// on the opening board / total pieces (high = easy, low = hard). Because it's a ratio, ONE band set
-// works for EVERY grid size — and calibration nudges the per-board `knob` so the measured fraction
-// lands in [min, max] regardless of board size. (`knob` = starting deep-head-bias strength.)
+// Branching (BoardGenerator.measureBranching) = average number of clearable pieces over the first
+// 75% of a solve, divided by sqrt(total pieces): high = many choices throughout (easy), low = few
+// (hard). The sqrt normalisation keeps one band set valid across grid sizes.
 export const TIERS = [
-    { name: "EASY", knob: 0.25, min: 0.16, max: 1.00 },
-    { name: "NORMAL", knob: 0.45, min: 0.11, max: 0.16 },
-    { name: "HARD", knob: 0.62, min: 0.075, max: 0.11 },
-    { name: "EXPERT", knob: 0.80, min: 0.05, max: 0.075 },
-    { name: "TITAN", knob: 0.95, min: 0.00, max: 0.05 },
+    { name: "EASY", knob: 0.25, min: 0.80, max: Infinity },
+    { name: "NORMAL", knob: 0.55, min: 0.62, max: 0.80 },
+    { name: "HARD", knob: 0.80, min: 0.48, max: 0.62 },
+    { name: "EXPERT", knob: 0.95, min: 0.38, max: 0.48 },
+    { name: "TITAN", knob: 1.00, min: 0.00, max: 0.38 },
 ];
 
 // Level -> tier. Instead of one fixed tier per band, each level range has a POOL of allowed tiers

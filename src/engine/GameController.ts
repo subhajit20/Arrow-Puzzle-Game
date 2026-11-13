@@ -109,13 +109,16 @@ export class GameController {
         }
         const motifs = shapeName ? GridShape.motifsFor(shapeName) : null;   // shape-specific motifs
         const result = this.generator.generateForTier(COLS, ROWS, mask, tier, motifs);
-        // Log which motifs THIS board actually used (and how many of each).
+        // Log which motifs THIS board actually used (and how many of each), plus the seed that
+        // rebuilds it via generateForTier with the same size / mask / tier / motifs.
         const mc = result.motifCount || {};
         const motifList = Object.keys(mc).sort((a, b) => mc[b] - mc[a]);
-        console.log(`Level ${level} [${tier.name}] ${COLS}x${ROWS} — motifs: `
+        console.log(`Level ${level} [${tier.name}] ${COLS}x${ROWS} seed ${result.seed} `
+            + `branching ${result.branching.toFixed(2)} — motifs: `
             + (motifList.length ? motifList.map(m => `${m}(${mc[m]})`).join(", ") : "none"));
         this.G = new GameState(level, COLS, ROWS, result.arrows, mask);
         this.G.tierName = tier.name;
+        this.G.seed = result.seed;
         // Stash the fresh, full board so a lost level can replay THIS exact puzzle (reset to full
         // pieces + lives) instead of generating a new random one.
         this._origin = this.persistence.snapshot(this.G);
