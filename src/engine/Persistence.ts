@@ -10,7 +10,7 @@ export class Persistence {
     // Minimal snapshot needed to rebuild the exact mid-puzzle state.
     #serialize(G) {
         return {
-            level: G.level, tierName: G.tierName, COLS: G.COLS, ROWS: G.ROWS,
+            level: G.level, tierName: G.tierName, seed: G.seed ?? null, COLS: G.COLS, ROWS: G.ROWS,
             mask: G.mask ? Array.from(G.mask) : null,
             total: G.total, hearts: G.hearts, hintsLeft: G.hintsLeft,
             initialOccupied: [...G.initialOccupied],   // original occupancy (so vacated cells still dot)

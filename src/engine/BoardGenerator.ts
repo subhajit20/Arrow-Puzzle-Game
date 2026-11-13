@@ -1,6 +1,6 @@
 // @ts-nocheck — faithful port of the original JS engine; types added incrementally.
 import { DIRS, DK, OPP, CW, CCW } from './constants';
-import { cr, rnd, pick, occNbrs, lane } from './utils';
+import { cr, occNbrs, lane, mulberry32, makeSeed } from './utils';
 // Reverse-construction board generator for Arrow Escape.
 // Builds the board backwards (placing pieces whose head ray is currently clear), then fills any
 // leftover empty cells so the board is ~fully covered, solvable by construction, and free of lone dots.
@@ -25,39 +25,111 @@ export const DEEP_HEAD_BALANCE = 8;
 // on small boards (forced awkward turns re-introduce clumping).
 export const LOCAL_DIR_PENALTY = 8;
 
+// Boards built per generateForTier call before settling for the closest one to the tier's band.
+export const CALIBRATION_ATTEMPTS = 10;
+
 export class BoardGenerator {
+    // Source of randomness for #build / #fillGaps. Replaced by a seeded PRNG for the duration of a
+    // seeded generate / generateForTier call so the same seed rebuilds the same board.
+    rng = Math.random;
+
     // Generate a board of C columns x R rows. Optional `mask` (Uint8Array, 1=in-board, 0=outside)
     // shapes the board. `difficulty` (0..1) controls head placement only (not piece length/shape):
     // 0 = random heads (easy, high branching), 1 = deepest-lane heads (hard, low branching).
-    // Returns { arrows }.
-    generate(C, R, mask = null, difficulty = 0, motifs = null) {
-        return this.#build(C, R, mask, difficulty, motifs);
+    // Pass `seed` for a reproducible board. Returns { arrows, motifCount }.
+    generate(C, R, mask = null, difficulty = 0, motifs = null, seed: number | null = null) {
+        return this.#withSeed(seed, () => this.#build(C, R, mask, difficulty, motifs));
     }
 
-    // Calibrated generation: build a board, MEASURE how open it is, and keep one whose openness
+    // Calibrated generation: build a board, MEASURE its whole-solve branching, and keep one that
     // lands in the tier's band. Too open (easy) → raise the deep-head bias and rebuild; too tight
-    // (hard) → lower it. Because openness is a size-independent fraction, the SAME bands work for
-    // any grid size — calibration just finds the right per-board knob. Returns the closest board.
-    generateForTier(C, R, mask, tier, motifs = null) {
-        let knob = tier.knob, best = null, bestDist = Infinity;
-        for (let attempt = 0; attempt < 8; attempt++) {
-            const board = this.#build(C, R, mask, knob, motifs);
-            const openness = this.measureOpenness(board.arrows, C, R);
-            const dist = openness < tier.min ? tier.min - openness
-                : (openness > tier.max ? openness - tier.max : 0);
-            if (dist === 0) return { arrows: board.arrows, motifCount: board.motifCount, openness, tier: tier.name, attempts: attempt + 1 };
-            if (dist < bestDist) { bestDist = dist; best = { arrows: board.arrows, motifCount: board.motifCount, openness, tier: tier.name, attempts: attempt + 1 }; }
-            // Step the knob toward the band — proportional to how far out we are, so narrow bands
-            // converge without overshooting.
-            const step = Math.max(0.03, Math.min(0.2, dist * 3.5));
-            knob = openness > tier.max ? Math.min(1, knob + step) : Math.max(0, knob - step);
-        }
-        return best;
+    // (hard) → lower it. Returns the in-band board, or the closest one after CALIBRATION_ATTEMPTS.
+    // The same (C, R, mask, tier, motifs, seed) always returns the same board; `seed` is echoed in
+    // the result so a board can be rebuilt later.
+    generateForTier(C, R, mask, tier, motifs = null, seed = makeSeed()) {
+        return this.#withSeed(seed, () => {
+            let knob = tier.knob, best = null, bestDist = Infinity;
+            for (let attempt = 0; attempt < CALIBRATION_ATTEMPTS; attempt++) {
+                const board = this.#build(C, R, mask, knob, motifs);
+                const branching = this.measureBranching(board.arrows, C, R);
+                const dist = branching < tier.min ? tier.min - branching
+                    : (branching > tier.max ? branching - tier.max : 0);
+                const result = {
+                    arrows: board.arrows, motifCount: board.motifCount, branching,
+                    openness: this.measureOpenness(board.arrows, C, R),
+                    tier: tier.name, attempts: attempt + 1, seed,
+                };
+                if (dist === 0) return result;
+                if (dist < bestDist) { bestDist = dist; best = result; }
+                // Step the knob toward the band — proportional to how far out we are, so narrow bands
+                // converge without overshooting.
+                const step = Math.max(0.03, Math.min(0.2, dist * 0.8));
+                knob = branching > tier.max ? Math.min(1, knob + step) : Math.max(0, knob - step);
+            }
+            return best;
+        });
     }
 
-    // Size-independent difficulty signal: fraction of pieces clearable on the OPENING board
-    // (clearable-at-start / total pieces). High = open/easy, low = tight/hard. Being a ratio, it
-    // stays consistent across grid sizes, so one set of tier bands fits every board.
+    #withSeed(seed, fn) {
+        if (seed == null) return fn();
+        const prev = this.rng;
+        this.rng = mulberry32(seed);
+        try { return fn(); } finally { this.rng = prev; }
+    }
+
+    // Whole-solve difficulty used for tier calibration. Plays the board out one piece at a time (a
+    // random clearable piece each step) and averages how many pieces are clearable over the first
+    // 75% of the solve; the endgame always opens up, so it is left out. Averaged over a few
+    // fixed-seed playouts so the score is deterministic for a given board, then divided by
+    // sqrt(pieces) so one set of tier bands fits every grid size. Low = few choices for most of the
+    // solve (hard), high = many (easy). Unlike measureOpenness, a board that starts tight but opens
+    // up after a few moves scores as easy.
+    measureBranching(arrows, C, R, playouts = 3) {
+        const n = arrows.length;
+        if (!n) return 0;
+        const owner = new Int32Array(C * R).fill(-1);
+        arrows.forEach((a, i) => { for (const c of a.body) owner[c] = i; });
+        // blockers[i] = cells of OTHER pieces in piece i's exit lane; crossers[cell] = pieces whose
+        // lane that occupied cell blocks. Clearing a piece only ever frees the pieces it was blocking.
+        const blockers = new Int32Array(n);
+        const crossers = new Map();
+        arrows.forEach((a, i) => {
+            for (const c of lane(a.body[a.body.length - 1], a.dir, C, R)) {
+                const o = owner[c];
+                if (o === -1 || o === i) continue;
+                blockers[i]++;
+                let list = crossers.get(c);
+                if (!list) crossers.set(c, list = []);
+                list.push(i);
+            }
+        });
+
+        const steps = Math.max(1, Math.floor(n * 0.75));
+        let total = 0;
+        for (let p = 0; p < playouts; p++) {
+            const rand = mulberry32(p + 1);
+            const left = blockers.slice();
+            const free = [];
+            for (let i = 0; i < n; i++) if (!left[i]) free.push(i);
+            let sum = 0;
+            for (let s = 0; s < steps && free.length; s++) {
+                sum += free.length;
+                const k = Math.floor(rand() * free.length);
+                const a = free[k];
+                free[k] = free[free.length - 1]; free.pop();
+                for (const c of arrows[a].body) {
+                    const list = crossers.get(c);
+                    if (list) for (const b of list) if (--left[b] === 0) free.push(b);
+                }
+            }
+            total += sum / steps;
+        }
+        return total / playouts / Math.sqrt(n);
+    }
+
+    // Fraction of pieces clearable on the OPENING board (clearable-at-start / total pieces). High =
+    // open/easy, low = tight/hard. Only sees the first move, so it is reported for diagnostics but
+    // calibration uses measureBranching.
     measureOpenness(arrows, C, R) {
         const N = C * R;
         const owner = new Int32Array(N).fill(-1);
@@ -102,6 +174,9 @@ export class BoardGenerator {
     }
 
     #build(C, R, mask, difficulty = 0, motifs = null) {
+        const rand = this.rng;
+        const rnd = n => Math.floor(rand() * n);
+        const pick = a => a[rnd(a.length)];
         const N = C * R;
         const occ = new Uint8Array(N).fill(1);
         const ahead = { N: new Int16Array(N), S: new Int16Array(N), E: new Int16Array(N), W: new Int16Array(N) };
@@ -154,12 +229,17 @@ export class BoardGenerator {
             // remaining 5 motifs (3–5) for variety.
             const sig = pick(['meander', 'wander']);
             const always = MOTIFS.filter(m => m.name === sig);
-            const others = MOTIFS.filter(m => m.name !== sig).sort(() => Math.random() - 0.5).slice(0, 1 + rnd(1));
+            const others = MOTIFS.filter(m => m.name !== sig);
+            for (let i = others.length - 1; i > 0; i--) {
+                const j = rnd(i + 1);
+                [others[i], others[j]] = [others[j], others[i]];
+            }
+            others.length = 1 + rnd(1);
             palette = [...always, ...others];
         }
         const paletteWeight = palette.reduce((s, m) => s + m.weight, 0);
         const pickMotif = () => {
-            let r = Math.random() * paletteWeight;
+            let r = rand() * paletteWeight;
             for (const m of palette) { if ((r -= m.weight) < 0) return m; }
             return palette[palette.length - 1];
         };
@@ -205,7 +285,7 @@ export class BoardGenerator {
             // Otherwise fall back to the original random pick + direction balancing (easy).
             // Either way the motif and its length are chosen separately, so board variety is intact.
             let H = null, D = null;
-            if (Math.random() < difficulty) {
+            if (rand() < difficulty) {
                 const minDir = Math.min(dirCount.N, dirCount.S, dirCount.E, dirCount.W);
                 let bestScore = -Infinity;
                 for (const h of cand) {
@@ -217,7 +297,7 @@ export class BoardGenerator {
                     });
                     for (const d of (hg.length ? hg : hv)) {
                         const score = laneLenOf(h, d) - DEEP_HEAD_BALANCE * (dirCount[d] - minDir)
-                            - LDP * localSameDir(h, d) + Math.random() * 0.5;
+                            - LDP * localSameDir(h, d) + rand() * 0.5;
                         if (score > bestScore) { bestScore = score; H = h; D = d; }
                     }
                 }
@@ -240,7 +320,7 @@ export class BoardGenerator {
             dirCount[D]++;
 
             let mode, target;
-            if (corridorUsed < corridorBudget && Math.random() < 0.18) {
+            if (corridorUsed < corridorBudget && rand() < 0.18) {
                 mode = 'corridor'; target = 999; corridorUsed++;   // runs straight until it can't
             } else {
                 const motif = pickMotif();        // chosen from this board's palette only
@@ -255,12 +335,12 @@ export class BoardGenerator {
             //   - medium (rest): the default
             let straightCap = 4 + rnd(3), turnProb = 0.35;        // medium (default)
             if (mode !== 'corridor') {
-                const flow = Math.random();
+                const flow = rand();
                 if (flow < 0.30) { mode = 'snake'; target = 16 + rnd(22); straightCap = 9 + rnd(9); turnProb = 0.12; }
                 else if (flow < 0.55) { straightCap = 2 + rnd(2); turnProb = 0.6; }
             }
 
-            const spin = Math.random() < 0.5 ? CW : CCW;
+            const spin = rand() < 0.5 ? CW : CCW;
             const body = [H]; const used = new Set([H]); let cur = H, lastDir = null, run = 0;
 
             // Per-motif walk state.
@@ -269,7 +349,7 @@ export class BoardGenerator {
             let combDir = back;                  // current comb tooth direction
             const combSpine = spin[back];        // comb connector (consistent turn) direction
             let combCount = 0, combNeedSpine = false;
-            let corridorBendsLeft = mode === 'corridor' ? (Math.random() < 0.3 ? 1 : 0) : 0;  // ~30% get one bend
+            let corridorBendsLeft = mode === 'corridor' ? (rand() < 0.3 ? 1 : 0) : 0;  // ~30% get one bend
             // Greek-key meander: a fixed self-avoiding "hook" sequence repeated. A=advance (back),
             // P=perpendicular hook (consistent turn). Starts with an A run to satisfy the forced first step.
             const meP = spin[back];
@@ -302,7 +382,7 @@ export class BoardGenerator {
                     // per-piece variation (set above) is what gives the board its mixed-scale, organic look.
                     const straightAll = lastDir ? cs.filter(c => c.d === lastDir) : [];
                     const turns = cs.filter(c => c.d !== lastDir);
-                    const forceTurn = lastDir && run >= straightCap && turns.length && Math.random() < turnProb;
+                    const forceTurn = lastDir && run >= straightCap && turns.length && rand() < turnProb;
                     if (straightAll.length && !forceTurn) ch = straightAll[0];
                     else if (turns.length) ch = pick(turns);
                     else { const s = kept.filter(c => !lastDir || c.d === lastDir); ch = pick(s.length ? s : kept); }
@@ -312,7 +392,7 @@ export class BoardGenerator {
                     // already guaranteed by `cs` (excludes used/occupied cells).
                     const straightAll = lastDir ? cs.filter(c => c.d === lastDir) : [];
                     const turns = lastDir ? cs.filter(c => c.d !== lastDir) : cs;
-                    if (straightAll.length && Math.random() < 0.3) ch = straightAll[0];
+                    if (straightAll.length && rand() < 0.3) ch = straightAll[0];
                     else if (turns.length) ch = pick(turns);
                     else ch = pick(kept);
                 } else if (mode === 'spiral') {
@@ -422,6 +502,7 @@ export class BoardGenerator {
     //      identical parallel arrows, so we grow a real piece instead.)
     // They feed each other — a new arrow's tail can be extended next pass, and vice versa.
     #fillGaps(arrows, C, R, mask = null) {
+        const pick = a => a[Math.floor(this.rng() * a.length)];
         const N = C * R;
         const owner = new Int32Array(N).fill(-1);
         for (const a of arrows) for (const c of a.body) owner[c] = a.id;

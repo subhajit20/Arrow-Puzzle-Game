@@ -43,6 +43,7 @@ export class GameState {
         g.over = false;
         g.revealing = false;          // a resumed board is already in progress — no entrance reveal
         g.tierName = d.tierName;
+        g.seed = d.seed ?? null;
         g.board = new Map();
         for (const a of g.arrows) for (const c of a.body) g.board.set(c, a.id);
         g.initialOccupied = new Set(d.initialOccupied);
