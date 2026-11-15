@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preamble Cheat Sheet | প্রস্তাবনা চিট শিট</title>
+  <style>
+:root {
+  --navy: #0b2a6f;
+  --saffron: #ff9933;
+  --green: #138808;
+  --bn: #9a1b1b;
+  --ink: #1f2937;
+  --muted: #6b7280;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+  color: var(--ink);
+  background: #eef1f7;
+  line-height: 1.45;
+  padding: 24px 16px;
+}
+
+.bn {
+  font-family: "Noto Sans Bengali", "Vrinda", "Shonar Bangla", sans-serif;
+  color: var(--bn);
+  font-weight: 500;
+}
+
+.sheet { max-width: 1100px; margin: 0 auto; }
+
+/* Header */
+.hero {
+  text-align: center;
+  padding: 22px 16px 18px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--saffron) 0%, #fff 50%, var(--green) 100%);
+  box-shadow: 0 6px 20px rgba(11, 42, 111, .12);
+  margin-bottom: 18px;
+}
+.hero h1 { color: var(--navy); font-size: clamp(1.4rem, 3vw, 2.1rem); }
+.hero-bn { font-size: clamp(1.1rem, 2.4vw, 1.5rem); font-weight: 700; margin-top: 2px; }
+
+/* Grid of cards */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  border: 1px solid;
+  border-top-width: 5px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .05);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.card:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, .1); }
+.card.wide { grid-column: 1 / -1; }
+.card h2 { font-size: 1.02rem; color: var(--navy); margin-bottom: 8px; }
+.card h2 .bn { font-size: .95rem; margin-left: 4px; }
+.card p { margin: 6px 0; font-size: .95rem; }
+
+.orange { background: #fff7ed; border-color: #fdba74; }
+.blue   { background: #eff6ff; border-color: #93c5fd; }
+.green  { background: #f0fdf4; border-color: #86efac; }
+.purple { background: #fdf4ff; border-color: #e9a8f5; }
+.yellow { background: #fefce8; border-color: #fde047; }
+.pink   { background: #fff1f2; border-color: #fda4af; }
+
+.center { text-align: center; }
+
+/* Timeline */
+.timeline { display: flex; flex-direction: column; gap: 8px; position: relative; padding-left: 18px; }
+.timeline::before {
+  content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px;
+  width: 3px; background: var(--saffron); border-radius: 2px;
+}
+.step { position: relative; }
+.step::before {
+  content: ""; position: absolute; left: -18px; top: 5px;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: #fff; border: 3px solid var(--navy);
+}
+.step b { display: block; color: #b45309; font-size: 1.05rem; }
+.step small { color: var(--muted); }
+
+/* J L E F code */
+.code { display: flex; justify-content: center; gap: 10px; margin: 4px 0 6px; }
+.code div {
+  width: 62px; text-align: center; border-radius: 10px;
+  background: #fff; border: 2px solid #93c5fd; padding: 4px 0;
+}
+.code span { display: block; font-weight: 800; color: var(--navy); font-size: 1.1rem; }
+.code b { display: block; font-size: 1.9rem; color: #b45309; line-height: 1.1; }
+
+/* Chips */
+.chips { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.chips li {
+  background: #fff; border: 1px solid #d1d5db; border-radius: 999px;
+  padding: 3px 11px; font-size: .92rem;
+}
+.chips li b { color: #b45309; font-size: 1.05rem; }
+.mnemonic { font-style: italic; color: var(--navy); }
+
+/* Verdicts */
+.verdict { padding: 7px 10px; border-radius: 8px; margin: 6px 0; background: #fff; border-left: 5px solid; }
+.verdict.no  { border-color: #ef4444; }
+.verdict.yes { border-color: #22c55e; }
+
+/* Stats */
+.stats { display: flex; justify-content: space-around; text-align: center; }
+.stats b { display: block; font-size: 1.9rem; color: #7c3aed; line-height: 1.1; }
+.stats small { color: var(--muted); }
+
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+td { padding: 4px 6px; border-bottom: 1px dashed #e5d97a; vertical-align: top; }
+td.ans { font-weight: 700; color: var(--navy); text-align: right; }
+
+/* Majority */
+.majority { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.majority > div { background: #fff; border-radius: 10px; padding: 9px 11px; border: 1px solid #bfdbfe; }
+.majority h3 { font-size: .98rem; color: var(--navy); }
+.majority p { font-weight: 700; color: #b45309; margin: 2px 0; }
+.majority small { color: var(--muted); }
+
+/* Bill → Act flow */
+.flow { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin: 4px 0; }
+.flow span {
+  background: #fff; border: 2px solid #86efac; border-radius: 10px;
+  padding: 5px 12px; font-weight: 700; text-align: center;
+}
+.flow span i { display: block; font-style: normal; font-size: .85rem; }
+.flow span.final { background: var(--green); color: #fff; border-color: var(--green); }
+.flow span.final i { color: #fff; }
+.flow em { font-style: normal; font-size: 1.3rem; color: var(--green); font-weight: 800; }
+
+footer { text-align: center; color: var(--muted); font-size: .85rem; margin-top: 18px; }
+
+/* Self-test mode: CSS-only checkbox toggle */
+.quiz-toggle { position: absolute; opacity: 0; pointer-events: none; }
+.quiz-btn {
+  display: inline-block; margin-top: 12px; cursor: pointer; user-select: none;
+  background: var(--navy); color: #fff; padding: 8px 18px; border-radius: 999px;
+  font-weight: 700; font-size: .92rem; box-shadow: 0 4px 12px rgba(11, 42, 111, .3);
+}
+.quiz-btn .bn { color: #ffd98a; }
+.quiz-btn .on { display: none; }
+.quiz-toggle:checked ~ .sheet .quiz-btn { background: var(--green); }
+.quiz-toggle:checked ~ .sheet .quiz-btn .off { display: none; }
+.quiz-toggle:checked ~ .sheet .quiz-btn .on { display: inline; }
+
+.quiz-toggle:checked ~ .sheet .ans {
+  color: transparent !important;
+  background: #cbd5e1;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: color .2s, background .2s;
+}
+.quiz-toggle:checked ~ .sheet .ans:hover {
+  color: var(--navy) !important;
+  background: #fef08a;
+}
+
+/* Print: one tidy page, answers always visible */
+@media print {
+  @page { size: A4; margin: 10mm; }
+  body {
+    background: #fff; padding: 0; font-size: 10.5px;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .quiz-btn { display: none; }
+  .hero { padding: 10px; margin-bottom: 8px; box-shadow: none; }
+  .grid { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .card { padding: 7px 9px; box-shadow: none; break-inside: avoid; }
+  .card:hover { transform: none; }
+  .quiz-toggle:checked ~ .sheet .ans { color: inherit !important; background: none; }
+}
+  </style>
+</head>
+<body>
+
+<input type="checkbox" id="quiz" class="quiz-toggle">
+
+<main class="sheet">
+
+  <header class="hero">
+    <h1>Preamble of the Constitution of India</h1>
+    <p class="bn hero-bn">ভারতীয় সংবিধানের প্রস্তাবনা — এক নজরে</p>
+    <label for="quiz" class="quiz-btn">
+      <span class="off">Test yourself: hide answers <span class="bn">(উত্তর লুকাও)</span></span>
+      <span class="on">Show answers <span class="bn">(উত্তর দেখাও)</span></span>
+    </label>
+  </header>
+
+  <section class="grid">
+
+    <article class="card orange">
+      <h2>Timeline <span class="bn">সময়রেখা</span></h2>
+      <div class="timeline">
+        <div class="step"><b class="ans">13 Dec 1946</b><small>Nehru moves Objectives Resolution<br><span class="bn">নেহেরু উদ্দেশ্য প্রস্তাব উত্থাপন</span></small></div>
+        <div class="step"><b class="ans">22 Jan 1947</b><small>Resolution passed<br><span class="bn">প্রস্তাব পাস</span></small></div>
+        <div class="step"><b class="ans">26 Nov 1949</b><small>Preamble &amp; Constitution adopted<br><span class="bn">প্রস্তাবনা ও সংবিধান গৃহীত</span></small></div>
+      </div>
+    </article>
+
+    <article class="card blue">
+      <h2>Ideals Code <span class="bn">আদর্শের কোড</span></h2>
+      <div class="code">
+        <div><span>J</span><b class="ans">3</b></div>
+        <div><span>L</span><b class="ans">5</b></div>
+        <div><span>E</span><b class="ans">2</b></div>
+        <div><span>F</span><b class="ans">1</b></div>
+      </div>
+      <p class="bn center">ন্যায় · স্বাধীনতা · সমতা · ভ্রাতৃত্ব</p>
+    </article>
+
+    <article class="card green">
+      <h2>Justice (3) = “SEP” <span class="bn">ন্যায়বিচার</span></h2>
+      <ul class="chips">
+        <li><b>S</b>ocial <span class="bn">সামাজিক</span></li>
+        <li><b>E</b>conomic <span class="bn">অর্থনৈতিক</span></li>
+        <li><b>P</b>olitical <span class="bn">রাজনৈতিক</span></li>
+      </ul>
+    </article>
+
+    <article class="card purple">
+      <h2>Liberty (5) = “TEBFW” <span class="bn">স্বাধীনতা</span></h2>
+      <p class="mnemonic">“<b>T</b>he <b>E</b>lephant <b>B</b>rings <b>F</b>resh <b>W</b>ater”</p>
+      <ul class="chips">
+        <li><b>T</b>hought <span class="bn">চিন্তা</span></li>
+        <li><b>E</b>xpression <span class="bn">মত প্রকাশ</span></li>
+        <li><b>B</b>elief <span class="bn">বিশ্বাস</span></li>
+        <li><b>F</b>aith <span class="bn">ধর্ম</span></li>
+        <li><b>W</b>orship <span class="bn">উপাসনা</span></li>
+      </ul>
+    </article>
+
+    <article class="card yellow">
+      <h2>Equality (2) = “SO” <span class="bn">সমতা</span></h2>
+      <ul class="chips">
+        <li><b>S</b>tatus <span class="bn">মর্যাদা</span></li>
+        <li><b>O</b>pportunity <span class="bn">সুযোগ</span></li>
+      </ul>
+    </article>
+
+    <article class="card pink">
+      <h2>Fraternity (1) <span class="bn">ভ্রাতৃত্ব</span></h2>
+      <p class="ans">Dignity of the individual + Unity &amp; Integrity of the Nation</p>
+      <p class="bn ans">ব্যক্তির মর্যাদা + জাতির ঐক্য ও সংহতি</p>
+    </article>
+
+    <article class="card orange">
+      <h2>Nature of India = “3S + DR” <span class="bn">ভারতের প্রকৃতি</span></h2>
+      <ul class="chips">
+        <li><b>S</b>overeign <span class="bn">সার্বভৌম</span></li>
+        <li><b>S</b>ocialist <span class="bn">সমাজতান্ত্রিক</span></li>
+        <li><b>S</b>ecular <span class="bn">ধর্মনিরপেক্ষ</span></li>
+        <li><b>D</b>emocratic <span class="bn">গণতান্ত্রিক</span></li>
+        <li><b>R</b>epublic <span class="bn">সাধারণতন্ত্র</span></li>
+      </ul>
+    </article>
+
+    <article class="card blue">
+      <h2>42nd Amendment 1976 = “SSI” <span class="bn">৪২তম সংশোধনী</span></h2>
+      <ul class="chips">
+        <li><b>S</b>ocialist <span class="bn">সমাজতান্ত্রিক</span></li>
+        <li><b>S</b>ecular <span class="bn">ধর্মনিরপেক্ষ</span></li>
+        <li><b>I</b>ntegrity <span class="bn">সংহতি</span></li>
+      </ul>
+      <p>“<b class="ans">Mini Constitution</b>” · Preamble amended only <b class="ans">once</b><br>
+        <span class="bn">"মিনি সংবিধান" · প্রস্তাবনা মাত্র একবার সংশোধিত</span></p>
+    </article>
+
+    <article class="card green">
+      <h2>Part of Constitution? <span class="bn">সংবিধানের অংশ?</span></h2>
+      <div class="verdict no"><b>B</b>erubari <span class="ans">1960</span> = <b>B</b>locked → <b class="ans">NO</b> <span class="bn">(না)</span></div>
+      <div class="verdict yes"><b>K</b>esavananda <span class="ans">1973</span> = <b>K</b>ept → <b class="ans">YES</b> <span class="bn">(হ্যাঁ)</span></div>
+    </article>
+
+    <article class="card purple">
+      <h2>Amendments <span class="bn">সংশোধনী</span></h2>
+      <div class="stats">
+        <div><b class="ans">368</b><small>Article <span class="bn">অনুচ্ছেদ</span></small></div>
+        <div><b class="ans">1951</b><small>1st <span class="bn">প্রথম</span></small></div>
+        <div><b class="ans">106</b><small>Total <span class="bn">মোট</span></small></div>
+      </div>
+    </article>
+
+    <article class="card yellow">
+      <h2>Who / What <span class="bn">কে / কী</span></h2>
+      <table>
+        <tr><td>“Identity Card” <span class="bn">পরিচয়পত্র</span></td><td class="ans">N.A. Palkhivala</td></tr>
+        <tr><td>Idea borrowed from <span class="bn">ধারণা</span></td><td class="ans">USA</td></tr>
+        <tr><td>Secular proof <span class="bn">ধর্মনিরপেক্ষতার প্রমাণ</span></td><td class="ans">Art. 25–28 (SC, 1974)</td></tr>
+        <tr><td>Based on <span class="bn">ভিত্তি</span></td><td class="ans">Objectives Resolution</td></tr>
+      </table>
+    </article>
+
+    <article class="card pink">
+      <h2>Sovereign / Socialist <span class="bn">সার্বভৌম / সমাজতান্ত্রিক</span></h2>
+      <p>Commonwealth <b class="ans">May 1949</b> → still sovereign; can acquire/cede territory<br>
+        <span class="bn">কমনওয়েলথে থেকেও সার্বভৌম; ভূখণ্ড অর্জন/হস্তান্তর করতে পারে</span></p>
+      <p><b class="ans">Democratic</b> socialism + <b class="ans">Mixed</b> economy · weakened by <b class="ans">LPG 1991</b><br>
+        <span class="bn">গণতান্ত্রিক সমাজতন্ত্র + মিশ্র অর্থনীতি · ১৯৯১ LPG-তে দুর্বল</span></p>
+    </article>
+
+    <article class="card blue wide">
+      <h2>Majority in one look <span class="bn">এক নজরে সংখ্যাগরিষ্ঠতা</span></h2>
+      <div class="majority">
+        <div><h3>Simple <span class="bn">সাধারণ</span></h3><p class="ans">&gt;50% present &amp; voting</p><small>Ordinary bills, Speaker election, censure</small></div>
+        <div><h3>Absolute <span class="bn">পূর্ণ</span></h3><p class="ans">&gt;50% total strength</p><small>Never used alone <span class="bn">একা নয়</span></small></div>
+        <div><h3>Effective <span class="bn">কার্যকর</span></h3><p class="ans">&gt;50% minus vacancies</p><small>Remove Speaker / Dy. Speaker / VP</small></div>
+        <div><h3>Special <span class="bn">বিশেষ</span></h3><p class="ans">2/3</p><small>Art 249, 312 · judges/CAG/CEC · President impeachment = 2/3 of total · federal amendments + ½ states</small></div>
+      </div>
+    </article>
+
+    <article class="card green wide">
+      <h2>Bill → Act <span class="bn">বিল → আইন</span></h2>
+      <div class="flow">
+        <span>Bill <i class="bn">বিল</i></span><em>→</em>
+        <span>Lok Sabha <i class="bn">লোকসভা</i></span><em>→</em>
+        <span>Rajya Sabha <i class="bn">রাজ্যসভা</i></span><em>→</em>
+        <span>President <i class="bn">রাষ্ট্রপতি</i></span><em>→</em>
+        <span class="final">Act <i class="bn">আইন</i></span>
+      </div>
+      <p class="center">Parliament = <b class="ans">LS + RS + President</b> <span class="bn">(সংসদ = লোকসভা + রাজ্যসভা + রাষ্ট্রপতি)</span></p>
+    </article>
+
+  </section>
+
+  <footer>Based on Polity by DS Sir – Preamble <span class="bn">· ডিএস স্যারের ক্লাস নোট অবলম্বনে</span></footer>
+</main>
+
+</body>
+</html>
