@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preamble Part 2 Cheat Sheet | প্রস্তাবনা পর্ব ২ চিট শিট</title>
+  <style>
+:root {
+  --navy: #0b2a6f;
+  --saffron: #ff9933;
+  --green: #138808;
+  --bn: #9a1b1b;
+  --ink: #1f2937;
+  --muted: #6b7280;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Noto Sans", "Segoe UI", system-ui, sans-serif;
+  color: var(--ink);
+  background: #eef1f7;
+  line-height: 1.45;
+  padding: 24px 16px;
+}
+
+.bn {
+  font-family: "Noto Sans Bengali", "Vrinda", "Shonar Bangla", sans-serif;
+  color: var(--bn);
+  font-weight: 500;
+}
+
+.sheet { max-width: 1100px; margin: 0 auto; }
+
+.hero {
+  text-align: center;
+  padding: 22px 16px 18px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--saffron) 0%, #fff 50%, var(--green) 100%);
+  box-shadow: 0 6px 20px rgba(11, 42, 111, .12);
+  margin-bottom: 18px;
+}
+.hero h1 { color: var(--navy); font-size: clamp(1.4rem, 3vw, 2.1rem); }
+.hero-bn { font-size: clamp(1.1rem, 2.4vw, 1.5rem); font-weight: 700; margin-top: 2px; }
+.hero .part { display: inline-block; background: var(--navy); color: #fff; border-radius: 999px; padding: 2px 12px; font-size: .85rem; font-weight: 700; margin-bottom: 6px; }
+
+.section-title {
+  margin: 22px 0 10px; padding: 7px 14px; border-radius: 10px;
+  background: var(--navy); color: #fff; font-size: 1.05rem;
+}
+.section-title .bn { color: #ffd98a; margin-left: 6px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  border: 1px solid;
+  border-top-width: 5px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .05);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.card:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, .1); }
+.card.wide { grid-column: 1 / -1; }
+.card h2 { font-size: 1.02rem; color: var(--navy); margin-bottom: 8px; }
+.card h2 .bn { font-size: .95rem; margin-left: 4px; }
+.card p { margin: 6px 0; font-size: .95rem; }
+
+.orange { background: #fff7ed; border-color: #fdba74; }
+.blue   { background: #eff6ff; border-color: #93c5fd; }
+.green  { background: #f0fdf4; border-color: #86efac; }
+.purple { background: #fdf4ff; border-color: #e9a8f5; }
+.yellow { background: #fefce8; border-color: #fde047; }
+.pink   { background: #fff1f2; border-color: #fda4af; }
+
+.center { text-align: center; }
+.mnemonic {
+  font-style: italic; color: var(--navy); background: #fff;
+  border: 1px dashed #93c5fd; border-radius: 8px; padding: 4px 9px; margin: 6px 0;
+  font-size: .92rem;
+}
+.mnemonic b { color: #b45309; font-style: normal; }
+
+/* Chips */
+.chips { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.chips li {
+  background: #fff; border: 1px solid #d1d5db; border-radius: 999px;
+  padding: 3px 11px; font-size: .92rem;
+}
+.chips li b { color: #b45309; font-size: 1.05rem; }
+
+/* Then vs Now */
+.compare { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px; align-items: center; text-align: center; }
+.compare .h { font-weight: 800; color: var(--navy); font-size: .9rem; }
+.compare .lbl { text-align: left; font-weight: 600; font-size: .92rem; }
+.compare b { display: block; font-size: 1.6rem; line-height: 1.1; }
+.compare .then b { color: var(--muted); }
+.compare .now b { color: #b45309; }
+.compare > div.then, .compare > div.now { background: #fff; border-radius: 8px; padding: 3px 0; border: 1px solid #fdba74; }
+
+/* Big quote */
+.quote {
+  background: #fff; border-left: 5px solid var(--saffron); border-radius: 8px;
+  padding: 8px 12px; font-size: 1rem; font-style: italic;
+}
+.quote .bn { font-style: normal; display: block; margin-top: 4px; }
+
+/* Source badges */
+.sources { display: flex; gap: 10px; flex-wrap: wrap; }
+.src {
+  flex: 1 1 200px; background: #fff; border-radius: 10px; padding: 9px 12px; border: 2px solid;
+}
+.src.ru { border-color: #ef4444; }
+.src.fr { border-color: #3b82f6; }
+.src .t { font-weight: 800; font-size: 1.05rem; }
+.src.ru .t { color: #b91c1c; }
+.src.fr .t { color: #1d4ed8; }
+
+/* Article ladder */
+.articles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.art { background: #fff; border-radius: 10px; padding: 8px 10px; border: 1px solid #c4b5fd; }
+.art h3 { font-size: .92rem; color: #6d28d9; }
+.art .num { font-size: 1.35rem; font-weight: 800; color: #b45309; }
+.art small { color: var(--muted); display: block; }
+
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th { background: #e0e7ff; color: #1e3a8a; text-align: left; padding: 5px 7px; }
+td { padding: 5px 7px; border-bottom: 1px dashed #cbd5e1; vertical-align: top; }
+td .bn { display: block; font-size: .88rem; }
+td.who { font-weight: 700; color: var(--navy); white-space: nowrap; }
+td.key { font-weight: 800; color: #b45309; }
+
+/* Case flow */
+.flow { display: flex; flex-wrap: wrap; align-items: stretch; justify-content: center; gap: 6px; margin: 4px 0; }
+.flow > span {
+  flex: 1 1 180px; background: #fff; border: 2px solid #86efac; border-radius: 10px;
+  padding: 7px 10px; font-size: .9rem;
+}
+.flow > span b { display: block; color: var(--navy); }
+.flow > span i { display: block; font-style: normal; font-size: .85rem; }
+.flow > span.final { background: var(--green); color: #fff; border-color: var(--green); }
+.flow > span.final b, .flow > span.final i { color: #fff; }
+.flow em { align-self: center; font-style: normal; font-size: 1.3rem; color: var(--green); font-weight: 800; }
+
+/* MCQs (click to reveal, pure HTML) */
+.mcqs { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
+details.mcq {
+  background: #fff; border: 1px solid #cbd5e1; border-left: 5px solid var(--saffron);
+  border-radius: 10px; padding: 9px 12px;
+}
+details.mcq summary { cursor: pointer; font-weight: 600; list-style: none; }
+details.mcq summary::-webkit-details-marker { display: none; }
+details.mcq summary::after {
+  content: "Tap for answer ▾"; display: block; margin-top: 5px;
+  font-size: .78rem; color: var(--muted); font-weight: 700;
+}
+details.mcq[open] summary::after { content: "Answer ▴"; color: var(--green); }
+details.mcq .a {
+  margin-top: 6px; padding: 6px 9px; border-radius: 8px;
+  background: #ecfdf5; border: 1px solid #6ee7b7; font-size: .92rem;
+}
+details.mcq .a b { color: var(--green); }
+details.mcq summary .bn, details.mcq .a .bn { display: block; font-size: .88rem; }
+.opts { font-weight: 400; font-size: .88rem; color: var(--muted); margin-top: 3px; }
+
+footer { text-align: center; color: var(--muted); font-size: .85rem; margin-top: 18px; }
+
+/* Self-test mode: CSS-only checkbox toggle */
+.quiz-toggle { position: absolute; opacity: 0; pointer-events: none; }
+.quiz-btn {
+  display: inline-block; margin-top: 12px; cursor: pointer; user-select: none;
+  background: var(--navy); color: #fff; padding: 8px 18px; border-radius: 999px;
+  font-weight: 700; font-size: .92rem; box-shadow: 0 4px 12px rgba(11, 42, 111, .3);
+}
+.quiz-btn .bn { color: #ffd98a; }
+.quiz-btn .on { display: none; }
+.quiz-toggle:checked ~ .sheet .quiz-btn { background: var(--green); }
+.quiz-toggle:checked ~ .sheet .quiz-btn .off { display: none; }
+.quiz-toggle:checked ~ .sheet .quiz-btn .on { display: inline; }
+
+.quiz-toggle:checked ~ .sheet .ans {
+  color: transparent !important;
+  background: #cbd5e1;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: color .2s, background .2s;
+}
+.quiz-toggle:checked ~ .sheet .ans * { visibility: hidden; }
+.quiz-toggle:checked ~ .sheet .ans:hover {
+  color: var(--navy) !important;
+  background: #fef08a;
+}
+.quiz-toggle:checked ~ .sheet .ans:hover * { visibility: visible; }
+
+@media print {
+  @page { size: A4; margin: 10mm; }
+  body {
+    background: #fff; padding: 0; font-size: 10.5px;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .quiz-btn { display: none; }
+  .hero { padding: 10px; margin-bottom: 8px; box-shadow: none; }
+  .grid, .mcqs { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .card, details.mcq { padding: 7px 9px; box-shadow: none; break-inside: avoid; }
+  .card:hover { transform: none; }
+  details.mcq .a { display: block; }
+  .quiz-toggle:checked ~ .sheet .ans { color: inherit !important; background: none; }
+  .quiz-toggle:checked ~ .sheet .ans * { visibility: visible; }
+}
+  </style>
+</head>
+<body>
+
+<input type="checkbox" id="quiz" class="quiz-toggle">
+
+<main class="sheet">
+
+  <header class="hero">
+    <span class="part">PART 2 · পর্ব ২</span>
+    <h1>Preamble — Deep Dive Cheat Sheet</h1>
+    <p class="bn hero-bn">প্রস্তাবনা — বিস্তারিত চিট শিট</p>
+    <label for="quiz" class="quiz-btn">
+      <span class="off">Test yourself: hide answers <span class="bn">(উত্তর লুকাও)</span></span>
+      <span class="on">Show answers <span class="bn">(উত্তর দেখাও)</span></span>
+    </label>
+  </header>
+
+  <!-- ===================== BASICS ===================== -->
+  <h2 class="section-title">Quick Basics <span class="bn">মূল তথ্য</span></h2>
+  <section class="grid">
+
+    <article class="card orange">
+      <h2>Constitution: Then vs Now <span class="bn">তখন বনাম এখন</span></h2>
+      <div class="compare">
+        <span></span><span class="h">1949 (Original)<br><span class="bn">মূল</span></span><span class="h">Today<br><span class="bn">বর্তমান</span></span>
+        <span class="lbl">Schedules <span class="bn">তফসিল</span></span><div class="then"><b class="ans">8</b></div><div class="now"><b class="ans">12</b></div>
+        <span class="lbl">Parts <span class="bn">ভাগ</span></span><div class="then"><b class="ans">22</b></div><div class="now"><b class="ans">25</b></div>
+        <span class="lbl">Articles <span class="bn">অনুচ্ছেদ</span></span><div class="then"><b class="ans">395</b></div><div class="now"><b class="ans">448</b></div>
+      </div>
+      <p class="mnemonic">Code: <b>8-22-395 → 12-25-448</b></p>
+      <p style="font-size:.85rem">Part 2 → <b class="ans">Citizenship</b> <span class="bn">(নাগরিকত্ব)</span> · Part 4 → <b class="ans">DPSP</b> <span class="bn">(রাষ্ট্র পরিচালনার নির্দেশমূলক নীতি)</span></p>
+    </article>
+
+    <article class="card blue">
+      <h2>Preamble at a glance <span class="bn">এক নজরে প্রস্তাবনা</span></h2>
+      <table>
+        <tr><td>Based on <span class="bn">ভিত্তি</span></td><td class="key ans">Objectives Resolution</td></tr>
+        <tr><td>Moved by / on <span class="bn">উত্থাপক</span></td><td class="key ans">J.L. Nehru · 13 Dec 1946</td></tr>
+        <tr><td>Passed <span class="bn">পাস</span></td><td class="key ans">22 Jan 1947</td></tr>
+        <tr><td>Idea from <span class="bn">ধারণা</span></td><td class="key ans">USA</td></tr>
+        <tr><td>Amended <span class="bn">সংশোধন</span></td><td class="key ans">Once · 42nd (1976) · Art 368</td></tr>
+        <tr><td>Words added <span class="bn">যোগ করা শব্দ</span></td><td class="key ans">Socialist · Secular · Integrity</td></tr>
+      </table>
+    </article>
+
+    <article class="card green">
+      <h2>Nature of India = “3S + DR” <span class="bn">ভারতের প্রকৃতি</span></h2>
+      <ul class="chips">
+        <li><b>S</b>overeign <span class="bn">সার্বভৌম</span></li>
+        <li><b>S</b>ocialist <span class="bn">সমাজতান্ত্রিক</span></li>
+        <li><b>S</b>ecular <span class="bn">ধর্মনিরপেক্ষ</span></li>
+        <li><b>D</b>emocratic <span class="bn">গণতান্ত্রিক</span></li>
+        <li><b>R</b>epublic <span class="bn">সাধারণতন্ত্র</span></li>
+      </ul>
+      <p style="margin-top:8px">Socialist = <b class="ans">Democratic socialism + Mixed economy</b>, weakened by <b class="ans">LPG 1991</b><br>
+      <span class="bn">গণতান্ত্রিক সমাজতন্ত্র + মিশ্র অর্থনীতি; ১৯৯১ LPG-তে দুর্বল</span></p>
+    </article>
+
+  </section>
+
+  <!-- ===================== DEMOCRACY & REPUBLIC ===================== -->
+  <h2 class="section-title">Democratic &amp; Republic <span class="bn">গণতান্ত্রিক ও সাধারণতন্ত্র</span></h2>
+  <section class="grid">
+
+    <article class="card purple">
+      <h2>Democracy <span class="bn">গণতন্ত্র</span></h2>
+      <p>Power rests with the <b class="ans">people</b> — government <b>of, by &amp; for</b> the people.<br>
+        <span class="bn">ক্ষমতার উৎস জনগণ — জনগণের, জনগণের দ্বারা, জনগণের জন্য সরকার।</span></p>
+      <table>
+        <tr><th>Direct <span class="bn">প্রত্যক্ষ</span></th><th>Indirect <span class="bn">পরোক্ষ / প্রতিনিধিমূলক</span></th></tr>
+        <tr><td>People decide directly<br><span class="bn">নাগরিকরা সরাসরি সিদ্ধান্ত নেয়</span><b class="ans">e.g. Switzerland</b></td>
+            <td>Elected representatives govern<br><span class="bn">নির্বাচিত প্রতিনিধিরা শাসন করে</span><b class="ans">e.g. India</b></td></tr>
+      </table>
+    </article>
+
+    <article class="card yellow">
+      <h2>4 Tools of Direct Democracy <span class="bn">প্রত্যক্ষ গণতন্ত্রের ৪টি উপায়</span></h2>
+      <p class="mnemonic">“<b>R</b>am <b>I</b>s <b>R</b>eally <b>P</b>atient” = R · I · R · P</p>
+      <table>
+        <tr><td class="who">Referendum<span class="bn">গণভোট</span></td><td class="ans">Govt puts a law/policy to public vote<span class="bn">সরকার আইন/নীতি জনগণের ভোটে দেয়</span></td></tr>
+        <tr><td class="who">Initiative<span class="bn">উদ্যোগ</span></td><td class="ans">People themselves propose a new law<span class="bn">জনগণ নিজেরাই নতুন আইন প্রস্তাব করে</span></td></tr>
+        <tr><td class="who">Recall<span class="bn">প্রত্যাহার</span></td><td class="ans">Remove a representative before term ends<span class="bn">মেয়াদ শেষের আগে প্রতিনিধিকে ফেরত ডাকা</span></td></tr>
+        <tr><td class="who">Plebiscite<span class="bn">জনমত</span></td><td class="ans">Public vote on a major political/territorial issue<span class="bn">গুরুত্বপূর্ণ রাজনৈতিক/ভূখণ্ড বিষয়ে জনমত</span></td></tr>
+      </table>
+    </article>
+
+    <article class="card pink">
+      <h2>Dr. B.R. Ambedkar on Democracy <span class="bn">গণতন্ত্র নিয়ে আম্বেদকর</span></h2>
+      <p>Constituent Assembly speech · <b class="ans">25 Nov 1949</b> <span class="bn">(গণপরিষদে ভাষণ)</span></p>
+      <div class="quote">“Political democracy cannot last unless there lies at the base of it <b class="ans">social democracy</b>.”
+        <span class="bn">"রাজনৈতিক গণতন্ত্র টিকতে পারে না, যদি না তার ভিত্তিতে সামাজিক গণতন্ত্র থাকে।"</span></div>
+      <p class="mnemonic">Trap: <b>25</b> Nov = Ambedkar speech · <b>26</b> Nov = Constitution adopted</p>
+    </article>
+
+    <article class="card blue">
+      <h2>Republic <span class="bn">সাধারণতন্ত্র / প্রজাতন্ত্র</span></h2>
+      <p>Head of State is <b class="ans">elected</b>, not inherited.<br>
+        <span class="bn">রাষ্ট্রপ্রধান নির্বাচিত হন, বংশানুক্রমিক নন।</span></p>
+      <table>
+        <tr><td class="who">Britain <span class="bn">ব্রিটেন</span></td><td class="ans">Monarchy – King/Queen<span class="bn">রাজতন্ত্র – রাজা/রানি</span></td></tr>
+        <tr><td class="who">India, USA <span class="bn">ভারত, আমেরিকা</span></td><td class="ans">Republic – elected President<span class="bn">সাধারণতন্ত্র – নির্বাচিত রাষ্ট্রপতি</span></td></tr>
+      </table>
+      <p>India's President: elected <b class="ans">indirectly</b> for <b class="ans">5 years</b><br>
+        <span class="bn">ভারতের রাষ্ট্রপতি পরোক্ষভাবে ৫ বছরের জন্য নির্বাচিত</span></p>
+      <p>Ensures: <b>Sovereignty of people</b> + <b>Equal access to public offices</b><br>
+        <span class="bn">নিশ্চিত করে: জনগণের সার্বভৌমত্ব + সরকারি পদে সমান সুযোগ</span></p>
+    </article>
+
+  </section>
+
+  <!-- ===================== IDEALS ===================== -->
+  <h2 class="section-title">The 4 Ideals <span class="bn">চারটি আদর্শ</span></h2>
+  <section class="grid">
+
+    <article class="card wide orange">
+      <h2>Code + Source <span class="bn">কোড ও উৎস</span></h2>
+      <div class="sources">
+        <div class="src ru">
+          <div class="t">Justice (3) → <span class="ans">Russian Revolution 1917</span></div>
+          <span class="bn">ন্যায়বিচার (৩) → রুশ বিপ্লব ১৯১৭</span>
+        </div>
+        <div class="src fr">
+          <div class="t">Liberty (5) · Equality (2) · Fraternity (1) → <span class="ans">French Revolution 1789–99</span></div>
+          <span class="bn">স্বাধীনতা · সমতা · ভ্রাতৃত্ব → ফরাসি বিপ্লব ১৭৮৯–৯৯</span>
+        </div>
+      </div>
+      <p class="mnemonic">“<b>J</b>ustice from <b>R</b>ussia, <b>LEF</b> from <b>F</b>rance” · Count code <b>J L E F = 3 5 2 1</b></p>
+    </article>
+
+    <article class="card green">
+      <h2>Justice (3) <span class="bn">ন্যায়বিচার</span></h2>
+      <table>
+        <tr><td class="who">Social<span class="bn">সামাজিক</span></td><td class="ans">No discrimination on caste, colour, race, religion, sex; special care for SC/ST/OBC &amp; women<span class="bn">জাতি, বর্ণ, ধর্ম, লিঙ্গে বৈষম্য নয়; SC/ST/OBC ও নারীদের বিশেষ গুরুত্ব</span></td></tr>
+        <tr><td class="who">Economic<span class="bn">অর্থনৈতিক</span></td><td class="ans">No discrimination on wealth/income; reduce inequality; equal chance to earn<span class="bn">সম্পদ/আয়ে বৈষম্য নয়; অসমতা কমানো</span></td></tr>
+        <tr><td class="who">Political<span class="bn">রাজনৈতিক</span></td><td class="ans">Equal political rights, offices &amp; voice<span class="bn">সমান রাজনৈতিক অধিকার, পদ ও মতামত</span></td></tr>
+      </table>
+      <p>All 3 combined = <b class="ans">Distributive Justice</b> <span class="bn">(বণ্টনমূলক ন্যায়)</span><br>
+      Ensured by <b class="ans">Fundamental Rights + DPSP</b> <span class="bn">(মৌলিক অধিকার + নির্দেশমূলক নীতি)</span></p>
+    </article>
+
+    <article class="card purple">
+      <h2>Liberty (5) = “TEBFW” <span class="bn">স্বাধীনতা</span></h2>
+      <p class="mnemonic">“<b>T</b>he <b>E</b>lephant <b>B</b>rings <b>F</b>resh <b>W</b>ater”</p>
+      <ul class="chips">
+        <li><b>T</b>hought <span class="bn">চিন্তা</span></li>
+        <li><b>E</b>xpression <span class="bn">মত প্রকাশ</span></li>
+        <li><b>B</b>elief <span class="bn">বিশ্বাস</span></li>
+        <li><b>F</b>aith <span class="bn">আস্থা/ধর্ম</span></li>
+        <li><b>W</b>orship <span class="bn">উপাসনা</span></li>
+      </ul>
+      <p>Means: freedom from restrictions + chance for personal growth<br><span class="bn">অর্থ: বাধা থেকে মুক্তি + ব্যক্তিত্ব বিকাশের সুযোগ</span></p>
+      <p>Protected by <b class="ans">Fundamental Rights</b> · but <b class="ans">NOT absolute</b><br><span class="bn">মৌলিক অধিকার দ্বারা সুরক্ষিত · কিন্তু সীমাহীন নয়</span></p>
+      <p class="mnemonic">Trap: “<b>Economic</b> freedom” is <b>NOT</b> in the Preamble</p>
+    </article>
+
+    <article class="card wide blue">
+      <h2>Equality (2) = Status + Opportunity <span class="bn">সমতা = মর্যাদা + সুযোগ</span></h2>
+      <p>Equal before law + equal protection of laws · no special privileges · no discrimination<br>
+        <span class="bn">আইনের চোখে সমান + আইনের সমান সুরক্ষা · কোনো বিশেষাধিকার নয় · বৈষম্য নয়</span></p>
+      <div class="articles">
+        <div class="art"><h3>Civic <span class="bn">নাগরিক</span></h3><div class="num ans">Art 14–18</div><small>14 Equality before law · 15 No discrimination · 16 Equal job opportunity · 17 Untouchability abolished · 18 Titles abolished</small><small class="bn">১৪ আইনের চোখে সমতা · ১৫ বৈষম্য নিষেধ · ১৬ সরকারি চাকরিতে সমান সুযোগ · ১৭ অস্পৃশ্যতা বিলোপ · ১৮ উপাধি বিলোপ</small></div>
+        <div class="art"><h3>Political <span class="bn">রাজনৈতিক</span></h3><div class="num ans">Art 325, 326</div><small>325 No one excluded from electoral roll · 326 Adult suffrage</small><small class="bn">৩২৫ ভোটার তালিকা থেকে বাদ নয় · ৩২৬ সর্বজনীন প্রাপ্তবয়স্ক ভোটাধিকার</small></div>
+        <div class="art"><h3>Economic <span class="bn">অর্থনৈতিক</span></h3><div class="num ans">Art 39 (DPSP)</div><small>Equal livelihood &amp; equal pay for equal work (men &amp; women)</small><small class="bn">জীবিকার সমান অধিকার ও সমান কাজে সমান বেতন</small></div>
+      </div>
+      <p class="mnemonic">Code: Civic <b>14-18</b> · Vote <b>325-326</b> · Pay <b>39</b></p>
+    </article>
+
+    <article class="card pink">
+      <h2>Fraternity (1) <span class="bn">ভ্রাতৃত্ব</span></h2>
+      <p>Brotherhood &amp; mutual respect · dignity of individual + unity &amp; <b class="ans">integrity</b> of nation<br>
+        <span class="bn">ভ্রাতৃত্ব ও পারস্পরিক শ্রদ্ধা · ব্যক্তির মর্যাদা + জাতির ঐক্য ও সংহতি</span></p>
+      <ul class="chips">
+        <li><b class="ans">Single Citizenship</b> <span class="bn">একক নাগরিকত্ব</span></li>
+        <li><b class="ans">Fundamental Duty Art 51-A</b> <span class="bn">মৌলিক কর্তব্য</span></li>
+      </ul>
+      <p style="margin-top:6px">USA has <b class="ans">dual</b> citizenship · “Integrity” added by <b class="ans">42nd Am. 1976</b><br>
+        <span class="bn">আমেরিকায় দ্বৈত নাগরিকত্ব · "সংহতি" শব্দ ৪২তম সংশোধনীতে যোগ</span></p>
+    </article>
+
+    <article class="card yellow">
+      <h2>Secular &amp; 3 Types of State <span class="bn">ধর্মভিত্তিক রাষ্ট্রের ৩ প্রকার</span></h2>
+      <table>
+        <tr><td class="who">Atheistic<span class="bn">নাস্তিক</span></td><td class="ans">Against religion<span class="bn">ধর্মবিরোধী</span></td></tr>
+        <tr><td class="who">Theocratic<span class="bn">ধর্মরাষ্ট্র</span></td><td class="ans">Official state religion<span class="bn">রাষ্ট্রীয় ধর্ম আছে</span></td></tr>
+        <tr><td class="who">Secular<span class="bn">ধর্মনিরপেক্ষ</span></td><td class="ans">Neutral to all; no state religion<span class="bn">সব ধর্মের প্রতি নিরপেক্ষ; রাষ্ট্রের কোনো ধর্ম নেই</span></td></tr>
+      </table>
+      <p>India = <b class="ans">Secular</b> · proof: <b class="ans">Art 25–28</b> (SC, 1974)<br><span class="bn">ভারত ধর্মনিরপেক্ষ · প্রমাণ: অনুচ্ছেদ ২৫–২৮</span></p>
+    </article>
+
+  </section>
+
+  <!-- ===================== QUOTES & CASE ===================== -->
+  <h2 class="section-title">Who Said What &amp; Kesavananda Case <span class="bn">কে কী বলেছেন ও কেশবানন্দ মামলা</span></h2>
+  <section class="grid">
+
+    <article class="card wide purple">
+      <h2>Famous descriptions of the Preamble <span class="bn">প্রস্তাবনার বিখ্যাত বর্ণনা</span></h2>
+      <table>
+        <tr><th>Thinker <span class="bn">ব্যক্তি</span></th><th>Called it… <span class="bn">যা বলেছেন</span></th><th>Hook <span class="bn">মনে রাখার সূত্র</span></th></tr>
+        <tr><td class="who">N.A. Palkhivala</td><td class="ans">“Identity Card” of the Constitution<span class="bn">সংবিধানের "পরিচয়পত্র"</span></td><td>P → Paper ID</td></tr>
+        <tr><td class="who">K.M. Munshi</td><td class="ans">“Horoscope” of our sovereign democratic republic<span class="bn">সার্বভৌম গণতান্ত্রিক সাধারণতন্ত্রের "কোষ্ঠী"</span></td><td>Munshi reads the Horoscope</td></tr>
+        <tr><td class="who">Thakur Das Bhargava</td><td class="ans">“Most precious part… a jewel, a soul, a yardstick”<span class="bn">"সবচেয়ে মূল্যবান অংশ… রত্ন, আত্মা, মাপকাঠি"</span></td><td>Bhargava → Bhari (precious) Jewel</td></tr>
+        <tr><td class="who">Ernest Barker</td><td class="ans">“Key-note” to the Constitution<span class="bn">সংবিধানের "মূল সুর"</span></td><td>Barker sings the Key-note</td></tr>
+        <tr><td class="who">M. Hidayatullah (ex-CJI)</td><td class="ans">“More than a declaration… the soul of our Constitution”<span class="bn">"শুধু ঘোষণা নয়… সংবিধানের আত্মা"</span></td><td>Hidayat-ullah → Heart/Soul</td></tr>
+        <tr><td class="who">Alladi Krishnaswami Iyer</td><td class="ans">“Expresses what we had dreamt so long”<span class="bn">"আমরা এতদিন যে স্বপ্ন দেখেছি তা প্রকাশ করে"</span></td><td>Alladi → Aladdin's Dream</td></tr>
+      </table>
+    </article>
+
+    <article class="card wide green">
+      <h2>Kesavananda Bharati Case (1973) <span class="bn">কেশবানন্দ ভারতী মামলা (১৯৭৩)</span></h2>
+      <div class="flow">
+        <span><b>Issue <i class="bn">প্রশ্ন</i></b>Can the Preamble be amended under Art 368?<i class="bn">অনুচ্ছেদ ৩৬৮-এ প্রস্তাবনা সংশোধন করা যায়?</i></span><em>→</em>
+        <span><b>Petitioner <i class="bn">আবেদনকারী</i></b>Not part of Constitution → can't amend<i class="bn">সংবিধানের অংশ নয় → সংশোধন করা যায় না</i></span><em>→</em>
+        <span class="final"><b>Verdict <i>রায়</i></b><span class="ans">IS a part · CAN be amended · basic features can't be altered</span><i class="bn">অংশ · সংশোধনযোগ্য · মৌলিক কাঠামো বদলানো যাবে না</i></span>
+      </div>
+      <p class="center"><b class="ans">Berubari (1960)</b> verdict (“not a part”) was <b class="ans">overruled</b> <span class="bn">(বেরুবাড়ি মামলার রায় বাতিল)</span></p>
+      <p class="mnemonic center"><b>B</b>erubari = <b>B</b>locked (NO) · <b>K</b>esavananda = <b>K</b>ept (YES) · Preamble is <b>non-justiciable</b> &amp; can't override specific provisions</p>
+    </article>
+
+  </section>
+
+  <!-- ===================== MCQ ===================== -->
+  <h2 class="section-title">Practice MCQs <span class="bn">অনুশীলনী প্রশ্ন</span></h2>
+  <section class="mcqs">
+
+    <details class="mcq">
+      <summary>1. Which statements are correct? (1) Nehru's Objectives Resolution became the Preamble (2) It is non-justiciable (3) It cannot be amended (4) It cannot override specific provisions
+        <span class="bn">কোন বিবৃতিগুলি সঠিক?</span>
+        <div class="opts">A) 1, 2 · B) 1, 2, 4 · C) 1, 2, 3 · D) 2, 3, 4</div>
+      </summary>
+      <div class="a"><b>B) 1, 2 and 4</b> — It <u>was</u> amended once (42nd, 1976).<span class="bn">প্রস্তাবনা একবার সংশোধিত হয়েছে, তাই ৩ ভুল।</span></div>
+    </details>
+
+    <details class="mcq">
+      <summary>2. Which describes India as a Secular State?
+        <span class="bn">কোনটি ভারতকে ধর্মনিরপেক্ষ রাষ্ট্র বলে?</span>
+        <div class="opts">A) Fundamental Rights · B) Preamble · C) 9th Schedule · D) DPSP</div>
+      </summary>
+      <div class="a"><b>B) Preamble</b><span class="bn">সংবিধানের প্রস্তাবনা</span></div>
+    </details>
+
+    <details class="mcq">
+      <summary>3. Words inserted by the 42nd Amendment? (1) Socialist (2) Secular (3) Sovereign (4) Republic
+        <span class="bn">৪২তম সংশোধনীতে কোন শব্দ যোগ হয়েছে?</span>
+        <div class="opts">A) 1, 3 · B) 3, 4 · C) 2, 3 · D) 1, 2</div>
+      </summary>
+      <div class="a"><b>D) 1 and 2</b> (+ Integrity)<span class="bn">সমাজতান্ত্রিক ও ধর্মনিরপেক্ষ (এবং সংহতি)</span></div>
+    </details>
+
+    <details class="mcq">
+      <summary>4. Number of types of Justice, Liberty, Equality, Fraternity (in order)?
+        <span class="bn">ন্যায়, স্বাধীনতা, সমতা, ভ্রাতৃত্বের প্রকার সংখ্যা (ক্রমানুসারে)?</span>
+        <div class="opts">A) 3,5,2,1 · B) 1,3,5,2 · C) 2,5,3,1 · D) 5,2,1,3</div>
+      </summary>
+      <div class="a"><b>A) 3, 5, 2, 1</b><span class="bn">৩, ৫, ২, ১</span></div>
+    </details>
+
+    <details class="mcq">
+      <summary>5. Which liberty is NOT in the Preamble?
+        <span class="bn">কোন স্বাধীনতা প্রস্তাবনায় নেই?</span>
+        <div class="opts">A) Thought · B) Expression · C) Belief · D) Economic freedom</div>
+      </summary>
+      <div class="a"><b>D) Economic freedom</b><span class="bn">অর্থনৈতিক স্বাধীনতা</span></div>
+    </details>
+
+    <details class="mcq">
+      <summary>6. Correct meaning of “Secular” in India?
+        <span class="bn">ভারতে "ধর্মনিরপেক্ষ" শব্দের সঠিক অর্থ?</span>
+        <div class="opts">A) Many religions · B) Religious freedom · C) Religion is personal choice · D) No religion of the State</div>
+      </summary>
+      <div class="a"><b>D) There is no religion of the State</b><span class="bn">রাষ্ট্রের কোনো ধর্ম নেই</span></div>
+    </details>
+
+    <details class="mcq">
+      <summary>7. Liberty, Equality &amp; Fraternity were inspired by which revolution?
+        <span class="bn">স্বাধীনতা, সমতা ও ভ্রাতৃত্ব কোন বিপ্লব থেকে অনুপ্রাণিত?</span>
+        <div class="opts">A) Russian · B) American · C) French · D) Glorious</div>
+      </summary>
+      <div class="a"><b>C) French Revolution</b><span class="bn">ফরাসি বিপ্লব</span></div>
+    </details>
+
+  </section>
+
+  <footer>Based on Polity by DS Sir – Preamble #2 <span class="bn">· ডিএস স্যারের ক্লাস নোট অবলম্বনে</span></footer>
+</main>
+
+</body>
+</html>
